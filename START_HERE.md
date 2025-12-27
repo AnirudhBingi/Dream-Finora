@@ -11,19 +11,20 @@ This is your **daily command center**. Use these prompts every day to keep every
 ### 🌅 START OF DAY (Copy this when you begin work)
 
 ```
-START OF DAY - Day 1
+START OF DAY - Day XX
 
 Please:
-1. Review my progress from yesterday (check docs/DAILY_LOGS/DAY_XX-1.md)
+1. Review my progress from yesterday (check `docs/DAILY_LOGS/DAY_YY.md`)
 2. Check if there are any unresolved issues in docs/ISSUES/
-3. Update docs/DAILY_LOGS/DAY_XX.md with today's goals from DEVELOPMENT_ROADMAP.md
+3. Update docs/DAILY_LOGS/DAY_0XX.md with today's goals from DEVELOPMENT_ROADMAP.md
 4. Check docs/PROGRESS.md and tell me current project status
 5. Show me today's planned tasks from DEVELOPMENT_ROADMAP.md
 6. Check for any blockers from yesterday that need attention
 7. Confirm all documentation is in order
 ```
 
-**Replace `XX` with your actual day number (01, 02, 03, etc.)**
+**Important:** Our files use zero-padding: Day 1 = `DAY_01.md`, Day 2 = `DAY_02.md`, etc.
+**Fill in:** `XX` = today, `YY` = yesterday.
 
 ---
 
@@ -34,7 +35,7 @@ END OF DAY - Day XX
 
 Please:
 1. Review what I accomplished today
-2. Update docs/DAILY_LOGS/DAY_XX.md with:
+2. Update docs/DAILY_LOGS/DAY_0XX.md with:
    - All completed tasks
    - Any issues encountered (create issue docs if significant)
    - Solutions found
