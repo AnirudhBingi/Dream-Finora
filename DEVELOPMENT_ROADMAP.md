@@ -82,14 +82,14 @@ This is your complete guide from zero to a production-ready app. We'll build it 
    - Free tier is perfect for our needs
 
 **End of Day 1 Checklist:**
-- [ ] Node.js v24.12.0 installed and working
-- [ ] Git installed and working
-- [ ] GitHub account created
-- [ ] VS Code installed
-- [ ] Docker Desktop installed and running
-- [ ] PostgreSQL 18.1 installed and verified
-- [ ] Expo account created + Expo Go on phone
-- [ ] Vercel account created
+- [x] Node.js v24.12.0 installed and working ✅
+- [x] Git installed and working ✅
+- [x] GitHub account created ✅
+- [x] VS Code installed ✅
+- [x] Docker Desktop installed and running ✅
+- [x] PostgreSQL 18.1 installed and verified ✅
+- [x] Expo account created + Expo Go on phone ✅
+- [x] Vercel account created ✅
 
 ---
 
@@ -125,11 +125,11 @@ This is your complete guide from zero to a production-ready app. We'll build it 
 - Package.json files configured
 
 **End of Day 2 Checklist:**
-- [ ] Monorepo structure created
-- [ ] Mobile app (Expo) shows "Hello World" in Expo Go
-- [ ] Landing page website shows welcome page
-- [ ] Backend API responds "Hello World" at localhost:3001
-- [ ] Code committed to Git
+- [x] Monorepo structure created ✅
+- [x] Mobile app (Expo) shows "Hello World" in Expo Go ✅
+- [x] Landing page website shows welcome page ✅
+- [x] Backend API responds "Hello World" at localhost:3001 ✅
+- [x] Code committed to Git ✅
 
 ---
 
@@ -148,11 +148,11 @@ This is your complete guide from zero to a production-ready app. We'll build it 
 - Practice running and testing apps
 
 **End of Day 3 Checklist:**
-- [ ] Can start mobile app in Expo Go
-- [ ] Can start landing page locally (localhost:3000)
-- [ ] Can start backend API (localhost:3001)
-- [ ] Understand mobile app connects to backend API
-- [ ] Understand landing page is separate marketing site
+- [x] Can start mobile app in Expo Go ✅
+- [x] Can start landing page locally (localhost:3000) ✅
+- [x] Can start backend API (localhost:3001) ✅
+- [x] Understand mobile app connects to backend API ✅
+- [x] Understand landing page is separate marketing site ✅
 
 ---
 
@@ -222,10 +222,10 @@ This is your complete guide from zero to a production-ready app. We'll build it 
 - PostgreSQL connection strings
 
 **End of Day 4 Checklist:**
-- [ ] PostgreSQL running in Docker
-- [ ] Database connection working
-- [ ] Prisma schema created
-- [ ] First migration run successfully
+- [x] PostgreSQL running in Docker ✅
+- [x] Database connection working ✅
+- [x] Prisma schema created ✅
+- [x] First migration run successfully ✅
 
 ---
 
@@ -261,6 +261,14 @@ This is your complete guide from zero to a production-ready app. We'll build it 
 3. User logs in → Save token → Redirect to home
 4. If logged in → Show home screen
 ```
+
+**End of Day 5 Checklist:**
+- [x] Register endpoint created (`POST /auth/register`) ✅
+- [x] Login endpoint created (`POST /auth/login`) ✅
+- [x] JWT token generation working ✅
+- [x] Password encryption (bcrypt) implemented ✅
+- [x] PrismaService created and integrated ✅
+- [x] Database connection working ✅
 
 **End of Day 6 Checklist:**
 - [x] Can register new user ✅
