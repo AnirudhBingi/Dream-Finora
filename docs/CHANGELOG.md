@@ -36,6 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - DTO validation with `class-validator`
   - Global validation pipe and CORS enabled
   - Endpoints: `POST /auth/register`, `POST /auth/login`
+- Day 6: Authentication mobile implementation
+  - Created `AuthContext` with React Context API for state management
+  - Implemented token persistence with AsyncStorage
+  - Created Login and Register screens with form validation
+  - Created Home screen with logout functionality
+  - Protected routes via conditional rendering (shows login if not authenticated)
+  - Full auth flow: register → login → persist token → logout
 
 ### Changed
 - [Changes in existing functionality]

@@ -1,70 +1,48 @@
+import React, { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { getApiBaseUrl } from './src/api/getApiBaseUrl';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { AuthProvider, useAuth } from './src/auth/authContext';
+import { LoginScreen } from './src/screens/LoginScreen';
+import { RegisterScreen } from './src/screens/RegisterScreen';
+import { HomeScreen } from './src/screens/HomeScreen';
+
+function AppContent() {
+  const { isAuthenticated, isLoading } = useAuth();
+  const [showRegister, setShowRegister] = useState(false);
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#2563EB" />
+      </View>
+    );
+  }
+
+  if (isAuthenticated) {
+    return <HomeScreen />;
+  }
+
+  if (showRegister) {
+    return <RegisterScreen onSwitchToLogin={() => setShowRegister(false)} />;
+  }
+
+  return <LoginScreen onSwitchToRegister={() => setShowRegister(true)} />;
+}
 
 export default function App() {
-  const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);
-  const [apiStatus, setApiStatus] = useState<string>('Checking backend...');
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function run() {
-      try {
-        const res = await fetch(`${apiBaseUrl}/`);
-        const json = (await res.json()) as { status?: string; message?: string };
-        if (cancelled) return;
-        setApiStatus(json.status ?? json.message ?? 'Backend responded');
-      } catch (e) {
-        if (cancelled) return;
-        setApiStatus('Backend not reachable (check: backend running + same Wi‑Fi)');
-      }
-    }
-
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [apiBaseUrl]);
-
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Dream Finora</Text>
-      <Text style={styles.subtitle}>Hello World!</Text>
-      <Text style={styles.description}>Mobile app is working</Text>
-      <Text style={styles.small}>API: {apiBaseUrl}</Text>
-      <Text style={styles.small}>Backend: {apiStatus}</Text>
+    <AuthProvider>
+      <AppContent />
       <StatusBar style="auto" />
-    </View>
+    </AuthProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  loadingContainer: {
     flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
     justifyContent: 'center',
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#2563EB',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  description: {
-    fontSize: 16,
-    color: '#6B7280',
-  },
-  small: {
-    marginTop: 8,
-    fontSize: 12,
-    color: '#6B7280',
+    alignItems: 'center',
+    backgroundColor: '#fff',
   },
 });
