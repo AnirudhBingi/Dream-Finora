@@ -5,60 +5,69 @@
 **Date:** 2025-12-27 05:50 AM  
 **Day Number:** 03  
 **Focus:** Understanding architecture + wiring mobile → backend connectivity  
-**Status:** 🟡 In Progress
+**Status:** ✅ Completed
 
 ---
 
 ## 🎯 Goals for Today
 
-- [ ] Understand how mobile app and backend connect (real request, not just theory)
-- [ ] Confirm landing page is separate (marketing only)
-- [ ] Set up clean dev workflow commands (what to run, in what order)
-- [ ] Document architecture and workflow in `docs/architecture/`
+- [x] Understand how mobile app and backend connect (real request, not just theory)
+- [x] Confirm landing page is separate (marketing only)
+- [x] Set up clean dev workflow commands (what to run, in what order)
+- [x] Document architecture and workflow in `docs/architecture/`
 
 ---
 
 ## ✅ What Was Accomplished
 
 ### Completed Tasks
-- ⏳ In progress
+- ✅ Documented architecture in `docs/architecture/ARCHITECTURE_OVERVIEW.md`
+- ✅ Documented dev workflow in `docs/architecture/DEV_WORKFLOW.md`
+- ✅ Implemented mobile → backend connectivity check (GET `/`) and displayed response in the app
+- ✅ Confirmed website remains marketing-only (no backend calls)
 
 ### Progress Made
-- ⏳ In progress
+- Mobile now shows:
+  - Which API base URL it is using
+  - Whether backend responded (status text)
+- We have a concrete proof that mobile can talk to backend in dev (even on a real phone)
 
 ### Code Changes
 - **Files Modified:**
-  - (TBD)
+  - `apps/mobile/App.tsx`
   
 - **New Files Created:**
-  - (TBD)
+  - `apps/mobile/src/api/getApiBaseUrl.ts`
+  - `docs/architecture/ARCHITECTURE_OVERVIEW.md`
+  - `docs/architecture/DEV_WORKFLOW.md`
 
 - **Commits:**
-  - (TBD)
+  - `Day 3: document architecture + connect mobile to backend`
 
 ---
 
 ## 🐛 Issues Encountered
 
-None yet.
+None.
 
 ---
 
 ## 💡 Solutions Found
 
-None yet.
+- For dev on a physical phone, don’t use `localhost` for the backend URL.
+- We derive the host IP from Metro’s script URL (`NativeModules.SourceCode.scriptURL`) and map it to port `3001`.
 
 ---
 
 ## 🤔 Decisions Made
 
-None yet.
+- Mobile derives backend host automatically in dev (no manual IP editing).
 
 ---
 
 ## 📝 Notes & Learnings
 
-- (TBD)
+- Ports: Website 3000, Backend 3001, Metro 8081.
 
 ---
 
