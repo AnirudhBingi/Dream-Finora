@@ -8,10 +8,10 @@ High-level view of project progress. Updated weekly or after major milestones.
 
 ## Current Status
 
-**Current Phase:** Phase 0 - Setup & Learning  
-**Current Day:** Day 4 (Completed)  
-**Overall Progress:** 8% (4/50 days)  
-**Last Updated:** 2025-12-27 06:15 AM
+**Current Phase:** Phase 1 - Foundation  
+**Current Day:** Day 5 (Completed)  
+**Overall Progress:** 10% (5/50 days)  
+**Last Updated:** 2025-12-27 07:00 AM
 
 ---
 
@@ -25,10 +25,11 @@ High-level view of project progress. Updated weekly or after major milestones.
 
 ### Phase 1: Foundation (Days 4-10)
 - [x] Day 4: Database Setup ✅ COMPLETED
-- [ ] Day 5-6: Authentication
+- [x] Day 5: Authentication (Backend) ✅ COMPLETED
+- [ ] Day 6: Authentication (Mobile/Web)
 - [ ] Day 7: User Profile
 - [ ] Day 8-10: Trust Score Foundation
-**Progress:** 14% (1/7 days)
+**Progress:** 29% (2/7 days)
 
 ### Phase 2: Core Features - MVP (Days 11-25)
 **Progress:** 0% (0/15 days)
@@ -47,7 +48,7 @@ High-level view of project progress. Updated weekly or after major milestones.
 ## Feature Progress
 
 ### Core Features
-- [ ] User Authentication (0%)
+- [x] User Authentication (50% - Backend complete, Mobile/Web pending)
 - [ ] Expense Splitting (0%)
 - [ ] Groups Management (0%)
 - [ ] Chore Management (0%)

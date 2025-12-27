@@ -28,6 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Docker Postgres fixed for v18+ (mount at `/var/lib/postgresql`)
   - Local Windows Postgres used port 5432, so Docker Postgres mapped to `localhost:5433`
   - Prisma added to backend and first migration applied (User, UserProfile)
+- Day 5: Authentication backend implementation
+  - Created `PrismaService` with lifecycle hooks for DB connection management
+  - Implemented `AuthModule` with register and login endpoints
+  - Password hashing with bcrypt (10 salt rounds)
+  - JWT token generation with 7-day expiration
+  - DTO validation with `class-validator`
+  - Global validation pipe and CORS enabled
+  - Endpoints: `POST /auth/register`, `POST /auth/login`
 
 ### Changed
 - [Changes in existing functionality]
