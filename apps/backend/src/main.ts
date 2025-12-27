@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
@@ -15,8 +16,11 @@ async function bootstrap() {
     }),
   );
 
-  // Enable CORS for mobile app
-  app.enableCors();
+  // Enable CORS for mobile app (allow all origins in development)
+  app.enableCors({
+    origin: true, // Allow all origins in development
+    credentials: true,
+  });
 
   const port = process.env.PORT ?? 3001;
   await app.listen(port);

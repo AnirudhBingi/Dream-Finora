@@ -41,10 +41,15 @@ export function RegisterScreen({ onSwitchToLogin }: RegisterScreenProps) {
 
     setIsLoading(true);
     try {
+      console.log('Attempting registration for:', email.trim());
       await register(email.trim(), password);
+      console.log('Registration successful');
       // Navigation will happen automatically via auth state change
     } catch (error) {
-      Alert.alert('Registration Failed', error instanceof Error ? error.message : 'Could not create account');
+      const errorMessage = error instanceof Error ? error.message : 'Could not create account';
+      console.error('Registration error:', error);
+      console.error('Error message:', errorMessage);
+      Alert.alert('Registration Failed', errorMessage);
     } finally {
       setIsLoading(false);
     }

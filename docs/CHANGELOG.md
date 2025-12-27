@@ -43,6 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Created Home screen with logout functionality
   - Protected routes via conditional rendering (shows login if not authenticated)
   - Full auth flow: register → login → persist token → logout
+  - Fixed Prisma 7.2.0 compatibility (downgraded to Prisma 6.19.1)
+  - Fixed mobile IP detection using `expo-constants` package
+  - Improved error handling and network error detection
+  - All authentication features tested and working end-to-end
 
 ### Changed
 - [Changes in existing functionality]

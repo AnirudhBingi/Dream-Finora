@@ -263,11 +263,11 @@ This is your complete guide from zero to a production-ready app. We'll build it 
 ```
 
 **End of Day 6 Checklist:**
-- [ ] Can register new user
-- [ ] Can login
-- [ ] Token saved and used for requests
-- [ ] Protected routes work (redirect if not logged in)
-- [ ] Can logout
+- [x] Can register new user ✅
+- [x] Can login ✅
+- [x] Token saved and used for requests ✅
+- [x] Protected routes work (redirect if not logged in) ✅
+- [x] Can logout ✅
 
 ---
 

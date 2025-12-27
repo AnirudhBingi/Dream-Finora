@@ -3,12 +3,12 @@
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
+// Prisma 6 reads DATABASE_URL from schema.prisma datasource block
+// This config file is optional but kept for migrations configuration
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
   },
-  datasource: {
-    url: process.env["DATABASE_URL"],
-  },
+  // datasource url is defined in schema.prisma, no need to duplicate here
 });
