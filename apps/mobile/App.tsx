@@ -18,7 +18,7 @@ export default function App() {
         setApiStatus(json.status ?? json.message ?? 'Backend responded');
       } catch (e) {
         if (cancelled) return;
-        setApiStatus('Backend not reachable yet');
+        setApiStatus('Backend not reachable (check: backend running + same Wi‑Fi)');
       }
     }
 

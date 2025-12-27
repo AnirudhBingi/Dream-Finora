@@ -17,9 +17,32 @@ function tryGetHostFromScriptURL(): string | null {
   return host || null;
 }
 
+function tryGetHostFromExpoManifest(): string | null {
+  // Expo Go exposes manifest/debuggerHost here on iOS/Android
+  const manifestRaw: unknown = (NativeModules as any)?.ExponentConstants?.manifest;
+  const manifest =
+    typeof manifestRaw === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(manifestRaw) as any;
+          } catch {
+            return null;
+          }
+        })()
+      : manifestRaw;
+
+  const debuggerHost: unknown = manifest?.debuggerHost;
+  if (typeof debuggerHost !== 'string') return null;
+  // debuggerHost looks like: "192.168.1.10:8081"
+  const host = debuggerHost.split(':')[0];
+  return host || null;
+}
+
 export function getApiBaseUrl(): string {
-  const host = tryGetHostFromScriptURL();
+  const host = tryGetHostFromScriptURL() ?? tryGetHostFromExpoManifest();
   if (host) return `http://${host}:3001`;
+  // Fallback is only useful for Android emulator (localhost points to emulator);
+  // on a physical phone, you must use your PC's LAN IP.
   return 'http://localhost:3001';
 }
 

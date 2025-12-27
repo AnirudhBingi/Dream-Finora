@@ -45,6 +45,7 @@ Please:
    - Time spent
    - Code changes summary
    - Tomorrow's goals
+   - Cross-check: what we planned vs what we did (from DEVELOPMENT_ROADMAP.md Day XX section)
 3. Update docs/PROGRESS.md with progress made
 4. Update docs/CHANGELOG.md if there were significant changes
 5. Create ISSUE docs for any bugs/problems encountered
