@@ -58,5 +58,8 @@ npx expo start --lan
 
 - Ensure Windows Firewall allows inbound to port `3001`
 - Ensure you are not using Expo `--tunnel` for Metro while trying to hit a LAN backend
+- If backend errors with `EADDRINUSE`, another process is already using port 3001:
+  - Find PID: `netstat -ano | findstr :3001`
+  - Kill PID: `taskkill /PID <PID> /F`
 
 
