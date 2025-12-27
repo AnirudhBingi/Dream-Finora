@@ -1,0 +1,29 @@
+{
+  "name": "dream-finora",
+  "version": "0.1.0",
+  "description": "Dream Finora - All-in-One Social Finance & Living App",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm --prefix apps/backend run start:dev\" \"npm --prefix apps/website run dev\" \"npm --prefix apps/mobile run start\"",
+    "dev:mobile": "npm --prefix apps/mobile run start",
+    "dev:website": "npm --prefix apps/website run dev",
+    "dev:backend": "npm --prefix apps/backend run start:dev",
+    "build": "npm run build --workspaces --if-present",
+    "install:all": "npm install",
+    "clean": "npm run clean --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "author": "Anirudh B",
+  "license": "MIT"
+}
+
