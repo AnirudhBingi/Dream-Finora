@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Shared package scaffolded (`packages/shared`)
   - Hello World running: Website (3000), Backend (3001), Expo Metro (8081)
   - Added Issue doc: `ISSUE-001` (binaries not recognized after removing node_modules)
+- Day 4: Database setup (PostgreSQL + Prisma)
+  - Docker Postgres fixed for v18+ (mount at `/var/lib/postgresql`)
+  - Local Windows Postgres used port 5432, so Docker Postgres mapped to `localhost:5433`
+  - Prisma added to backend and first migration applied (User, UserProfile)
 
 ### Changed
 - [Changes in existing functionality]
