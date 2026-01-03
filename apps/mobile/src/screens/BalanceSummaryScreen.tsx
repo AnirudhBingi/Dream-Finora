@@ -9,6 +9,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
 import { getBalances, simplifyDebts, BalanceInfo, SimplifiedDebtsResponse } from '../api/expenseApi';
 import { getAvatarUrl } from '../utils/avatar';
@@ -192,7 +193,8 @@ export function BalanceSummaryScreen({ onBack, onSettleUp }: BalanceSummaryScree
                 <ActivityIndicator color="#fff" />
               ) : (
                 <>
-                  <Text style={styles.simplifyButtonText}>✨ Simplify Debts</Text>
+                  <MaterialIcons name="account-tree" size={20} color="#fff" />
+                  <Text style={styles.simplifyButtonText}>Simplify Debts</Text>
                   {simplifiedDebts && (
                     <Text style={styles.simplifyButtonSubtext}>
                       {simplifiedDebts.originalCount} → {simplifiedDebts.simplifiedCount} transactions
@@ -212,7 +214,7 @@ export function BalanceSummaryScreen({ onBack, onSettleUp }: BalanceSummaryScree
                   style={styles.closeButton}
                   onPress={() => setShowSimplified(false)}
                 >
-                  <Text style={styles.closeButtonText}>✕</Text>
+                  <MaterialIcons name="close" size={24} color="#6B7280" />
                 </TouchableOpacity>
               </View>
               <Text style={styles.simplifiedSubtext}>
@@ -254,7 +256,7 @@ export function BalanceSummaryScreen({ onBack, onSettleUp }: BalanceSummaryScree
                   </View>
                   <TouchableOpacity
                     style={styles.settleButton}
-                    onPress={() => onSettleUp(item.user.id, item.amount, getUserDisplayName(item.user))}
+                    onPress={() => onSettleUp(item?.user?.id || '', item.amount, getUserDisplayName(item.user))}
                     activeOpacity={0.7}
                   >
                     <Text style={styles.settleButtonText}>Settle Up</Text>
@@ -287,7 +289,7 @@ export function BalanceSummaryScreen({ onBack, onSettleUp }: BalanceSummaryScree
                   </View>
                   <TouchableOpacity
                     style={styles.settleButton}
-                    onPress={() => onSettleUp(item.user.id, item.amount, getUserDisplayName(item.user))}
+                    onPress={() => onSettleUp(item?.user?.id || '', item.amount, getUserDisplayName(item.user))}
                     activeOpacity={0.7}
                   >
                     <Text style={styles.settleButtonText}>Settle Up</Text>
@@ -450,6 +452,8 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     minHeight: 44,
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
   },
   simplifyButtonText: {
     color: '#fff',

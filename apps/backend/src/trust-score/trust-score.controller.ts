@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { TrustScoreService } from './trust-score.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -17,10 +17,12 @@ export class TrustScoreController {
   }
 
   @Get('history')
-  async getTrustScoreHistory(@CurrentUser() user: { userId: string }) {
-    const history = await this.trustScoreService.getTrustScoreHistory(
-      user.userId,
-    );
+  async getTrustScoreHistory(
+    @CurrentUser() user: { userId: string },
+    @Query('limit') limit?: string,
+  ) {
+    const limitNum = limit ? parseInt(limit, 10) : 50;
+    const history = await this.trustScoreService.getTrustScoreHistory(user.userId, limitNum);
     return { history };
   }
 
@@ -30,6 +32,16 @@ export class TrustScoreController {
       user.userId,
     );
     return trustScoreWithBreakdown;
+  }
+
+  @Get('compare')
+  async compareTrustScore(@CurrentUser() user: { userId: string }) {
+    return this.trustScoreService.compareTrustScoreWithFriends(user.userId);
+  }
+
+  @Get('insights')
+  async getTrustScoreInsights(@CurrentUser() user: { userId: string }) {
+    return this.trustScoreService.getTrustScoreInsights(user.userId);
   }
 }
 

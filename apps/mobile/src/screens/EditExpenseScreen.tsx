@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Icon } from '../components/Icon';
 import { normalizeCategoryName } from '../utils/categoryIcons';
-import * as ImagePicker from 'expo-image-picker';
+import { pickImage } from '../utils/imagePicker';
 import { useAuth } from '../auth/authContext';
 import { updateExpense, getExpenseById, uploadReceipt, Expense, SplitType } from '../api/expenseApi';
 import { getCategories, Categories, suggestCategory } from '../api/financeApi';
@@ -204,21 +204,9 @@ export function EditExpenseScreen({ expenseId, onBack, onSuccess }: EditExpenseS
 
   async function pickReceipt() {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission needed', 'We need access to your photos to upload receipts.');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        setReceiptUri(result.assets[0].uri);
+      const uri = await pickImage({ aspect: [4, 3] });
+      if (uri) {
+        setReceiptUri(uri);
       }
     } catch (err) {
       Alert.alert('Error', 'Failed to pick image');
@@ -354,15 +342,17 @@ export function EditExpenseScreen({ expenseId, onBack, onSuccess }: EditExpenseS
 
             {expense && parseFloat(amount) !== expense.amount && (
               <View style={styles.infoBox}>
+                <MaterialIcons name="info-outline" size={20} color="#2563EB" style={styles.infoIcon} />
                 <Text style={styles.infoText}>
-                  💡 Note: Changing the amount will automatically recalculate splits proportionally and reset payment status for all participants.
+                  Note: Changing the amount will automatically recalculate splits proportionally and reset payment status for all participants.
                 </Text>
               </View>
             )}
             {expense && parseFloat(amount) === expense.amount && expense.splits.length > 0 && (
               <View style={styles.infoBox}>
+                <MaterialIcons name="info-outline" size={20} color="#2563EB" style={styles.infoIcon} />
                 <Text style={styles.infoText}>
-                  💡 Note: Editing splits will reset payment status for all participants.
+                  Note: Editing splits will reset payment status for all participants.
                 </Text>
               </View>
             )}
@@ -423,12 +413,12 @@ export function EditExpenseScreen({ expenseId, onBack, onSuccess }: EditExpenseS
                   contentContainerStyle={styles.whoPaidContainer}
                 >
                   {[
-                    { userId: expense.createdBy, name: expense.createdByUser.profile?.displayName || expense.createdByUser.email || 'You' },
+                    { userId: expense.createdBy, name: expense?.createdByUser?.profile?.displayName || expense?.createdByUser?.email || 'You' },
                     ...expense.splits
                       .filter(split => split.userId !== expense.createdBy)
                       .map(split => ({
                         userId: split.userId,
-                        name: split.user.profile?.displayName || split.user.email,
+                        name: split?.user?.profile?.displayName || split?.user?.email || 'Unknown',
                       })),
                   ].map((participant) => (
                     <TouchableOpacity
@@ -484,7 +474,8 @@ export function EditExpenseScreen({ expenseId, onBack, onSuccess }: EditExpenseS
                   style={styles.receiptUploadButton}
                   onPress={pickReceipt}
                 >
-                  <Text style={styles.receiptUploadButtonText}>📷 Upload Receipt</Text>
+                  <MaterialIcons name="add-photo-alternate" size={24} color="#6B7280" />
+                  <Text style={styles.receiptUploadButtonText}>Upload Receipt</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -644,8 +635,15 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 16,
     marginBottom: 24,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  infoIcon: {
+    marginTop: 2,
   },
   infoText: {
+    flex: 1,
     fontSize: 14,
     color: '#6B7280',
     lineHeight: 21,
@@ -692,11 +690,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 100,
+    gap: 8,
   },
   receiptUploadButtonText: {
     fontSize: 16,
     color: '#6B7280',
     fontWeight: '500',
+    marginTop: 8,
   },
   receiptContainer: {
     borderWidth: 1,

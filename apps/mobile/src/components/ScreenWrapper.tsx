@@ -1,33 +1,35 @@
-import React from 'react';
-import { StyleSheet, ViewStyle } from 'react-native';
-import { SafeAreaView, Edge } from 'react-native-safe-area-context';
+import React, { ReactNode } from 'react';
+import { SwipeableScreen } from './SwipeableScreen';
 
 interface ScreenWrapperProps {
-  children: React.ReactNode;
-  edges?: Edge[];
-  style?: ViewStyle;
+  children: ReactNode;
+  onSwipeBack: () => void;
+  canGoBack: () => boolean;
+  enableSwipe?: boolean;
 }
 
 /**
- * Consistent wrapper for all screens to prevent layout shifts
- * Always uses SafeAreaView with proper edges to avoid status bar overlap
+ * Universal wrapper for all screens that provides swipe-to-go-back functionality
+ * This ensures consistent behavior across all screens
  */
 export function ScreenWrapper({ 
   children, 
-  edges = ['top', 'left', 'right'],
-  style 
+  onSwipeBack, 
+  canGoBack,
+  enableSwipe = true,
 }: ScreenWrapperProps) {
+  // Only wrap with swipe if enabled and we can go back
+  if (!enableSwipe || !canGoBack()) {
+    return <>{children}</>;
+  }
+
   return (
-    <SafeAreaView style={[styles.safeArea, style]} edges={edges}>
+    <SwipeableScreen
+      onSwipeBack={onSwipeBack}
+      canGoBack={canGoBack}
+      enabled={enableSwipe}
+    >
       {children}
-    </SafeAreaView>
+    </SwipeableScreen>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-});
-

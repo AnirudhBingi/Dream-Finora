@@ -12,10 +12,10 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../auth/authContext';
 import { getProfile, updateProfile, uploadAvatar, Profile } from '../api/profileApi';
 import { getApiBaseUrl } from '../api/getApiBaseUrl';
+import { pickImage } from '../utils/imagePicker';
 
 interface EditProfileScreenProps {
   onBack: () => void;
@@ -56,23 +56,11 @@ export function EditProfileScreen({ onBack }: EditProfileScreenProps) {
     }
   }
 
-  async function pickImage() {
+  async function handlePickImage() {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission needed', 'We need access to your photos to set your avatar.');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        setAvatarUri(result.assets[0].uri);
+      const uri = await pickImage({ aspect: [1, 1] });
+      if (uri) {
+        setAvatarUri(uri);
       }
     } catch (err) {
       Alert.alert('Error', 'Failed to pick image');
@@ -143,7 +131,7 @@ export function EditProfileScreen({ onBack }: EditProfileScreenProps) {
         </View>
 
         <View style={styles.content}>
-          <TouchableOpacity style={styles.avatarContainer} onPress={pickImage}>
+          <TouchableOpacity style={styles.avatarContainer} onPress={handlePickImage}>
           {avatarUri ? (
             <Image source={{ uri: avatarUri }} style={styles.avatar} />
           ) : (

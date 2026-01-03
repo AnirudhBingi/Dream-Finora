@@ -1,15 +1,18 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationService } from '../notification/notification.service';
+import { EmailService } from '../shared/email.service';
 import { SendFriendRequestDto } from './dto/send-friend-request.dto';
 import { FriendResponseDto } from './dto/friend-response.dto';
 import { randomUUID } from 'crypto';
+import { InviteUserDto } from './dto/invite-user.dto';
 
 @Injectable()
 export class FriendService {
   constructor(
     private prisma: PrismaService,
     private notificationService: NotificationService,
+    private emailService: EmailService,
   ) {}
 
   async sendFriendRequest(userId: string, dto: SendFriendRequestDto): Promise<FriendResponseDto> {
@@ -345,6 +348,53 @@ export class FriendService {
     }
   }
 
+  async unblockUser(userId: string, friendId: string): Promise<{ message: string }> {
+    if (userId === friendId) {
+      throw new BadRequestException('Cannot unblock yourself');
+    }
+
+    // Find blocked friendship where userId is the blocker
+    const blockedFriendship = await this.prisma.friend.findFirst({
+      where: {
+        userId,
+        friendId,
+        status: 'blocked',
+      },
+    });
+
+    if (!blockedFriendship) {
+      throw new NotFoundException('Blocked relationship not found');
+    }
+
+    // Delete the blocked friendship
+    await this.prisma.friend.delete({
+      where: { id: blockedFriendship.id },
+    });
+
+    return { message: 'User unblocked successfully' };
+  }
+
+  async getBlockedUsers(userId: string): Promise<FriendResponseDto[]> {
+    const blockedFriendships = await this.prisma.friend.findMany({
+      where: {
+        userId,
+        status: 'blocked',
+      },
+      include: {
+        User_Friend_friendIdToUser: {
+          include: {
+            UserProfile: true,
+          },
+        },
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+    });
+
+    return blockedFriendships.map((friendship) => this.mapToFriendResponse(friendship));
+  }
+
   async getMutualFriends(userId: string, targetUserId: string): Promise<FriendResponseDto[]> {
     // Get user's friends
     const userFriends = await this.prisma.friend.findMany({
@@ -497,6 +547,197 @@ export class FriendService {
           : null,
       },
     };
+  }
+
+  async inviteUserToApp(userId: string, inviteDto: InviteUserDto) {
+    // Validate that either email or mobileNumber is provided
+    if (!inviteDto.email && !inviteDto.mobileNumber) {
+      throw new BadRequestException('Either email or mobileNumber must be provided');
+    }
+
+    // Check if user already exists
+    let existingUser: { id: string; email: string; mobileNumber: string | null } | null = null;
+    if (inviteDto.email) {
+      existingUser = await this.prisma.user.findUnique({
+        where: { email: inviteDto.email },
+      });
+    } else if (inviteDto.mobileNumber) {
+      existingUser = await this.prisma.user.findUnique({
+        where: { mobileNumber: inviteDto.mobileNumber },
+      });
+    }
+
+    if (existingUser) {
+      throw new ConflictException('User with this email/mobile number already exists');
+    }
+
+    // Check for existing pending invitation
+    const existingInvitation = await this.prisma.userInvitation.findFirst({
+      where: {
+        OR: [
+          inviteDto.email ? { email: inviteDto.email } : {},
+          inviteDto.mobileNumber ? { mobileNumber: inviteDto.mobileNumber } : {},
+        ],
+        status: 'pending',
+        expiresAt: {
+          gt: new Date(),
+        },
+      },
+    });
+
+    if (existingInvitation) {
+      throw new ConflictException('Invitation already sent to this email/mobile number');
+    }
+
+    // Get inviter info
+    const inviter = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        UserProfile: {
+          select: {
+            displayName: true,
+          },
+        },
+      },
+    });
+
+    if (!inviter) {
+      throw new NotFoundException('Inviter not found');
+    }
+
+    // Generate invitation token
+    const token = randomUUID();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days expiry
+
+    // Create invitation
+    const invitation = await this.prisma.userInvitation.create({
+      data: {
+        id: randomUUID(),
+        invitedBy: userId,
+        email: inviteDto.email || null,
+        mobileNumber: inviteDto.mobileNumber || null,
+        token,
+        status: 'pending',
+        expiresAt,
+      },
+    });
+
+    // Send email/SMS invitation
+    const inviterName = inviter.UserProfile?.displayName || inviter.email;
+    if (inviteDto.email) {
+      await this.emailService.sendAppInvitation(
+        inviteDto.email,
+        inviterName,
+        token,
+      ).catch(err => {
+        console.error('Failed to send email invitation:', err);
+        // Don't throw - invitation is still created
+      });
+    }
+    if (inviteDto.mobileNumber) {
+      await this.emailService.sendSMSInvitation(
+        inviteDto.mobileNumber,
+        inviterName,
+        token,
+        false,
+      ).catch(err => {
+        console.error('Failed to send SMS invitation:', err);
+        // Don't throw - invitation is still created
+      });
+    }
+
+    return {
+      invitationId: invitation.id,
+      token,
+      email: invitation.email,
+      mobileNumber: invitation.mobileNumber,
+      expiresAt: invitation.expiresAt,
+      inviteLink: `${process.env.FRONTEND_URL || 'https://dreamfinora.com'}/register?invite=${token}`,
+    };
+  }
+
+  async getInvitationByToken(token: string) {
+    const invitation = await this.prisma.userInvitation.findUnique({
+      where: { token },
+      include: {
+        Inviter: {
+          select: {
+            id: true,
+            email: true,
+            UserProfile: {
+              select: {
+                displayName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!invitation) {
+      throw new NotFoundException('Invitation not found');
+    }
+
+    return invitation;
+  }
+
+  async acceptInvitation(token: string, userId: string) {
+    // Find invitation by token
+    const invitation = await this.prisma.userInvitation.findUnique({
+      where: { token },
+    });
+
+    if (!invitation) {
+      throw new NotFoundException('Invitation not found');
+    }
+
+    if (invitation.status !== 'pending') {
+      throw new BadRequestException('Invitation has already been used or expired');
+    }
+
+    if (new Date() > invitation.expiresAt) {
+      throw new BadRequestException('Invitation has expired');
+    }
+
+    // Verify user email/mobile matches invitation
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, mobileNumber: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const emailMatches = invitation.email && user.email === invitation.email;
+    const mobileMatches = invitation.mobileNumber && user.mobileNumber === invitation.mobileNumber;
+
+    if (!emailMatches && !mobileMatches) {
+      throw new BadRequestException('This invitation is not for you');
+    }
+
+    // Mark invitation as accepted
+    await this.prisma.userInvitation.update({
+      where: { id: invitation.id },
+      data: {
+        status: 'accepted',
+        acceptedAt: new Date(),
+      },
+    });
+
+    // Automatically send friend request from inviter to new user
+    try {
+      await this.sendFriendRequest(invitation.invitedBy, {
+        friendEmailOrMobile: user.email,
+      });
+    } catch (err) {
+      // Ignore errors (user might already be friends or request might exist)
+      console.log('Could not auto-send friend request:', err);
+    }
+
+    return { success: true };
   }
 }
 

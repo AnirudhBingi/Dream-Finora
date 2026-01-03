@@ -4,6 +4,7 @@ import {
   Put,
   Post,
   Body,
+  Param,
   UseGuards,
   UploadedFile,
   UseInterceptors,
@@ -28,6 +29,14 @@ export class ProfileController {
   @Get()
   async getProfile(@CurrentUser() user: { userId: string }) {
     return this.profileService.getProfile(user.userId);
+  }
+
+  @Get(':userId')
+  async getUserProfile(
+    @CurrentUser() user: { userId: string },
+    @Param('userId') targetUserId: string,
+  ) {
+    return this.profileService.getUserProfile(user.userId, targetUserId);
   }
 
   @Put()

@@ -70,8 +70,8 @@ export function BillchopFriendsScreen({ onBack, onViewFriendExpenses }: Billchop
   function getBalanceForFriend(friendId: string): { owed: number; owedTo: number } {
     if (!balances) return { owed: 0, owedTo: 0 };
 
-    const owedBy = balances.owedByUser.find(item => item.user.id === friendId);
-    const owedTo = balances.owedToUser.find(item => item.user.id === friendId);
+    const owedBy = balances.owedByUser.find(item => item?.user?.id === friendId);
+    const owedTo = balances.owedToUser.find(item => item?.user?.id === friendId);
 
     return {
       owed: owedBy?.amount || 0,
@@ -153,14 +153,14 @@ export function BillchopFriendsScreen({ onBack, onViewFriendExpenses }: Billchop
           friends.map((friend) => {
             const friendName = getUserDisplayName(friend);
             const avatar = getUserAvatar(friend);
-            const balance = getBalanceForFriend(friend.friend.id);
+            const balance = getBalanceForFriend(friend?.friend?.id || '');
             const netBalance = balance.owedTo - balance.owed;
 
             return (
               <TouchableOpacity
-                key={friend.id}
+                key={friend?.id}
                 style={styles.friendCard}
-                onPress={() => onViewFriendExpenses(friend.friend.id, friendName)}
+                onPress={() => onViewFriendExpenses(friend?.friend?.id || '', friendName)}
               >
                 <View style={styles.friendInfo}>
                   {avatar ? (

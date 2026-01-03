@@ -50,8 +50,23 @@ export function BillchopGroupsScreen({
         getExpenses(token),
       ]);
 
-      setGroups(groupsData);
-      setExpenses(expensesData);
+      // Handle both array response and paginated response for groups
+      let groupsList: Group[] = [];
+      if (Array.isArray(groupsData)) {
+        groupsList = groupsData;
+      } else if (groupsData && typeof groupsData === 'object') {
+        groupsList = (groupsData as any).groups || [];
+      }
+      setGroups(groupsList);
+
+      // Handle both array response and paginated response for expenses
+      let expensesList: Expense[] = [];
+      if (Array.isArray(expensesData)) {
+        expensesList = expensesData;
+      } else if (expensesData && typeof expensesData === 'object') {
+        expensesList = (expensesData as any).expenses || [];
+      }
+      setExpenses(expensesList);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load groups');
     } finally {
@@ -61,6 +76,7 @@ export function BillchopGroupsScreen({
   }
 
   function getGroupExpenses(groupId: string): Expense[] {
+    if (!expenses || !Array.isArray(expenses)) return [];
     return expenses.filter((expense) => expense.groupId === groupId);
   }
 
@@ -133,14 +149,14 @@ export function BillchopGroupsScreen({
       >
         {groups.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <MaterialIcons name="group-outline" size={64} color="#9CA3AF" />
+            <MaterialIcons name="people-outline" size={64} color="#9CA3AF" />
             <Text style={styles.emptyTitle}>No Groups Yet</Text>
             <Text style={styles.emptyText}>
               Create a group to start splitting expenses with multiple people
             </Text>
           </View>
         ) : (
-          groups.map((group) => {
+          groups && Array.isArray(groups) && groups.map((group) => {
             const groupExpenses = getGroupExpenses(group.id);
             const totalAmount = getGroupTotal(group.id);
             const expenseCount = groupExpenses.length;

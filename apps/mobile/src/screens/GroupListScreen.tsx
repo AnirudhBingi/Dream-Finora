@@ -11,6 +11,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/authContext';
 import { getGroups, Group } from '../api/groupApi';
+import { EmptyState } from '../components/EmptyState';
+import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
+import { SkeletonGroupList } from '../components/SkeletonLoader';
 
 interface GroupListScreenProps {
   onCreateGroup: () => void;
@@ -28,38 +31,93 @@ export function GroupListScreen({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const limit = 20;
 
   useEffect(() => {
-    loadGroups();
+    loadGroups(true);
   }, [token]);
 
-  async function loadGroups() {
+  async function loadGroups(reset: boolean = false) {
     if (!token) return;
 
     try {
-      setLoading(true);
+      if (reset) {
+        setLoading(true);
+        setOffset(0);
+      } else {
+        setLoadingMore(true);
+      }
       setError(null);
-      const groupsData = await getGroups(token);
-      setGroups(groupsData);
+      const currentOffset = reset ? 0 : offset;
+      const groupsData = await getGroups(token, limit, currentOffset);
+      
+      // Handle paginated response
+      let groupsList: Group[];
+      let paginationInfo: { hasMore: boolean; total: number } | null = null;
+      
+      if (Array.isArray(groupsData)) {
+        groupsList = groupsData;
+      } else {
+        groupsList = groupsData.groups || [];
+        paginationInfo = {
+          hasMore: groupsData.hasMore || false,
+          total: groupsData.total || 0,
+        };
+      }
+      
+      if (reset) {
+        setGroups(groupsList);
+        setOffset(limit);
+      } else {
+        setGroups(prev => [...prev, ...groupsList]);
+        setOffset(prev => prev + limit);
+      }
+      
+      if (paginationInfo) {
+        setHasMore(paginationInfo.hasMore);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load circles');
+      setError(getUserFriendlyErrorMessage(err));
     } finally {
       setLoading(false);
+      setLoadingMore(false);
       setRefreshing(false);
     }
   }
 
+  async function loadMore() {
+    if (loadingMore || !hasMore) return;
+    await loadGroups(false);
+  }
+
   function getUserDisplayName(user: Group['createdByUser']): string {
-    return user.profile?.displayName || user.email;
+    if (!user) return 'Unknown';
+    return user.profile?.displayName || user.email || 'Unknown';
   }
 
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
-          <Text style={styles.loadingText}>Loading circles...</Text>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
+            <Text style={styles.backButtonText}>← Back</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={onCreateGroup}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.createButtonText}>+ New Circle</Text>
+          </TouchableOpacity>
         </View>
+        <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+          <View style={styles.content}>
+            <SkeletonGroupList count={5} />
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -70,8 +128,18 @@ export function GroupListScreen({
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={loadGroups} />
+          <RefreshControl refreshing={refreshing} onRefresh={() => loadGroups(true)} />
         }
+        onScroll={(e) => {
+          const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+          const paddingToBottom = 20;
+          if (layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom) {
+            if (hasMore && !loadingMore) {
+              loadMore();
+            }
+          }
+        }}
+        scrollEventThrottle={400}
       >
         <View style={styles.content}>
           <View style={styles.header}>
@@ -103,18 +171,13 @@ export function GroupListScreen({
           <Text style={styles.sectionTitle}>Your Circles</Text>
 
           {groups.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No circles yet</Text>
-              <Text style={styles.emptySubtext}>
-                Create a circle to start splitting bills with friends!
-              </Text>
-              <TouchableOpacity
-                style={styles.emptyButton}
-                onPress={onCreateGroup}
-              >
-                <Text style={styles.emptyButtonText}>Create Circle</Text>
-              </TouchableOpacity>
-            </View>
+            <EmptyState
+              icon="group"
+              title="No circles yet"
+              message="Create a circle to start splitting bills with friends!"
+              actionLabel="Create Circle"
+              onAction={onCreateGroup}
+            />
           ) : (
             groups.map((group) => (
               <TouchableOpacity
@@ -136,7 +199,7 @@ export function GroupListScreen({
                 )}
                 <View style={styles.groupFooter}>
                   <Text style={styles.groupMembers}>
-                    {group.members.length} member{group.members.length !== 1 ? 's' : ''}
+                    {group.members?.length || 0} member{(group.members?.length || 0) !== 1 ? 's' : ''}
                   </Text>
                   <Text style={styles.groupCreator}>
                     Created by {getUserDisplayName(group.createdByUser)}
@@ -144,6 +207,20 @@ export function GroupListScreen({
                 </View>
               </TouchableOpacity>
             ))
+          )}
+          {hasMore && groups.length > 0 && (
+            <TouchableOpacity
+              style={styles.loadMoreButton}
+              onPress={loadMore}
+              disabled={loadingMore}
+              activeOpacity={0.7}
+            >
+              {loadingMore ? (
+                <ActivityIndicator size="small" color="#2563EB" />
+              ) : (
+                <Text style={styles.loadMoreButtonText}>Load More</Text>
+              )}
+            </TouchableOpacity>
           )}
         </View>
       </ScrollView>
@@ -308,6 +385,21 @@ const styles = StyleSheet.create({
   groupCreator: {
     fontSize: 14, // Body: 14px
     color: '#6B7280', // Gray-500
+  },
+  loadMoreButton: {
+    backgroundColor: '#2563EB',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    marginTop: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  loadMoreButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
   },
 });
 

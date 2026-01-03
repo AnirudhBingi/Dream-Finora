@@ -8,6 +8,7 @@ import { CurrencyService } from '../shared/currency.service';
 import { TrustScoreService } from '../trust-score/trust-score.service';
 import { NotificationService } from '../notification/notification.service';
 import { FinanceService } from '../finance/finance.service';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class ExpenseService {
@@ -98,7 +99,7 @@ export class ExpenseService {
       const group = await this.prisma.group.findFirst({
         where: {
           id: createExpenseDto.groupId,
-          members: {
+          GroupMember: {
             some: {
               userId,
             },
@@ -126,6 +127,7 @@ export class ExpenseService {
     // Create expense with splits and history
     const expense = await this.prisma.expense.create({
       data: {
+        id: randomUUID(),
         createdBy: userId,
         description: createExpenseDto.description,
         amount: createExpenseDto.amount,
@@ -135,15 +137,17 @@ export class ExpenseService {
         receiptUrl: createExpenseDto.receiptUrl,
         paidBy: paidBy,
         splitType: splitType,
-        splits: {
+        ExpenseSplit: {
           create: createExpenseDto.splits.map((split) => ({
+            id: randomUUID(),
             userId: split.userId,
             amount: split.amount,
             isPaid: false,
           })),
         },
-        history: {
+        ExpenseHistory: {
           create: {
+            id: randomUUID(),
             action: 'created',
             userId: userId,
             notes: 'Expense created',
@@ -151,13 +155,13 @@ export class ExpenseService {
         },
       },
       include: {
-        splits: {
+        ExpenseSplit: {
           include: {
-            user: {
+            User: {
               select: {
                 id: true,
                 email: true,
-                profile: {
+                UserProfile: {
                   select: {
                     displayName: true,
                     avatarUrl: true,
@@ -167,11 +171,11 @@ export class ExpenseService {
             },
           },
         },
-        createdByUser: {
+        User_Expense_createdByToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -179,7 +183,7 @@ export class ExpenseService {
             },
           },
         },
-        group: {
+        Group: {
           select: {
             id: true,
             name: true,
@@ -190,8 +194,8 @@ export class ExpenseService {
     });
 
     // Create notifications for all participants (except creator)
-    const creatorName = expense.createdByUser.profile?.displayName || expense.createdByUser.email;
-    const participantIds = expense.splits
+    const creatorName = expense.User_Expense_createdByToUser.UserProfile?.displayName || expense.User_Expense_createdByToUser.email;
+    const participantIds = expense.ExpenseSplit
       .map(split => split.userId)
       .filter(id => id !== userId); // Exclude creator
 
@@ -212,7 +216,7 @@ export class ExpenseService {
     // Sync expense splits to finance transactions (Billchop integration)
     // For each split where user is involved and owes money, create finance transaction
     await Promise.all(
-      expense.splits.map(async (split) => {
+      expense.ExpenseSplit.map(async (split) => {
         if (split.amount > 0) {
           // User owes money - create expense transaction in local finance
           try {
@@ -238,24 +242,25 @@ export class ExpenseService {
     return expense;
   }
 
-  async getExpenses(userId: string) {
+  async getExpenses(userId: string, limit: number = 50, offset: number = 0) {
     // Get all expenses where user is involved (either creator or has a split)
     console.log('[ExpenseService] Getting expenses for user:', userId);
-    const expenses = await this.prisma.expense.findMany({
-      where: {
-        OR: [
-          { createdBy: userId },
-          { splits: { some: { userId } } },
-        ],
-      },
-      include: {
-        splits: {
+    const [expenses, total] = await Promise.all([
+      this.prisma.expense.findMany({
+        where: {
+          OR: [
+            { createdBy: userId },
+            { ExpenseSplit: { some: { userId } } },
+          ],
+        },
+        include: {
+          ExpenseSplit: {
           include: {
-            user: {
+            User: {
               select: {
                 id: true,
                 email: true,
-                profile: {
+                UserProfile: {
                   select: {
                     displayName: true,
                     avatarUrl: true,
@@ -265,11 +270,11 @@ export class ExpenseService {
             },
           },
         },
-        createdByUser: {
+        User_Expense_createdByToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -277,11 +282,11 @@ export class ExpenseService {
             },
           },
         },
-        paidByUser: {
+        User_Expense_paidByToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -289,7 +294,7 @@ export class ExpenseService {
             },
           },
         },
-        group: {
+        Group: {
           select: {
             id: true,
             name: true,
@@ -297,22 +302,31 @@ export class ExpenseService {
           },
         },
       },
-      orderBy: {
-        date: 'desc',
-      },
-    });
+        orderBy: {
+          date: 'desc',
+        },
+        take: limit,
+        skip: offset,
+      }),
+      this.prisma.expense.count({
+        where: {
+          OR: [
+            { createdBy: userId },
+            { ExpenseSplit: { some: { userId } } },
+          ],
+        },
+      }),
+    ]);
 
     console.log('[ExpenseService] Found expenses:', expenses.length, 'for user:', userId);
-    expenses.forEach(exp => {
-      console.log('[ExpenseService] Expense:', {
-        id: exp.id,
-        createdBy: exp.createdBy,
-        description: exp.description,
-        splits: exp.splits.map(s => ({ userId: s.userId, amount: s.amount })),
-      });
-    });
 
-    return expenses;
+    return {
+      expenses,
+      total,
+      limit,
+      offset,
+      hasMore: offset + expenses.length < total,
+    };
   }
 
   async getExpenseById(userId: string, expenseId: string) {
@@ -321,17 +335,17 @@ export class ExpenseService {
         id: expenseId,
         OR: [
           { createdBy: userId },
-          { splits: { some: { userId } } },
+          { ExpenseSplit: { some: { userId } } },
         ],
       },
       include: {
-        splits: {
+        ExpenseSplit: {
           include: {
-            user: {
+            User: {
               select: {
                 id: true,
                 email: true,
-                profile: {
+                UserProfile: {
                   select: {
                     displayName: true,
                     avatarUrl: true,
@@ -341,11 +355,11 @@ export class ExpenseService {
             },
           },
         },
-        createdByUser: {
+        User_Expense_createdByToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -353,11 +367,11 @@ export class ExpenseService {
             },
           },
         },
-        paidByUser: {
+        User_Expense_paidByToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -365,7 +379,7 @@ export class ExpenseService {
             },
           },
         },
-        group: {
+        Group: {
           select: {
             id: true,
             name: true,
@@ -400,15 +414,15 @@ export class ExpenseService {
       where: { id: splitId },
       data: { isPaid: true, paidAt: new Date() },
       include: {
-        expense: {
+        Expense: {
           include: {
-            splits: {
+            ExpenseSplit: {
               include: {
-                user: {
+                User: {
                   select: {
                     id: true,
                     email: true,
-                    profile: {
+                    UserProfile: {
                       select: {
                         displayName: true,
                         avatarUrl: true,
@@ -418,11 +432,11 @@ export class ExpenseService {
                 },
               },
             },
-            createdByUser: {
+            User_Expense_createdByToUser: {
               select: {
                 id: true,
                 email: true,
-                profile: {
+                UserProfile: {
                   select: {
                     displayName: true,
                     avatarUrl: true,
@@ -430,11 +444,11 @@ export class ExpenseService {
                 },
               },
             },
-            paidByUser: {
+            User_Expense_paidByToUser: {
               select: {
                 id: true,
                 email: true,
-                profile: {
+                UserProfile: {
                   select: {
                     displayName: true,
                     avatarUrl: true,
@@ -442,7 +456,7 @@ export class ExpenseService {
                 },
               },
             },
-            group: {
+            Group: {
               select: {
                 id: true,
                 name: true,
@@ -461,29 +475,29 @@ export class ExpenseService {
     });
 
     // Notify expense creator when a split is marked as paid (if creator is different from payer)
-    if (updated.expense.createdBy !== userId) {
+    if (updated.Expense.createdBy !== userId) {
       // Get payer info from the split's user relation
       const payer = await this.prisma.user.findUnique({
         where: { id: userId },
         select: {
           email: true,
-          profile: { select: { displayName: true } },
+          UserProfile: { select: { displayName: true } },
         },
       });
-      const paidByName = payer?.profile?.displayName || payer?.email || 'Someone';
+      const paidByName = payer?.UserProfile?.displayName || payer?.email || 'Someone';
       await this.notificationService.notifySplitPaid(
-        updated.expense.createdBy,
-        updated.expense.id,
-        updated.expense.description,
+        updated.Expense.createdBy,
+        updated.Expense.id,
+        updated.Expense.description,
         updated.amount,
-        updated.expense.currency,
+        updated.Expense.currency,
         paidByName,
       ).catch(err => {
         console.error(`Failed to create notification for expense creator:`, err);
       });
     }
 
-    return updated.expense;
+    return updated.Expense;
   }
 
   async updateReceipt(userId: string, expenseId: string, receiptUrl: string) {
@@ -493,7 +507,7 @@ export class ExpenseService {
         id: expenseId,
         OR: [
           { createdBy: userId },
-          { splits: { some: { userId } } },
+          { ExpenseSplit: { some: { userId } } },
         ],
       },
     });
@@ -506,13 +520,13 @@ export class ExpenseService {
       where: { id: expenseId },
       data: { receiptUrl },
       include: {
-        splits: {
+        ExpenseSplit: {
           include: {
-            user: {
+            User: {
               select: {
                 id: true,
                 email: true,
-                profile: {
+                UserProfile: {
                   select: {
                     displayName: true,
                     avatarUrl: true,
@@ -522,11 +536,11 @@ export class ExpenseService {
             },
           },
         },
-        createdByUser: {
+        User_Expense_createdByToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -534,7 +548,7 @@ export class ExpenseService {
             },
           },
         },
-        group: {
+        Group: {
           select: {
             id: true,
             name: true,
@@ -555,7 +569,7 @@ export class ExpenseService {
         createdBy: userId,
       },
       include: {
-        splits: true,
+        ExpenseSplit: true,
       },
     });
 
@@ -573,10 +587,10 @@ export class ExpenseService {
         recalculatedSplits = updateExpenseDto.splits;
       } else if (updateExpenseDto.amount !== undefined && updateExpenseDto.amount !== expense.amount) {
         // Amount changed but splits not provided - recalculate splits proportionally
-        const oldTotal = expense.splits.reduce((sum, split) => sum + split.amount, 0);
+        const oldTotal = expense.ExpenseSplit.reduce((sum, split) => sum + split.amount, 0);
         if (oldTotal > 0) {
           const ratio = newAmount / oldTotal;
-          recalculatedSplits = expense.splits.map((split) => ({
+          recalculatedSplits = expense.ExpenseSplit.map((split) => ({
             userId: split.userId,
             amount: Math.round(split.amount * ratio * 100) / 100, // Round to 2 decimals
           }));
@@ -593,7 +607,7 @@ export class ExpenseService {
         }
       } else {
         // Amount not changed, splits not provided - use existing splits
-        recalculatedSplits = expense.splits.map((s) => ({
+        recalculatedSplits = expense.ExpenseSplit.map((s) => ({
           userId: s.userId,
           amount: s.amount,
         }));
@@ -654,7 +668,7 @@ export class ExpenseService {
     }
     if (updateExpenseDto.paidBy !== undefined) {
       // Validate that paidBy is a participant
-      const participantIds = expense.splits.map(s => s.userId);
+      const participantIds = expense.ExpenseSplit.map(s => s.userId);
       if (!participantIds.includes(updateExpenseDto.paidBy)) {
         throw new BadRequestException('PaidBy user must be a participant in the expense');
       }
@@ -683,7 +697,7 @@ export class ExpenseService {
       changes.date = { before: expense.date, after: new Date(updateExpenseDto.date) };
     }
     if (recalculatedSplits) {
-      changes.splits = { before: expense.splits.map(s => ({ userId: s.userId, amount: s.amount })), after: recalculatedSplits };
+      changes.splits = { before: expense.ExpenseSplit.map(s => ({ userId: s.userId, amount: s.amount })), after: recalculatedSplits };
     }
 
     // If splits need to be updated (either provided or recalculated), delete old splits and create new ones
@@ -700,15 +714,17 @@ export class ExpenseService {
           where: { id: expenseId },
           data: {
             ...updateData,
-            splits: {
+            ExpenseSplit: {
               create: recalculatedSplits.map((split) => ({
+                id: randomUUID(),
                 userId: split.userId,
                 amount: split.amount,
                 isPaid: false, // Reset payment status when splits change
               })),
             },
-            history: {
+            ExpenseHistory: {
               create: {
+                id: randomUUID(),
                 action: 'updated',
                 userId: userId,
                 changes: Object.keys(changes).length > 0 ? changes : undefined,
@@ -717,13 +733,13 @@ export class ExpenseService {
             },
           },
           include: {
-            splits: {
+            ExpenseSplit: {
               include: {
-                user: {
+                User: {
                   select: {
                     id: true,
                     email: true,
-                    profile: {
+                    UserProfile: {
                       select: {
                         displayName: true,
                         avatarUrl: true,
@@ -733,11 +749,11 @@ export class ExpenseService {
                 },
               },
             },
-            createdByUser: {
+            User_Expense_createdByToUser: {
               select: {
                 id: true,
                 email: true,
-                profile: {
+                UserProfile: {
                   select: {
                     displayName: true,
                     avatarUrl: true,
@@ -745,11 +761,11 @@ export class ExpenseService {
                 },
               },
             },
-            paidByUser: {
+            User_Expense_paidByToUser: {
               select: {
                 id: true,
                 email: true,
-                profile: {
+                UserProfile: {
                   select: {
                     displayName: true,
                     avatarUrl: true,
@@ -757,7 +773,7 @@ export class ExpenseService {
                 },
               },
             },
-            group: {
+            Group: {
               select: {
                 id: true,
                 name: true,
@@ -769,7 +785,7 @@ export class ExpenseService {
 
         // Sync updated splits to finance transactions
         await Promise.all(
-          updated.splits.map(async (split) => {
+          updated.ExpenseSplit.map(async (split) => {
             if (split.amount > 0) {
               try {
                 await this.financeService.syncExpenseSplitToFinance(
@@ -799,8 +815,9 @@ export class ExpenseService {
       where: { id: expenseId },
       data: {
         ...updateData,
-        history: {
+        ExpenseHistory: {
           create: {
+            id: randomUUID(),
             action: 'updated',
             userId: userId,
             changes: Object.keys(changes).length > 0 ? changes : undefined,
@@ -809,13 +826,13 @@ export class ExpenseService {
         },
       },
       include: {
-        splits: {
+        ExpenseSplit: {
           include: {
-            user: {
+            User: {
               select: {
                 id: true,
                 email: true,
-                profile: {
+                UserProfile: {
                   select: {
                     displayName: true,
                     avatarUrl: true,
@@ -825,11 +842,11 @@ export class ExpenseService {
             },
           },
         },
-        createdByUser: {
+        User_Expense_createdByToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -837,7 +854,7 @@ export class ExpenseService {
             },
           },
         },
-        group: {
+        Group: {
           select: {
             id: true,
             name: true,
@@ -849,7 +866,7 @@ export class ExpenseService {
 
     // Sync splits to finance transactions (in case amount/category/description changed)
     await Promise.all(
-      updated.splits.map(async (split) => {
+      updated.ExpenseSplit.map(async (split) => {
         if (split.amount > 0) {
           try {
             await this.financeService.syncExpenseSplitToFinance(
@@ -890,13 +907,13 @@ export class ExpenseService {
     const expenseWithSplits = await this.prisma.expense.findFirst({
       where: { id: expenseId },
       include: {
-        splits: {
+        ExpenseSplit: {
           include: {
-            user: {
+            User: {
               select: {
                 id: true,
                 email: true,
-                profile: {
+                UserProfile: {
                   select: {
                     displayName: true,
                   },
@@ -905,11 +922,11 @@ export class ExpenseService {
             },
           },
         },
-        createdByUser: {
+        User_Expense_createdByToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
               },
@@ -922,6 +939,7 @@ export class ExpenseService {
     // Create history entry before deletion (expenseId will be set to null on cascade)
     await this.prisma.expenseHistory.create({
       data: {
+        id: randomUUID(),
         expenseId: expenseId,
         action: 'deleted',
         userId: userId,
@@ -931,8 +949,8 @@ export class ExpenseService {
 
     // Create notifications for all participants (except deleter)
     if (expenseWithSplits) {
-      const deleterName = expenseWithSplits.createdByUser.profile?.displayName || expenseWithSplits.createdByUser.email;
-      const participantIds = expenseWithSplits.splits
+      const deleterName = expenseWithSplits.User_Expense_createdByToUser.UserProfile?.displayName || expenseWithSplits.User_Expense_createdByToUser.email;
+      const participantIds = expenseWithSplits.ExpenseSplit
         .map(split => split.userId)
         .filter(id => id !== userId); // Exclude deleter
 
@@ -951,9 +969,9 @@ export class ExpenseService {
     }
 
     // Delete linked finance transactions before deleting expense
-    if (expenseWithSplits && expenseWithSplits.splits) {
+    if (expenseWithSplits && expenseWithSplits.ExpenseSplit) {
       await Promise.all(
-        expenseWithSplits.splits.map(async (split) => {
+        expenseWithSplits.ExpenseSplit.map(async (split) => {
           try {
             await this.financeService.deleteExpenseSplitFinanceTransaction(split.id);
           } catch (err) {
@@ -988,7 +1006,7 @@ export class ExpenseService {
         OR: [
           { createdBy: userId },
           {
-            splits: {
+            ExpenseSplit: {
               some: {
                 userId: userId,
               },
@@ -1008,11 +1026,11 @@ export class ExpenseService {
         expenseId: expenseId,
       },
       include: {
-        user: {
+        User: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -1037,13 +1055,13 @@ export class ExpenseService {
         isPaid: false,
       },
       include: {
-        expense: {
+        Expense: {
           include: {
-            createdByUser: {
+            User_Expense_createdByToUser: {
               select: {
                 id: true,
                 email: true,
-                profile: {
+                UserProfile: {
                   select: {
                     displayName: true,
                     avatarUrl: true,
@@ -1051,11 +1069,11 @@ export class ExpenseService {
                 },
               },
             },
-            paidByUser: {
+            User_Expense_paidByToUser: {
               select: {
                 id: true,
                 email: true,
-                profile: {
+                UserProfile: {
                   select: {
                     displayName: true,
                     avatarUrl: true,
@@ -1071,7 +1089,7 @@ export class ExpenseService {
     // Get all unpaid splits where others owe the user (user paid for the expense)
     const owedToUser = await this.prisma.expenseSplit.findMany({
       where: {
-        expense: {
+        Expense: {
           OR: [
             { paidBy: userId }, // User paid for the expense
             { 
@@ -1086,11 +1104,11 @@ export class ExpenseService {
         isPaid: false,
       },
       include: {
-        user: {
+        User: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -1098,13 +1116,13 @@ export class ExpenseService {
             },
           },
         },
-        expense: {
+        Expense: {
           include: {
-            paidByUser: {
+            User_Expense_paidByToUser: {
               select: {
                 id: true,
                 email: true,
-                profile: {
+                UserProfile: {
                   select: {
                     displayName: true,
                     avatarUrl: true,
@@ -1121,7 +1139,7 @@ export class ExpenseService {
     const convertSplits = async (splits: any[]) => {
       return Promise.all(
         splits.map(async (split) => {
-          const expenseCurrency = split.expense.currency || 'USD';
+          const expenseCurrency = split.Expense.currency || 'USD';
           const convertedAmount = await this.currencyService.convertAmount(
             split.amount,
             expenseCurrency,
@@ -1145,7 +1163,7 @@ export class ExpenseService {
     // Use paidBy if available, otherwise fallback to createdBy for backward compatibility
     const totalOwed = convertedOwedSplits
       .filter((split) => {
-        const payerId = split.expense.paidBy || split.expense.createdBy;
+        const payerId = split.Expense.paidBy || split.Expense.createdBy;
         return payerId !== userId; // Skip if user owes themselves
       })
       .reduce((sum, split) => sum + split.convertedAmount, 0);
@@ -1156,14 +1174,14 @@ export class ExpenseService {
     const owedByUser = new Map<string, { user: any; amount: number; originalAmount: number; originalCurrency: string; splits: any[] }>();
     convertedOwedSplits.forEach((split) => {
       // Use paidBy if available, otherwise fallback to createdBy for backward compatibility
-      const creditorId = split.expense.paidBy || split.expense.createdBy;
+      const creditorId = split.Expense.paidBy || split.Expense.createdBy;
       // Skip if user owes themselves
       if (creditorId === userId) {
         return;
       }
       if (!owedByUser.has(creditorId)) {
         // Use paidByUser if available, otherwise use createdByUser
-        const creditorUser = split.expense.paidByUser || split.expense.createdByUser;
+        const creditorUser = split.Expense.User_Expense_paidByToUser || split.Expense.User_Expense_createdByToUser;
         owedByUser.set(creditorId, {
           user: creditorUser,
           amount: 0,
@@ -1183,7 +1201,7 @@ export class ExpenseService {
       const debtorId = split.userId;
       if (!owedToUserByUser.has(debtorId)) {
         owedToUserByUser.set(debtorId, {
-          user: split.user,
+          user: split.User,
           amount: 0,
           originalAmount: 0,
           originalCurrency: split.originalCurrency,
@@ -1240,13 +1258,13 @@ export class ExpenseService {
       where: {
         userId: payerId,
         isPaid: false,
-        expense: {
+        Expense: {
           createdBy: payeeId,
         },
       },
-      include: {
-        expense: true,
-      },
+        include: {
+          Expense: true,
+        },
     });
 
     // If specific split IDs are provided, filter to only those
@@ -1299,24 +1317,26 @@ export class ExpenseService {
       // Create settlement
       const settlement = await tx.settlement.create({
         data: {
+          id: randomUUID(),
           payerId,
           payeeId,
           amount: createSettlementDto.amount,
           currency: createSettlementDto.currency || 'USD',
           paymentMethod: createSettlementDto.paymentMethod,
           notes: createSettlementDto.notes,
-          splits: {
+          SettlementSplit: {
             create: splitsToSettle.map((split) => ({
+              id: randomUUID(),
               splitId: split.id,
             })),
           },
         },
         include: {
-          payer: {
+          User_Settlement_payerIdToUser: {
             select: {
               id: true,
               email: true,
-              profile: {
+              UserProfile: {
                 select: {
                   displayName: true,
                   avatarUrl: true,
@@ -1324,11 +1344,11 @@ export class ExpenseService {
               },
             },
           },
-          payee: {
+          User_Settlement_payeeIdToUser: {
             select: {
               id: true,
               email: true,
-              profile: {
+              UserProfile: {
                 select: {
                   displayName: true,
                   avatarUrl: true,
@@ -1336,11 +1356,11 @@ export class ExpenseService {
               },
             },
           },
-          splits: {
+          SettlementSplit: {
             include: {
-              split: {
+              ExpenseSplit: {
                 include: {
-                  expense: true,
+                  Expense: true,
                 },
               },
             },
@@ -1371,8 +1391,8 @@ export class ExpenseService {
     });
 
     // Notify payee about the settlement
-    const payerName = settlement.payer.profile?.displayName || settlement.payer.email;
-    const expenseId = settlement.splits[0]?.split?.expense?.id || '';
+    const payerName = settlement.User_Settlement_payerIdToUser.UserProfile?.displayName || settlement.User_Settlement_payerIdToUser.email;
+    const expenseId = settlement.SettlementSplit[0]?.ExpenseSplit?.Expense?.id || '';
     await this.notificationService.notifyExpenseSettled(
       payeeId,
       expenseId,
@@ -1393,11 +1413,11 @@ export class ExpenseService {
         OR: [{ payerId: userId }, { payeeId: userId }],
       },
       include: {
-        payer: {
+        User_Settlement_payerIdToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -1405,11 +1425,11 @@ export class ExpenseService {
             },
           },
         },
-        payee: {
+        User_Settlement_payeeIdToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -1417,11 +1437,11 @@ export class ExpenseService {
             },
           },
         },
-        splits: {
+        SettlementSplit: {
           include: {
-            split: {
+            ExpenseSplit: {
               include: {
-                expense: {
+                Expense: {
                   select: {
                     id: true,
                     description: true,
@@ -1529,7 +1549,7 @@ export class ExpenseService {
       select: {
         id: true,
         email: true,
-        profile: {
+        UserProfile: {
           select: {
             displayName: true,
             avatarUrl: true,

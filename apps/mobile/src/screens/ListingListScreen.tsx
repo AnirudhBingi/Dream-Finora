@@ -1,19 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   ActivityIndicator,
   RefreshControl,
   Image,
   TextInput,
+  Animated,
+  ScrollView,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/authContext';
 import { getListings, Listing, ListingType } from '../api/listingApi';
 import { getApiBaseUrl } from '../api/getApiBaseUrl';
+import { EmptyState } from '../components/EmptyState';
+import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
+import { SkeletonListingList } from '../components/SkeletonLoader';
+import { CollapsibleHeader } from '../components/CollapsibleHeader';
 
 interface ListingListScreenProps {
   onCreateListing: () => void;
@@ -33,28 +38,98 @@ export function ListingListScreen({
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<ListingType | undefined>(undefined);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const limit = 20;
+
+  // Animation values for collapsible header
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const insets = useSafeAreaInsets();
+  const HEADER_HEIGHT = 60; // Back button + padding
+  const TOTAL_HEADER_HEIGHT = HEADER_HEIGHT + insets.top;
+  
+  // Create spacer height interpolation directly (always available, no callback needed)
+  const SCROLL_THRESHOLD = 30;
+  const HIDE_DISTANCE = TOTAL_HEADER_HEIGHT;
+  const spacerHeight = scrollY.interpolate({
+    inputRange: [
+      -200,           // Overscroll at top
+      0,              // At top
+      SCROLL_THRESHOLD, // Start hiding
+      SCROLL_THRESHOLD + HIDE_DISTANCE, // Fully hidden
+      10000           // Far down
+    ],
+    outputRange: [
+      TOTAL_HEADER_HEIGHT, // Full height at top
+      TOTAL_HEADER_HEIGHT, // Full height at top
+      TOTAL_HEADER_HEIGHT, // Still full at threshold
+      0,              // No spacer when hidden
+      0               // Stays at 0 (no jitter)
+    ],
+    extrapolate: 'clamp',
+  });
 
   useEffect(() => {
-    loadListings();
+    loadListings(true);
   }, [token, selectedType, searchQuery]);
 
-  async function loadListings() {
+  async function loadListings(reset: boolean = false) {
     if (!token) return;
 
     try {
-      setLoading(true);
+      if (reset) {
+        setLoading(true);
+        setOffset(0);
+      } else {
+        setLoadingMore(true);
+      }
       setError(null);
+      const currentOffset = reset ? 0 : offset;
       const listingsData = await getListings(token, {
         type: selectedType,
         search: searchQuery || undefined,
+        limit,
+        offset: currentOffset,
       });
-      setListings(listingsData);
+      
+      // Handle paginated response
+      let listingsList: Listing[];
+      let paginationInfo: { hasMore: boolean; total: number } | null = null;
+      
+      if (Array.isArray(listingsData)) {
+        listingsList = listingsData;
+      } else {
+        listingsList = listingsData.listings || [];
+        paginationInfo = {
+          hasMore: listingsData.hasMore || false,
+          total: listingsData.total || 0,
+        };
+      }
+      
+      if (reset) {
+        setListings(listingsList);
+        setOffset(limit);
+      } else {
+        setListings(prev => [...prev, ...listingsList]);
+        setOffset(prev => prev + limit);
+      }
+      
+      if (paginationInfo) {
+        setHasMore(paginationInfo.hasMore);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load market');
+      setError(getUserFriendlyErrorMessage(err));
     } finally {
       setLoading(false);
+      setLoadingMore(false);
       setRefreshing(false);
     }
+  }
+
+  async function loadMore() {
+    if (loadingMore || !hasMore) return;
+    await loadListings(false);
   }
 
   function formatCurrency(amount: number, currency: string = 'USD'): string {
@@ -65,7 +140,8 @@ export function ListingListScreen({
   }
 
   function getUserDisplayName(user: Listing['user']): string {
-    return user.profile?.displayName || user.email;
+    if (!user) return 'Unknown';
+    return user?.profile?.displayName || user?.email || 'Unknown';
   }
 
   function getListingTypeLabel(type: ListingType): string {
@@ -81,31 +157,13 @@ export function ListingListScreen({
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
-          <Text style={styles.loadingText}>Loading market...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={loadListings} />
-        }
-      >
-        <View style={styles.content}>
+      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
+        <CollapsibleHeader 
+          scrollY={scrollY} 
+          headerHeight={HEADER_HEIGHT}
+        >
           <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
+            <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
               <Text style={styles.backButtonText}>← Back</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -116,6 +174,87 @@ export function ListingListScreen({
               <Text style={styles.createButtonText}>List Item</Text>
             </TouchableOpacity>
           </View>
+        </CollapsibleHeader>
+        <Animated.View style={{ height: spacerHeight }} />
+        <Animated.ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.scrollContent}
+          scrollEventThrottle={16}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: false }
+          )}
+        >
+          <View style={styles.content}>
+            <SkeletonListingList count={5} />
+          </View>
+        </Animated.ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
+      <CollapsibleHeader 
+        scrollY={scrollY} 
+        headerHeight={HEADER_HEIGHT}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={onBack}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            accessibilityHint="Go back to previous screen"
+          >
+            <Text style={styles.backButtonText}>← Back</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={onCreateListing}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Create Listing"
+            accessibilityHint="Create a new listing"
+          >
+            <Text style={styles.createButtonText}>List Item</Text>
+          </TouchableOpacity>
+        </View>
+      </CollapsibleHeader>
+
+      {/* Dynamic Spacer - perfectly synchronized with header */}
+      <Animated.View 
+        style={{
+          height: spacerHeight,
+        }} 
+      />
+
+      <Animated.ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { 
+            useNativeDriver: false,
+            listener: (e: any) => {
+              // Handle pagination
+              const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+              const paddingToBottom = 20;
+              if (layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom) {
+                if (hasMore && !loadingMore) {
+                  loadMore();
+                }
+              }
+            },
+          }
+        )}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => loadListings(true)} />
+        }
+      >
+        <View style={styles.content}>
 
           {error && (
             <View style={styles.errorContainer}>
@@ -182,24 +321,18 @@ export function ListingListScreen({
           <Text style={styles.sectionTitle}>Market</Text>
 
           {listings.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No listings found</Text>
-              <Text style={styles.emptySubtext}>
-                {searchQuery || selectedType
-                  ? 'Try adjusting your search or filters'
-                  : 'Create your first listing to get started!'}
-              </Text>
-              {!searchQuery && !selectedType && (
-                <TouchableOpacity
-                  style={styles.emptyButton}
-                  onPress={onCreateListing}
-                >
-                  <Text style={styles.emptyButtonText}>Create Listing</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+            <EmptyState
+              icon="list"
+              title="No listings found"
+              message={searchQuery || selectedType
+                ? 'Try adjusting your search or filters'
+                : 'Create your first listing to get started!'}
+              actionLabel={!searchQuery && !selectedType ? 'Create Listing' : undefined}
+              onAction={!searchQuery && !selectedType ? onCreateListing : undefined}
+            />
           ) : (
-            listings.map((listing) => (
+            <>
+              {listings.map((listing) => (
               <TouchableOpacity
                 key={listing.id}
                 style={styles.listingCard}
@@ -240,10 +373,25 @@ export function ListingListScreen({
                   </View>
                 </View>
               </TouchableOpacity>
-            ))
+              ))}
+              {hasMore && listings.length > 0 && (
+                <TouchableOpacity
+                  style={styles.loadMoreButton}
+                  onPress={loadMore}
+                  disabled={loadingMore}
+                  activeOpacity={0.7}
+                >
+                  {loadingMore ? (
+                    <ActivityIndicator size="small" color="#2563EB" />
+                  ) : (
+                    <Text style={styles.loadMoreButtonText}>Load More</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </>
           )}
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
     </SafeAreaView>
   );
 }
@@ -262,13 +410,15 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
+    paddingTop: 16, // Small top padding for content
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
   },
   backButton: {
     paddingVertical: 8,
@@ -457,6 +607,21 @@ const styles = StyleSheet.create({
   listingViews: {
     fontSize: 12,
     color: '#9CA3AF',
+  },
+  loadMoreButton: {
+    backgroundColor: '#2563EB',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    marginTop: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  loadMoreButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
   },
 });
 

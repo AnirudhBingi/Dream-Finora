@@ -9,63 +9,138 @@ import {
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
-import { getChores, Chore } from '../api/choreApi';
+import { getChores, Chore, getChoreStats, ChoreStats } from '../api/choreApi';
+import { Header } from '../components/Header';
+import { EmptyState } from '../components/EmptyState';
+import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
+import { SkeletonChoreList } from '../components/SkeletonLoader';
 
 interface ChoreListScreenProps {
   onCreateChore: () => void;
   onViewChore: (choreId: string) => void;
   onBack: () => void;
+  onViewStats?: () => void;
   groupId?: string;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export function ChoreListScreen({
   onCreateChore,
   onViewChore,
   onBack,
+  onViewStats,
   groupId,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: ChoreListScreenProps) {
   const { token, user } = useAuth();
   const [chores, setChores] = useState<Chore[]>([]);
+  const [stats, setStats] = useState<ChoreStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const limit = 20;
 
   useEffect(() => {
-    loadChores();
+    loadChores(true);
+    loadStats();
   }, [token, groupId]);
 
-  async function loadChores() {
+  async function loadChores(reset: boolean = false) {
     if (!token) return;
 
     try {
-      setLoading(true);
+      if (reset) {
+        setLoading(true);
+        setOffset(0);
+      } else {
+        setLoadingMore(true);
+      }
       setError(null);
       console.log('[ChoreListScreen] Loading chores, groupId:', groupId);
-      const choresData = await getChores(token, groupId);
-      console.log('[ChoreListScreen] Loaded chores:', choresData.length);
-      setChores(choresData);
+      const currentOffset = reset ? 0 : offset;
+      const choresData = await getChores(token, groupId, limit, currentOffset);
+      
+      // Handle paginated response
+      let choresList: Chore[];
+      let paginationInfo: { hasMore: boolean; total: number } | null = null;
+      
+      if (Array.isArray(choresData)) {
+        choresList = choresData;
+      } else {
+        choresList = choresData.chores || [];
+        paginationInfo = {
+          hasMore: choresData.hasMore || false,
+          total: choresData.total || 0,
+        };
+      }
+      
+      console.log('[ChoreListScreen] Loaded chores:', choresList.length);
+      
+      if (reset) {
+        setChores(choresList);
+        setOffset(limit);
+      } else {
+        setChores(prev => [...prev, ...choresList]);
+        setOffset(prev => prev + limit);
+      }
+      
+      if (paginationInfo) {
+        setHasMore(paginationInfo.hasMore);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load tasks');
+      setError(getUserFriendlyErrorMessage(err));
     } finally {
       setLoading(false);
+      setLoadingMore(false);
       setRefreshing(false);
     }
   }
 
+  async function loadMore() {
+    if (loadingMore || !hasMore) return;
+    await loadChores(false);
+  }
+
+  async function loadStats() {
+    if (!token || !onViewStats) return; // Only load stats if onViewStats is provided
+
+    try {
+      const statsData = await getChoreStats(token);
+      setStats(statsData);
+    } catch (err) {
+      console.error('[ChoreListScreen] Failed to load stats:', err);
+      // Don't show error for stats, just fail silently
+    }
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await Promise.all([loadChores(true), loadStats()]);
+  }
+
   function getUserDisplayName(user: Chore['createdByUser'], currentUserId?: string): string {
+    if (!user) return 'Unknown';
     if (user.id === currentUserId) {
       return 'you';
     }
-    return user.profile?.displayName || user.email;
+    return user?.profile?.displayName || user?.email || 'Unknown';
   }
   
   function getUserDisplayNameForAssigned(user: Chore['assignedToUser'], currentUserId?: string): string {
     if (!user) return 'Unassigned';
-    if (user.id === currentUserId) {
+    if (user?.id === currentUserId) {
       return 'you';
     }
-    return user.profile?.displayName || user.email;
+    return user?.profile?.displayName || user?.email || 'Unknown';
   }
 
   function getStatusColor(status: Chore['status']): string {
@@ -101,6 +176,11 @@ export function ChoreListScreen({
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <Header
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2563EB" />
           <Text style={styles.loadingText}>Loading tasks...</Text>
@@ -109,24 +189,38 @@ export function ChoreListScreen({
     );
   }
 
+  if (error) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <Header
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
+        <ErrorState message={error} onRetry={loadChores} />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      {/* Fixed Header */}
+      <Header
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
+
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={loadChores} />
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
+          {/* Action Button - moved from header */}
+          <View style={styles.actionButtonsContainer}>
             <TouchableOpacity
               style={styles.createButton}
               onPress={onCreateChore}
@@ -135,6 +229,50 @@ export function ChoreListScreen({
               <Text style={styles.createButtonText}>+ New Task</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Quick Stats Card */}
+          {onViewStats && stats && (
+            <TouchableOpacity
+              style={styles.statsCard}
+              onPress={onViewStats}
+              activeOpacity={0.8}
+            >
+              <View style={styles.statsCardHeader}>
+                <View style={styles.statsCardTitleContainer}>
+                  <MaterialIcons name="emoji-events" size={24} color="#F59E0B" />
+                  <Text style={styles.statsCardTitle}>Your Progress</Text>
+                </View>
+                <MaterialIcons name="chevron-right" size={24} color="#6B7280" />
+              </View>
+              <View style={styles.statsGrid}>
+                <View style={styles.statItem}>
+                  <MaterialIcons name="stars" size={20} color="#F59E0B" />
+                  <Text style={styles.statValue}>{stats.totalPoints}</Text>
+                  <Text style={styles.statLabel}>Points</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <MaterialIcons name="check-circle" size={20} color="#10B981" />
+                  <Text style={styles.statValue}>{stats.totalCompleted}</Text>
+                  <Text style={styles.statLabel}>Completed</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <MaterialIcons name="local-fire-department" size={20} color="#EF4444" />
+                  <Text style={styles.statValue}>{stats.currentStreak}</Text>
+                  <Text style={styles.statLabel}>Day Streak</Text>
+                </View>
+              </View>
+              {stats.achievements.filter(a => a.unlocked).length > 0 && (
+                <View style={styles.achievementsBadge}>
+                  <MaterialIcons name="workspace-premium" size={16} color="#F59E0B" />
+                  <Text style={styles.achievementsText}>
+                    {stats.achievements.filter(a => a.unlocked).length} Achievement{stats.achievements.filter(a => a.unlocked).length !== 1 ? 's' : ''} Unlocked
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          )}
 
           {error && (
             <View style={styles.errorContainer}>
@@ -234,7 +372,7 @@ export function ChoreListScreen({
                     </Text>
                     {chore.completions?.[0]?.user && (
                       <Text style={styles.choreCompleted}>
-                        Completed by {chore.completions[0].user?.id === user?.id ? 'you' : getUserDisplayName(chore.completions[0].user!, user?.id)}
+                        Completed by {chore.completions[0].user?.id === user?.id ? 'you' : (chore.completions[0].user?.profile?.displayName || chore.completions[0].user?.email || 'Unknown')}
                       </Text>
                     )}
                   </View>
@@ -244,18 +382,27 @@ export function ChoreListScreen({
           )}
 
           {chores.length === 0 && (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No tasks yet</Text>
-              <Text style={styles.emptySubtext}>
-                Create your first chore to get started!
-              </Text>
-              <TouchableOpacity
-                style={styles.emptyButton}
-                onPress={onCreateChore}
-              >
-                <Text style={styles.emptyButtonText}>Create Chore</Text>
-              </TouchableOpacity>
-            </View>
+            <EmptyState
+              icon="task"
+              title="No tasks yet"
+              message="Create your first chore to get started!"
+              actionLabel="Create Chore"
+              onAction={onCreateChore}
+            />
+          )}
+          {hasMore && chores.length > 0 && (
+            <TouchableOpacity
+              style={styles.loadMoreButton}
+              onPress={loadMore}
+              disabled={loadingMore}
+              activeOpacity={0.7}
+            >
+              {loadingMore ? (
+                <ActivityIndicator size="small" color="#2563EB" />
+              ) : (
+                <Text style={styles.loadMoreButtonText}>Load More</Text>
+              )}
+            </TouchableOpacity>
           )}
         </View>
       </ScrollView>
@@ -277,23 +424,13 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24, // lg: 24px
-    // No paddingTop - SafeAreaView handles top spacing
+    paddingTop: 16, // md: 16px
   },
-  header: {
+  actionButtonsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'center',
-    marginBottom: 16, // md: 16px
-  },
-  backButton: {
-    paddingVertical: 8, // sm: 8px
-    paddingHorizontal: 4, // xs: 4px
-    minHeight: 44, // Touch target
-  },
-  backButtonText: {
-    fontSize: 16, // Body: 16px
-    color: '#2563EB', // Primary Blue
-    fontWeight: '500', // Medium
+    marginBottom: 24,
   },
   createButton: {
     backgroundColor: '#2563EB', // Primary Blue
@@ -312,6 +449,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24, // lg: 24px
+    minHeight: 200,
   },
   loadingText: {
     marginTop: 16, // md: 16px
@@ -441,6 +579,95 @@ const styles = StyleSheet.create({
   choreCompleted: {
     fontSize: 12, // Small: 12px
     color: '#10B981', // Green-500
+  },
+  statsCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  statsCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  statsCardTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  statsCardTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  statDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: '#E5E7EB',
+    marginHorizontal: 8,
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  achievementsBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    justifyContent: 'center',
+  },
+  achievementsText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  placeholder: {
+    width: 24,
+  },
+  loadMoreButton: {
+    backgroundColor: '#2563EB',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    marginTop: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  loadMoreButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
   },
 });
 

@@ -6,6 +6,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import { randomUUID } from 'crypto';
 
 const prisma = new PrismaClient();
 
@@ -16,7 +17,7 @@ async function backfillExpenseHistory() {
     // Get all expenses that don't have any history entries
     const expensesWithoutHistory = await prisma.expense.findMany({
       where: {
-        history: {
+        ExpenseHistory: {
           none: {},
         },
       },
@@ -45,6 +46,7 @@ async function backfillExpenseHistory() {
       try {
         await prisma.expenseHistory.create({
           data: {
+            id: randomUUID(),
             expenseId: expense.id,
             action: 'created',
             userId: expense.createdBy,

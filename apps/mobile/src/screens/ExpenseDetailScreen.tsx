@@ -15,14 +15,17 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
 import { getExpenseById, deleteExpense, Expense } from '../api/expenseApi';
 import { getApiBaseUrl } from '../api/getApiBaseUrl';
+import { SkeletonDetailScreen } from '../components/SkeletonLoader';
+import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
 
 interface ExpenseDetailScreenProps {
   expenseId: string;
   onBack: () => void;
   onEdit?: (expenseId: string) => void;
+  onNavigateToUserProfile?: (userId: string) => void;
 }
 
-export function ExpenseDetailScreen({ expenseId, onBack, onEdit }: ExpenseDetailScreenProps) {
+export function ExpenseDetailScreen({ expenseId, onBack, onEdit, onNavigateToUserProfile }: ExpenseDetailScreenProps) {
   const { token, user } = useAuth();
   const [expense, setExpense] = useState<Expense | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,7 +45,7 @@ export function ExpenseDetailScreen({ expenseId, onBack, onEdit }: ExpenseDetail
       const expenseData = await getExpenseById(token, expenseId);
       setExpense(expenseData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load expense');
+      setError(getUserFriendlyErrorMessage(err));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -100,10 +103,22 @@ export function ExpenseDetailScreen({ expenseId, onBack, onEdit }: ExpenseDetail
           <Text style={styles.headerTitle}>Expense Details</Text>
           <View style={styles.placeholder} />
         </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
-          <Text style={styles.loadingText}>Loading expense...</Text>
+        <SkeletonDetailScreen />
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
+            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Expense Details</Text>
+          <View style={styles.placeholder} />
         </View>
+        <ErrorState message={error} onRetry={loadExpense} />
       </SafeAreaView>
     );
   }
@@ -165,7 +180,20 @@ export function ExpenseDetailScreen({ expenseId, onBack, onEdit }: ExpenseDetail
 
           <View style={styles.infoRow}>
             <Text style={styles.label}>Created by</Text>
-            <Text style={styles.value}>{getUserDisplayName(expense.createdByUser)}</Text>
+            {expense.createdByUser && expense.createdByUser.id !== user?.id ? (
+              <TouchableOpacity
+                onPress={() => {
+                  if (onNavigateToUserProfile && expense.createdByUser?.id) {
+                    onNavigateToUserProfile(expense.createdByUser.id);
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.value, styles.linkText]}>{getUserDisplayName(expense.createdByUser)}</Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.value}>{getUserDisplayName(expense.createdByUser)}</Text>
+            )}
           </View>
 
           {expense.paidByUser && (
@@ -175,7 +203,20 @@ export function ExpenseDetailScreen({ expenseId, onBack, onEdit }: ExpenseDetail
                 <Text style={styles.label}>Paid by</Text>
               </View>
               <View style={styles.paidByContainer}>
-                <Text style={styles.value}>{getUserDisplayName(expense.paidByUser)}</Text>
+                {expense.paidByUser.id !== user?.id ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (onNavigateToUserProfile && expense.paidByUser?.id) {
+                        onNavigateToUserProfile(expense.paidByUser.id);
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.value, styles.linkText]}>{getUserDisplayName(expense.paidByUser)}</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={styles.value}>{getUserDisplayName(expense.paidByUser)}</Text>
+                )}
                 {expense.paidBy === expense.createdBy && (
                   <View style={styles.badge}>
                     <Text style={styles.badgeText}>Creator</Text>
@@ -247,7 +288,20 @@ export function ExpenseDetailScreen({ expenseId, onBack, onEdit }: ExpenseDetail
             {expense.splits.map((split) => (
               <View key={split.id} style={styles.splitRow}>
                 <View style={styles.splitLeft}>
-                  <Text style={styles.splitUserName}>{getUserDisplayName(split.user)}</Text>
+                  {split.user?.id && split.user.id !== user?.id ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        if (onNavigateToUserProfile && split.user?.id) {
+                          onNavigateToUserProfile(split.user.id);
+                        }
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.splitUserName, styles.linkText]}>{getUserDisplayName(split.user)}</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={styles.splitUserName}>{getUserDisplayName(split.user)}</Text>
+                  )}
                   {split.isPaid && (
                     <View style={styles.paidBadge}>
                       <MaterialIcons name="check-circle" size={14} color="#10B981" />
@@ -277,8 +331,11 @@ export function ExpenseDetailScreen({ expenseId, onBack, onEdit }: ExpenseDetail
                   style={[styles.actionButton, styles.editButton]}
                   onPress={() => onEdit(expense.id)}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Edit expense"
+                  accessibilityHint="Opens the edit expense screen"
                 >
-                  <MaterialIcons name="edit" size={20} color="#2563EB" />
+                  <MaterialIcons name="edit" size={20} color="#2563EB" accessible={false} />
                   <Text style={styles.editButtonText}>Edit</Text>
                 </TouchableOpacity>
               )}
@@ -287,8 +344,11 @@ export function ExpenseDetailScreen({ expenseId, onBack, onEdit }: ExpenseDetail
                 style={[styles.actionButton, styles.deleteButton]}
                 onPress={handleDeleteExpense}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Delete expense"
+                accessibilityHint="Permanently deletes this expense"
               >
-                <MaterialIcons name="delete-outline" size={20} color="#EF4444" />
+                <MaterialIcons name="delete-outline" size={20} color="#EF4444" accessible={false} />
                 <Text style={styles.deleteButtonText}>Delete</Text>
               </TouchableOpacity>
             </>
@@ -525,6 +585,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
     textTransform: 'uppercase',
+  },
+  linkText: {
+    color: '#2563EB',
+    textDecorationLine: 'underline',
   },
 });
 

@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Day 80-81: Loading States & Performance
+  - Comprehensive skeleton loader system for all screens
+  - Skeleton loaders for 11 list screens (ExpenseList, ChoreList, GroupList, ListingList, ConversationList, FriendsList, FavoritesScreen, RideList, LoansList, GoalsScreen, BudgetScreen)
+  - Skeleton loaders for 9 detail screens (ExpenseDetail, ChoreDetail, GroupDetail, ListingDetail, RideDetail, LoanDetail, GoalDetail, ProfileScreen, ChoreStatsScreen)
+  - Skeleton form component for edit/create screens
+  - Pagination added to all list endpoints (expenses, chores, groups, listings)
+  - Pagination UI with "Load More" button and infinite scroll
+  - Pull-to-refresh on all list screens
+  - Consistent error states with retry functionality
+  - Shimmer animation for skeleton loaders
+  - Optimized database queries
+  - Optimized balance calculations
+
+### Changed
 - Day 1: Complete environment setup
   - All development tools verified (Node.js v24.12.0, Git, PostgreSQL 18.1, Docker 29.1.3)
   - All accounts created (GitHub, Vercel, Expo)
@@ -102,6 +116,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced CreateExpenseScreen and AddTransactionScreen with auto-categorization
 - Updated ListingDetailScreen to support starting conversations with listing creators
 - Enhanced HomeScreen with Messages navigation
+- Day 80-81: Loading States & Performance
+  - Replaced generic ActivityIndicators with skeleton loaders across all screens
+  - Standardized loading states to use consistent skeleton components
+  - Updated all list endpoints to return paginated responses
+  - Improved error handling with consistent ErrorState component
+  - Enhanced user experience with shimmer animations on skeleton loaders
 
 ### Deprecated
 - [Features that will be removed]

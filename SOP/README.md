@@ -12,6 +12,9 @@ This directory contains all **locked and final** project documentation. These do
 - **FINAL_PROJECT_PLAN.md** - Master plan with all locked decisions
 - **PROJECT_OVERVIEW.md** - Complete plan checklist
 - **ALIGNMENT_CHECK.md** - Final alignment verification
+- **DEVELOPMENT_ROADMAP.md** - Days 1-40 (Historical Reference)
+- **DEVELOPMENT_ROADMAP_COMPREHENSIVE.md** - Days 41-110 (Current Roadmap)
+- **ROADMAP_SUMMARY.md** - Quick reference summary
 
 ### 🛠️ Technical Documentation
 - **TECHNICAL_ROADMAP.md** - Technology stack and architecture decisions
@@ -65,6 +68,9 @@ SOP/
 ├── FINAL_PROJECT_PLAN.md
 ├── PROJECT_OVERVIEW.md
 ├── ALIGNMENT_CHECK.md
+├── DEVELOPMENT_ROADMAP.md (Days 1-40, Historical)
+├── DEVELOPMENT_ROADMAP_COMPREHENSIVE.md (Days 41-110, Current)
+├── ROADMAP_SUMMARY.md
 ├── TECHNICAL_ROADMAP.md
 ├── PROJECT_STRUCTURE.md
 ├── DATABASE_SETUP.md
@@ -82,6 +88,8 @@ SOP/
 ## Quick Reference
 
 - **Want to know what we're building?** → FINAL_PROJECT_PLAN.md
+- **What's the current roadmap?** → DEVELOPMENT_ROADMAP_COMPREHENSIVE.md
+- **Quick roadmap overview?** → ROADMAP_SUMMARY.md
 - **Need technical details?** → TECHNICAL_ROADMAP.md
 - **Want feature specs?** → FEATURE_SPECIFICATIONS.md
 - **Need design guidelines?** → UI_UX_DESIGN_GUIDE.md

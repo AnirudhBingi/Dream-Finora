@@ -53,6 +53,31 @@ export interface CreateRideDto {
   date?: string;
 }
 
+export interface UpdateRideDto {
+  type?: 'giveRide' | 'rideshare';
+  origin?: string;
+  destination?: string;
+  distance?: number;
+  chargePerMile?: number;
+  chargePerRide?: number;
+  passengerIds?: string[];
+  date?: string;
+}
+
+export interface RideHistoryEntry {
+  type: string;
+  timestamp: string;
+  description: string;
+  user: {
+    id: string;
+    email: string;
+    profile?: {
+      displayName: string | null;
+      avatarUrl: string | null;
+    } | null;
+  } | null;
+}
+
 export async function createRide(
   token: string,
   data: CreateRideDto,
@@ -126,6 +151,88 @@ export async function joinRide(token: string, rideId: string): Promise<Ride> {
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Failed to join ride' }));
     throw new Error(error.message || `Failed to join ride: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export interface UpdateRideDto {
+  type?: 'giveRide' | 'rideshare';
+  origin?: string;
+  destination?: string;
+  distance?: number;
+  chargePerMile?: number;
+  chargePerRide?: number;
+  passengerIds?: string[];
+  date?: string;
+}
+
+export interface RideHistoryEntry {
+  type: string;
+  timestamp: string;
+  description: string;
+  user: {
+    id: string;
+    email: string;
+    profile?: {
+      displayName: string | null;
+      avatarUrl: string | null;
+    } | null;
+  } | null;
+}
+
+export async function updateRide(
+  token: string,
+  rideId: string,
+  data: UpdateRideDto,
+): Promise<Ride> {
+  const response = await fetch(`${getApiBaseUrl()}/rides/${rideId}`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to update ride' }));
+    throw new Error(error.message || `Failed to update ride: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function deleteRide(token: string, rideId: string): Promise<void> {
+  const response = await fetch(`${getApiBaseUrl()}/rides/${rideId}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to delete ride' }));
+    throw new Error(error.message || `Failed to delete ride: ${response.status}`);
+  }
+}
+
+export async function getRideHistory(
+  token: string,
+  rideId: string,
+): Promise<RideHistoryEntry[]> {
+  const response = await fetch(`${getApiBaseUrl()}/rides/${rideId}/history`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to fetch ride history' }));
+    throw new Error(error.message || `Failed to fetch ride history: ${response.status}`);
   }
 
   return response.json();

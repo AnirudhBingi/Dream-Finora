@@ -144,7 +144,7 @@ export function EditChoreScreen({
     );
   }
 
-  const canEdit = chore.createdBy === user?.id || (chore.groupId && members.some(m => m.userId === user?.id));
+  const canEdit = chore.createdBy === user?.id || (chore.groupId && (members || []).some(m => m.userId === user?.id));
 
   if (!canEdit) {
     return (
@@ -266,17 +266,17 @@ export function EditChoreScreen({
                     </TouchableOpacity>
                     {members.map((member) => (
                       <TouchableOpacity
-                        key={member.user.id}
+                        key={member?.user?.id}
                         style={styles.assignMenuItem}
                         onPress={() => {
-                          setAssignedTo(member.user.id);
+                          setAssignedTo(member?.user?.id || '');
                           setShowAssignMenu(false);
                         }}
                       >
                         <Text style={styles.assignMenuItemText}>
                           {getUserDisplayName(member.user)}
                         </Text>
-                        {assignedTo === member.user.id && (
+                        {assignedTo === member?.user?.id && (
                           <MaterialIcons name="check-circle" size={20} color="#2563EB" />
                         )}
                       </TouchableOpacity>

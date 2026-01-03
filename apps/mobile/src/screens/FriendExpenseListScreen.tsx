@@ -46,13 +46,21 @@ export function FriendExpenseListScreen({
       setError(null);
 
       // Get all expenses and filter for this friend
-      const allExpenses = await getExpenses(token);
+      const allExpensesData = await getExpenses(token);
+      
+      // Handle both array response and paginated response
+      let allExpenses: Expense[] = [];
+      if (Array.isArray(allExpensesData)) {
+        allExpenses = allExpensesData;
+      } else if (allExpensesData && typeof allExpensesData === 'object') {
+        allExpenses = (allExpensesData as any).expenses || [];
+      }
       
       // Filter expenses where this friend is involved (either as creator or in splits)
       const friendExpenses = allExpenses.filter(
         (expense) =>
           expense.createdBy === friendId ||
-          expense.splits.some((split) => split.userId === friendId)
+          (expense.splits || []).some((split) => split.userId === friendId)
       );
 
       setExpenses(friendExpenses);

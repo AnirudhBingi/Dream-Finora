@@ -187,3 +187,146 @@ export async function getTopSpendersInGroup(
   return response.json();
 }
 
+// Enhanced Analytics (Context-based)
+export interface IncomeVsExpenses {
+  totalIncome: number;
+  totalExpenses: number;
+  net: number;
+  savingsRate: number;
+  periodCount: number;
+}
+
+export interface BudgetPerformance {
+  totalBudgets: number;
+  budgetsOnTrack: number;
+  budgetsWarning: number;
+  budgetsExceeded: number;
+  totalBudgeted: number;
+  totalSpent: number;
+  adherenceRate: number;
+  averageAdherence: number;
+}
+
+export interface GoalsProgress {
+  totalGoals: number;
+  activeGoals: number;
+  completedGoals: number;
+  totalTargetAmount: number;
+  totalCurrentAmount: number;
+  overallProgress: number;
+  averageProgress: number;
+}
+
+export interface LoanSummary {
+  totalLoans: number;
+  activeLoans: number;
+  completedLoans: number;
+  totalPrincipal: number;
+  totalRemaining: number;
+  totalPaid: number;
+  totalInterestPaid: number;
+  progressPercentage: number;
+}
+
+export interface ContextAnalytics {
+  context: 'local' | 'home';
+  spendingByCategory: SpendingByCategory[];
+  monthlyTrends: MonthlyTrend[];
+  balanceOverTime: BalanceOverTime[];
+  incomeVsExpenses: IncomeVsExpenses;
+  budgetPerformance: BudgetPerformance;
+  goalsProgress: GoalsProgress;
+  loanSummary: LoanSummary;
+}
+
+export interface CombinedAnalytics {
+  context: 'combined';
+  local: ContextAnalytics;
+  home: ContextAnalytics;
+  combined: {
+    totalIncome: number;
+    totalExpenses: number;
+    net: number;
+  };
+}
+
+export async function getLocalAnalytics(
+  token: string,
+  months?: number,
+  days?: number,
+): Promise<ContextAnalytics> {
+  const params = new URLSearchParams();
+  if (months) params.append('months', months.toString());
+  if (days) params.append('days', days.toString());
+
+  const url = `${getApiBaseUrl()}/finance/analytics/local${params.toString() ? `?${params.toString()}` : ''}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to fetch local analytics' }));
+    throw new Error(error.message || `Failed to fetch local analytics: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function getHomeAnalytics(
+  token: string,
+  months?: number,
+  days?: number,
+): Promise<ContextAnalytics> {
+  const params = new URLSearchParams();
+  if (months) params.append('months', months.toString());
+  if (days) params.append('days', days.toString());
+
+  const url = `${getApiBaseUrl()}/finance/analytics/home${params.toString() ? `?${params.toString()}` : ''}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to fetch home analytics' }));
+    throw new Error(error.message || `Failed to fetch home analytics: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function getCombinedAnalytics(
+  token: string,
+  months?: number,
+  days?: number,
+  primaryCurrency?: string,
+): Promise<CombinedAnalytics> {
+  const params = new URLSearchParams();
+  if (months) params.append('months', months.toString());
+  if (days) params.append('days', days.toString());
+  if (primaryCurrency) params.append('primaryCurrency', primaryCurrency);
+
+  const url = `${getApiBaseUrl()}/finance/analytics/combined${params.toString() ? `?${params.toString()}` : ''}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to fetch combined analytics' }));
+    throw new Error(error.message || `Failed to fetch combined analytics: ${response.status}`);
+  }
+
+  return response.json();
+}
+

@@ -52,8 +52,8 @@ export function SettleUpScreen({ onBack, onSuccess, payeeId, amount, payeeName }
       setBalances(balancesData);
       
       // Find the actual amount owed to/from this person
-      const owedTo = balancesData.owedToUser.find(item => item.user.id === payeeId);
-      const owedBy = balancesData.owedByUser.find(item => item.user.id === payeeId);
+      const owedTo = balancesData.owedToUser.find(item => item?.user?.id === payeeId);
+      const owedBy = balancesData.owedByUser.find(item => item?.user?.id === payeeId);
       
       if (owedTo) {
         setSettlementAmount(owedTo.amount.toString());
@@ -112,8 +112,8 @@ export function SettleUpScreen({ onBack, onSuccess, payeeId, amount, payeeName }
   }
 
   // Determine if user is paying or receiving
-  const owedTo = balances?.owedToUser.find(item => item.user.id === payeeId);
-  const owedBy = balances?.owedByUser.find(item => item.user.id === payeeId);
+  const owedTo = balances?.owedToUser.find(item => item?.user?.id === payeeId);
+  const owedBy = balances?.owedByUser.find(item => item?.user?.id === payeeId);
   const isReceiving = !!owedTo;
   const isPaying = !!owedBy;
 

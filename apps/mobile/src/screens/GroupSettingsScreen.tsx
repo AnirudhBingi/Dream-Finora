@@ -29,6 +29,7 @@ interface GroupSettingsScreenProps {
   onBack: () => void;
   onGroupUpdated?: () => void;
   onAddMember?: (groupId: string) => void;
+  onNavigateToUserProfile?: (userId: string) => void;
 }
 
 export function GroupSettingsScreen({
@@ -36,6 +37,7 @@ export function GroupSettingsScreen({
   onBack,
   onGroupUpdated,
   onAddMember,
+  onNavigateToUserProfile,
 }: GroupSettingsScreenProps) {
   const { token, user } = useAuth();
   const [group, setGroup] = useState<GroupWithExpenses | null>(null);
@@ -208,13 +210,18 @@ export function GroupSettingsScreen({
   }
 
   function getUserDisplayName(member: GroupWithExpenses['members'][0]): string {
-    return member.user.profile?.displayName || member.user.email;
+    if (!member?.user) return 'Unknown';
+    return member.user.profile?.displayName || member.user.email || 'Unknown';
   }
 
   function isUserAdmin(): boolean {
     if (!group || !user) return false;
+    // Creator is always an admin
+    if (group.createdBy === user.id) return true;
+    // Check if user is in members array with ADMIN role
+    if (!group.members || !Array.isArray(group.members)) return false;
     const member = group.members.find(m => m.userId === user.id);
-    return member?.role === 'ADMIN' || group.createdBy === user.id;
+    return member?.role === 'ADMIN';
   }
 
   function isUserCreator(): boolean {
@@ -322,19 +329,31 @@ export function GroupSettingsScreen({
                 </TouchableOpacity>
               )}
             </View>
-            {group.members.map((member) => (
-              <View key={member.id} style={styles.memberCard}>
+            {(group.members || []).map((member) => {
+              const isCurrentUser = member.userId === user?.id;
+              return (
+                <TouchableOpacity
+                  key={member.id}
+                  style={styles.memberCard}
+                  onPress={() => {
+                    if (!isCurrentUser && onNavigateToUserProfile) {
+                      onNavigateToUserProfile(member.userId);
+                    }
+                  }}
+                  activeOpacity={isCurrentUser ? 1 : 0.7}
+                  disabled={isCurrentUser}
+                >
                 <View style={styles.memberInfo}>
                   <View style={styles.memberAvatar}>
                     <Text style={styles.memberAvatarText}>
-                      {getUserDisplayName(member).charAt(0).toUpperCase()}
+                        {(getUserDisplayName(member) || 'U').charAt(0).toUpperCase()}
                     </Text>
                   </View>
                   <View style={styles.memberDetails}>
                     <Text style={styles.memberName}>
-                      {member.userId === user?.id ? 'You' : getUserDisplayName(member)}
+                        {isCurrentUser ? 'You' : getUserDisplayName(member)}
                     </Text>
-                    <Text style={styles.memberEmail}>{member.user.email}</Text>
+                      <Text style={styles.memberEmail}>{member.user?.email || 'No email'}</Text>
                   </View>
                 </View>
                 <View style={styles.memberActions}>
@@ -385,8 +404,9 @@ export function GroupSettingsScreen({
                     </View>
                   )}
                 </View>
-              </View>
-            ))}
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
           {/* Transfer Ownership Section */}
@@ -396,7 +416,7 @@ export function GroupSettingsScreen({
               <Text style={styles.sectionDescription}>
                 Transfer ownership to another member. They will become the creator and you will remain as an admin.
               </Text>
-              {group.members
+              {(group.members || [])
                 .filter(m => m.userId !== user?.id)
                 .map((member) => (
                   <TouchableOpacity
@@ -408,12 +428,12 @@ export function GroupSettingsScreen({
                     <View style={styles.memberInfo}>
                       <View style={styles.memberAvatar}>
                         <Text style={styles.memberAvatarText}>
-                          {getUserDisplayName(member).charAt(0).toUpperCase()}
+                          {(getUserDisplayName(member) || 'U').charAt(0).toUpperCase()}
                         </Text>
                       </View>
                       <View style={styles.memberDetails}>
                         <Text style={styles.memberName}>{getUserDisplayName(member)}</Text>
-                        <Text style={styles.memberEmail}>{member.user.email}</Text>
+                        <Text style={styles.memberEmail}>{member.user?.email || 'No email'}</Text>
                       </View>
                     </View>
                     <MaterialIcons name="arrow-forward" size={20} color="#2563EB" />

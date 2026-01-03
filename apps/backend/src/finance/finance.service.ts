@@ -2,9 +2,13 @@ import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef 
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
+import { UpdateTransactionDto } from './dto/update-transaction.dto';
+import { UpdateAccountDto } from './dto/update-account.dto';
 import { CategorizationService } from '../shared/categorization.service';
 import { ExpenseService } from '../expense/expense.service';
 import { BudgetService } from './budget.service';
+import { CurrencyService } from '../shared/currency.service';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class FinanceService {
@@ -14,11 +18,13 @@ export class FinanceService {
     @Inject(forwardRef(() => ExpenseService))
     private expenseService: ExpenseService,
     private budgetService: BudgetService,
+    private currencyService: CurrencyService,
   ) {}
 
   async createAccount(userId: string, createAccountDto: CreateAccountDto) {
     const account = await this.prisma.financeAccount.create({
       data: {
+        id: randomUUID(),
         userId,
         name: createAccountDto.name,
         currency: createAccountDto.currency || 'USD',
@@ -39,12 +45,6 @@ export class FinanceService {
 
     const accounts = await this.prisma.financeAccount.findMany({
       where,
-      include: {
-        transactions: {
-          orderBy: { date: 'desc' },
-          take: 5, // Latest 5 transactions for preview
-        },
-      },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -57,11 +57,6 @@ export class FinanceService {
         id: accountId,
         userId,
       },
-      include: {
-        transactions: {
-          orderBy: { date: 'desc' },
-        },
-      },
     });
 
     if (!account) {
@@ -69,6 +64,87 @@ export class FinanceService {
     }
 
     return account;
+  }
+
+  async updateAccount(userId: string, accountId: string, updateDto: UpdateAccountDto) {
+    // Verify account belongs to user
+    const account = await this.prisma.financeAccount.findFirst({
+      where: {
+        id: accountId,
+        userId,
+      },
+    });
+
+    if (!account) {
+      throw new NotFoundException('Account not found');
+    }
+
+    // Prepare update data
+    const updateData: any = {};
+    if (updateDto.name !== undefined) updateData.name = updateDto.name;
+    if (updateDto.context !== undefined) updateData.context = updateDto.context;
+    if (updateDto.accountType !== undefined) updateData.accountType = updateDto.accountType;
+
+    // Handle currency change with conversion
+    if (updateDto.currency !== undefined && updateDto.currency !== account.currency) {
+      // If account has a balance and currency is changing, convert the balance
+      if (account.balance !== 0) {
+        try {
+          const convertedBalance = await this.currencyService.convertAmount(
+            account.balance,
+            account.currency,
+            updateDto.currency,
+          );
+          updateData.balance = convertedBalance;
+        } catch (err) {
+          // If conversion fails, keep the old balance (user should be warned in UI)
+          console.error('[FinanceService] Failed to convert account balance:', err);
+        }
+      }
+      updateData.currency = updateDto.currency;
+    }
+
+    // Update account
+    const updatedAccount = await this.prisma.financeAccount.update({
+      where: { id: accountId },
+      data: updateData,
+    });
+
+    return updatedAccount;
+  }
+
+  async deleteAccount(userId: string, accountId: string) {
+    // Verify account belongs to user
+    const account = await this.prisma.financeAccount.findFirst({
+      where: {
+        id: accountId,
+        userId,
+      },
+    });
+
+    if (!account) {
+      throw new NotFoundException('Account not found');
+    }
+
+    // Check if account has transactions
+    const transactionCount = await this.prisma.financeTransaction.count({
+      where: {
+        accountId: accountId,
+      },
+    });
+
+    if (transactionCount > 0) {
+      throw new BadRequestException(
+        `Cannot delete account with ${transactionCount} transaction(s). Please delete or move transactions first.`,
+      );
+    }
+
+    // Delete account
+    await this.prisma.financeAccount.delete({
+      where: { id: accountId },
+    });
+
+    return { success: true };
   }
 
   async createTransaction(userId: string, createTransactionDto: CreateTransactionDto) {
@@ -113,6 +189,7 @@ export class FinanceService {
     // Create transaction directly (no account needed)
     const transaction = await this.prisma.financeTransaction.create({
       data: {
+        id: randomUUID(),
         userId,
         type: createTransactionDto.type,
         amount: createTransactionDto.amount,
@@ -170,19 +247,6 @@ export class FinanceService {
         createdAt: true,
         updatedAt: true,
         expenseSplitId: true,
-        expenseSplit: includeBillchop
-          ? {
-              select: {
-                expense: {
-                  select: {
-                    id: true,
-                    description: true,
-                    category: true,
-                  },
-                },
-              },
-            }
-          : undefined,
       },
       orderBy: { date: 'desc' },
     });
@@ -190,7 +254,46 @@ export class FinanceService {
     return transactions;
   }
 
+  async getTransactionById(userId: string, transactionId: string) {
+    const transaction = await this.prisma.financeTransaction.findFirst({
+      where: {
+        id: transactionId,
+        userId,
+      },
+      select: {
+        id: true,
+        userId: true,
+        accountId: true,
+        type: true,
+        amount: true,
+        context: true,
+        source: true,
+        category: true,
+        description: true,
+        date: true,
+        createdAt: true,
+        updatedAt: true,
+        expenseSplitId: true,
+      },
+    });
+
+    if (!transaction) {
+      throw new NotFoundException('Transaction not found');
+    }
+
+    return transaction;
+  }
+
   async getBalance(userId: string, context?: 'local' | 'home', includeBillchop: boolean = true, primaryCurrency: string = 'USD') {
+    // Get user profile to determine currencies
+    const profile = await this.prisma.userProfile.findUnique({
+      where: { userId },
+      select: { primaryCurrency: true, homeCountryCurrency: true },
+    });
+
+    const localCurrency = profile?.primaryCurrency || 'USD';
+    const homeCurrency = profile?.homeCountryCurrency || 'USD';
+
     // Calculate balance from transactions (no accounts needed)
     const where: any = { userId };
     if (context) {
@@ -218,7 +321,7 @@ export class FinanceService {
       }
     });
 
-    // Calculate total balance
+    // Calculate total balance (without conversion - this is for individual context)
     const totalBalance = balancesByContext.local + balancesByContext.home;
 
     let billchopBalance = 0;
@@ -252,6 +355,61 @@ export class FinanceService {
       balancesByContext,
       billchopBalance, // Only for local context
       billchopOwedToUser, // Only for local context
+      localCurrency,
+      homeCurrency,
+    };
+  }
+
+  async getCombinedBalance(userId: string, primaryCurrency: string = 'USD') {
+    // Get user profile to determine currencies
+    const profile = await this.prisma.userProfile.findUnique({
+      where: { userId },
+      select: { primaryCurrency: true, homeCountryCurrency: true },
+    });
+
+    const localCurrency = profile?.primaryCurrency || 'USD';
+    const homeCurrency = profile?.homeCountryCurrency || 'USD';
+
+    // Get balances for both contexts
+    const [localBalanceData, homeBalanceData] = await Promise.all([
+      this.getBalance(userId, 'local', true, localCurrency),
+      this.getBalance(userId, 'home', false, homeCurrency),
+    ]);
+
+    const localBalance = localBalanceData.totalAvailableBalance || localBalanceData.totalBalance || 0;
+    const homeBalance = homeBalanceData.totalBalance || 0;
+
+    // Convert home balance to primary currency (local currency)
+    let homeBalanceConverted = homeBalance;
+    if (homeCurrency !== localCurrency) {
+      try {
+        homeBalanceConverted = await this.currencyService.convertAmount(
+          homeBalance,
+          homeCurrency,
+          localCurrency,
+        );
+      } catch (err) {
+        console.error('[FinanceService] Failed to convert home balance:', err);
+        // Use original balance if conversion fails
+      }
+    }
+
+    // Calculate combined total in primary currency
+    const combinedTotal = localBalance + homeBalanceConverted;
+
+    return {
+      combinedTotal,
+      localBalance: {
+        amount: localBalance,
+        currency: localCurrency,
+      },
+      homeBalance: {
+        amount: homeBalance,
+        currency: homeCurrency,
+        convertedAmount: homeBalanceConverted,
+        convertedCurrency: localCurrency,
+      },
+      billchopBalance: localBalanceData.billchopBalance || 0,
     };
   }
 
@@ -327,6 +485,95 @@ export class FinanceService {
     };
   }
 
+  async updateTransaction(userId: string, transactionId: string, updateDto: UpdateTransactionDto) {
+    // Verify transaction belongs to user
+    const transaction = await this.prisma.financeTransaction.findFirst({
+      where: {
+        id: transactionId,
+        userId,
+      },
+    });
+
+    if (!transaction) {
+      throw new NotFoundException('Transaction not found');
+    }
+
+    // Store old transaction data for budget update
+    const oldTransactionData = {
+      type: transaction.type,
+      amount: transaction.amount,
+      category: transaction.category || undefined,
+      context: transaction.context,
+      accountId: transaction.accountId || undefined,
+      date: transaction.date,
+    };
+
+    // Auto-populate category for expenses if description is provided and category not set
+    let category = updateDto.category;
+    if (
+      transaction.type === 'expense' &&
+      !category &&
+      updateDto.description &&
+      updateDto.description !== transaction.description
+    ) {
+      const categoryMatch = this.categorizationService.categorizeFinance(updateDto.description, 'expense');
+      if (categoryMatch) {
+        category = categoryMatch.category;
+      }
+    }
+
+    // Handle date conversion
+    let transactionDate: Date | undefined;
+    if (updateDto.date) {
+      if (updateDto.date instanceof Date) {
+        transactionDate = updateDto.date;
+      } else {
+        const dateStr = updateDto.date as string;
+        if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          transactionDate = new Date(dateStr + 'T00:00:00.000Z');
+        } else {
+          transactionDate = new Date(dateStr);
+        }
+        if (isNaN(transactionDate.getTime())) {
+          throw new BadRequestException(`Invalid date format: ${dateStr}`);
+        }
+      }
+    }
+
+    // Prepare update data
+    const updateData: any = {};
+    if (updateDto.amount !== undefined) updateData.amount = updateDto.amount;
+    if (updateDto.context !== undefined) updateData.context = updateDto.context;
+    if (updateDto.source !== undefined) updateData.source = updateDto.source;
+    if (category !== undefined) updateData.category = category;
+    if (updateDto.description !== undefined) updateData.description = updateDto.description;
+    if (transactionDate !== undefined) updateData.date = transactionDate;
+
+    // Update transaction
+    const updatedTransaction = await this.prisma.financeTransaction.update({
+      where: { id: transactionId },
+      data: updateData,
+    });
+
+    // Update budget tracking if this is an expense (recalculate budgets)
+    if (updatedTransaction.type === 'expense') {
+      this.budgetService
+        .updateBudgetsForTransaction(userId, {
+          type: updatedTransaction.type,
+          amount: updatedTransaction.amount,
+          category: updatedTransaction.category || undefined,
+          context: updatedTransaction.context,
+          accountId: updatedTransaction.accountId || undefined,
+          date: updatedTransaction.date,
+        })
+        .catch((err) => {
+          console.error('[FinanceService] Failed to update budget tracking after update:', err);
+        });
+    }
+
+    return updatedTransaction;
+  }
+
   async deleteTransaction(userId: string, transactionId: string) {
     // Verify transaction belongs to user
     const transaction = await this.prisma.financeTransaction.findFirst({
@@ -390,7 +637,7 @@ export class FinanceService {
     }
 
     // Check if transaction already exists for this split
-    const existing = await this.prisma.financeTransaction.findUnique({
+    const existing = await this.prisma.financeTransaction.findFirst({
       where: { expenseSplitId: splitId },
     });
 
@@ -427,6 +674,7 @@ export class FinanceService {
       // Create new transaction (no account needed)
       const transaction = await this.prisma.financeTransaction.create({
         data: {
+          id: randomUUID(),
           userId,
           type: 'expense',
           amount: expenseData.amount,
@@ -461,7 +709,7 @@ export class FinanceService {
    * Called from ExpenseService when an expense is deleted
    */
   async deleteExpenseSplitFinanceTransaction(splitId: string) {
-    const transaction = await this.prisma.financeTransaction.findUnique({
+    const transaction = await this.prisma.financeTransaction.findFirst({
       where: { expenseSplitId: splitId },
     });
 
@@ -492,6 +740,82 @@ export class FinanceService {
           console.error('[FinanceService] Failed to update budget tracking after split delete:', err);
         });
     }
+  }
+
+  /**
+   * Get finance history (transactions with changes, account history)
+   */
+  async getFinanceHistory(
+    userId: string,
+    context?: 'local' | 'home',
+    accountId?: string,
+    limit: number = 50,
+    offset: number = 0,
+  ) {
+    // Build where clause
+    const where: any = { userId };
+    if (context) {
+      where.context = context;
+    }
+    if (accountId) {
+      where.accountId = accountId;
+    }
+
+    // Get transactions with pagination
+    const transactions = await this.prisma.financeTransaction.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      skip: offset,
+      select: {
+        id: true,
+        type: true,
+        amount: true,
+        context: true,
+        source: true,
+        category: true,
+        description: true,
+        date: true,
+        createdAt: true,
+        updatedAt: true,
+        accountId: true,
+      },
+    });
+
+    // Get total count
+    const totalCount = await this.prisma.financeTransaction.count({ where });
+
+    // Get accounts with their creation/update timestamps
+    const accountsWhere: any = { userId };
+    if (context) {
+      accountsWhere.context = context;
+    }
+    
+    const accounts = await this.prisma.financeAccount.findMany({
+      where: accountsWhere,
+      select: {
+        id: true,
+        name: true,
+        currency: true,
+        balance: true,
+        context: true,
+        accountType: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return {
+      transactions,
+      accounts,
+      pagination: {
+        total: totalCount,
+        limit,
+        offset,
+        hasMore: offset + limit < totalCount,
+      },
+    };
   }
 }
 

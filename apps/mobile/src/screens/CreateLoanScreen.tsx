@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
 import { CreateLoanDto, createLoan } from '../api/financeApi';
+import { getProfile, Profile } from '../api/profileApi';
 import { DatePicker } from '../components/DatePicker';
 
 interface CreateLoanScreenProps {
@@ -39,6 +40,45 @@ export function CreateLoanScreen({
   const [nextPaymentDate, setNextPaymentDate] = useState('');
   const [paymentFrequency, setPaymentFrequency] = useState<PaymentFrequency>('monthly');
   const [saving, setSaving] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
+
+  useEffect(() => {
+    loadProfile();
+  }, [token]);
+
+  async function loadProfile() {
+    if (!token) return;
+    try {
+      const profileData = await getProfile(token);
+      setProfile(profileData);
+    } catch (err) {
+      console.error('Failed to load profile:', err);
+    }
+  }
+
+  // Get currency symbol based on context
+  function getCurrencySymbol(): string {
+    if (!profile) return '$';
+    const currency = context === 'local' 
+      ? (profile.primaryCurrency || 'USD')
+      : (profile.homeCountryCurrency || 'USD');
+    
+    // Common currency symbols
+    const currencySymbols: Record<string, string> = {
+      'USD': '$',
+      'EUR': '€',
+      'GBP': '£',
+      'INR': '₹',
+      'JPY': '¥',
+      'CNY': '¥',
+      'AUD': 'A$',
+      'CAD': 'C$',
+      'CHF': 'CHF',
+      'SGD': 'S$',
+    };
+    
+    return currencySymbols[currency] || currency;
+  }
 
   // Auto-calculate EMI when principal, interest rate, or term changes
   useEffect(() => {
@@ -238,7 +278,7 @@ export function CreateLoanScreen({
               <Text style={styles.label}>Calculated EMI</Text>
               <View style={styles.readonlyField}>
                 <Text style={emi ? styles.readonlyText : styles.placeholderText}>
-                  {emi ? `$${emi}` : 'Enter principal, rate, and term to calculate'}
+                  {emi ? `${getCurrencySymbol()}${emi}` : 'Enter principal, rate, and term to calculate'}
                 </Text>
               </View>
             </View>

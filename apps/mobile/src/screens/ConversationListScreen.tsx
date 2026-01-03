@@ -12,6 +12,9 @@ import {
 import { getConversations, Conversation } from '../api/messagingApi';
 import { useAuth } from '../auth/authContext';
 import { getAvatarUrl } from '../utils/avatar';
+import { EmptyState } from '../components/EmptyState';
+import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
+import { SkeletonConversationList } from '../components/SkeletonLoader';
 
 export default function ConversationListScreen({ navigation }: any) {
   const { token } = useAuth();
@@ -25,9 +28,18 @@ export default function ConversationListScreen({ navigation }: any) {
     try {
       setError(null);
       const data = await getConversations(token);
-      setConversations(data);
+      // Handle both array response and object with conversations/groups property
+      let conversationsList: Conversation[] = [];
+      if (Array.isArray(data)) {
+        conversationsList = data;
+      } else if (data && typeof data === 'object') {
+        // Check for common response wrapper patterns
+        conversationsList = (data as any).conversations || (data as any).groups || [];
+      }
+      setConversations(conversationsList);
     } catch (err: any) {
-      setError(err.message || 'Failed to load conversations');
+      setError(getUserFriendlyErrorMessage(err));
+      setConversations([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
@@ -61,7 +73,7 @@ export default function ConversationListScreen({ navigation }: any) {
     const displayName =
       otherUser?.profile?.displayName || otherUser?.email || 'Unknown User';
     const avatarUrl = otherUser?.profile?.avatarUrl
-      ? getAvatarUrl(otherUser.profile.avatarUrl)
+      ? getAvatarUrl(otherUser.profile?.avatarUrl || '')
       : null;
     const lastMessage = item.lastMessage;
 
@@ -124,9 +136,7 @@ export default function ConversationListScreen({ navigation }: any) {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Messages</Text>
         </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#007AFF" />
-        </View>
+        <SkeletonConversationList count={5} />
       </SafeAreaView>
     );
   }
@@ -142,21 +152,14 @@ export default function ConversationListScreen({ navigation }: any) {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Messages</Text>
       </View>
-      {error && (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity onPress={loadConversations}>
-            <Text style={styles.retryText}>Retry</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-      {conversations.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No conversations yet</Text>
-          <Text style={styles.emptySubtext}>
-            Start a conversation by contacting someone from a listing
-          </Text>
-        </View>
+      {error ? (
+        <ErrorState message={error} onRetry={loadConversations} />
+      ) : conversations.length === 0 ? (
+        <EmptyState
+          icon="message"
+          title="No conversations yet"
+          message="Start a conversation by contacting someone from a listing"
+        />
       ) : (
         <FlatList
           data={conversations}

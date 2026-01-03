@@ -18,6 +18,8 @@ import { ActivityModule } from './activity/activity.module';
 import { FriendModule } from './friend/friend.module';
 import { SharedModule } from './shared/shared.module';
 import { NotificationModule } from './notification/notification.module';
+import { AccountModule } from './account/account.module';
+import { ExportModule } from './export/export.module';
 
 @Module({
   imports: [
@@ -28,6 +30,7 @@ import { NotificationModule } from './notification/notification.module';
     PrismaModule,
     SharedModule,
     AuthModule,
+    AccountModule,
     ProfileModule,
     TrustScoreModule,
     ExpenseModule,
@@ -41,6 +44,7 @@ import { NotificationModule } from './notification/notification.module';
     ActivityModule,
     FriendModule,
     NotificationModule,
+    ExportModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
+import { Icon } from '../components/Icon';
+import { Header } from '../components/Header';
 import { useAuth } from '../auth/authContext';
 import { getBalances, BalanceInfo } from '../api/expenseApi';
-import { getUnreadCount } from '../api/notificationApi';
+import { getApiBaseUrl } from '../api/getApiBaseUrl';
 
 interface HomeScreenProps {
   onNavigateToProfile: () => void;
@@ -13,12 +14,13 @@ interface HomeScreenProps {
   onNavigateToFinance: () => void;
   onNavigateToChores: () => void;
   onNavigateToRides: () => void;
-  onNavigateToListings: () => void;
+  onNavigateToSpaceV: () => void;
   onNavigateToMessages?: () => void;
   onNavigateToAnalytics?: () => void;
   onNavigateToActivity?: () => void;
   onNavigateToFriends?: () => void;
   onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
   refreshKey?: number; // Add refresh key to trigger balance refresh
 }
 
@@ -29,23 +31,22 @@ export function HomeScreen({
   onNavigateToFinance,
   onNavigateToChores,
   onNavigateToRides,
-  onNavigateToListings,
+  onNavigateToSpaceV,
   onNavigateToMessages,
   onNavigateToAnalytics,
   onNavigateToActivity,
   onNavigateToFriends,
   onNavigateToNotifications,
+  onNavigateToSettings,
   refreshKey,
 }: HomeScreenProps) {
-  const { user, logout, token } = useAuth();
+  const { user, token } = useAuth();
   const [balances, setBalances] = useState<BalanceInfo | null>(null);
   const [loading, setLoading] = useState(true);
-  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     if (token) {
       loadBalances();
-      loadUnreadCount();
     }
   }, [token, refreshKey]); // Refresh when token or refreshKey changes
 
@@ -70,19 +71,6 @@ export function HomeScreen({
     }
   }
 
-  async function loadUnreadCount() {
-    if (!token) return;
-    try {
-      const count = await getUnreadCount(token);
-      setUnreadCount(count);
-    } catch (err) {
-      console.error('[HomeScreen] Failed to load unread count:', err);
-    }
-  }
-
-  async function handleLogout() {
-    await logout();
-  }
 
   function formatCurrency(amount: number, currency: string = 'USD'): string {
     return new Intl.NumberFormat('en-US', {
@@ -99,13 +87,17 @@ export function HomeScreen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-        {/* Header */}
-        <View style={styles.header}>
-        <Text style={styles.title}>Dream Finora</Text>
-        <Text style={styles.subtitle}>Welcome back!</Text>
-        <Text style={styles.email}>{user?.email}</Text>
-      </View>
+      {/* Fixed Header */}
+      <Header
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
+
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+      >
 
         {/* Quick Stats Cards */}
         <View style={styles.statsSection}>
@@ -116,7 +108,7 @@ export function HomeScreen({
               onPress={onNavigateToExpenses}
               activeOpacity={0.7}
             >
-              <MaterialIcons name="arrow-downward" size={24} color="#10B981" />
+              <Icon name="arrow-down" size={24} color="#10B981" />
               <Text style={styles.statLabel}>You're Owed</Text>
               {loading ? (
                 <ActivityIndicator size="small" color="#10B981" style={styles.statLoader} />
@@ -132,7 +124,7 @@ export function HomeScreen({
               onPress={onNavigateToExpenses}
               activeOpacity={0.7}
             >
-              <MaterialIcons name="arrow-upward" size={24} color="#EF4444" />
+              <Icon name="arrow-up" size={24} color="#EF4444" />
               <Text style={styles.statLabel}>You Owe</Text>
               {loading ? (
                 <ActivityIndicator size="small" color="#EF4444" style={styles.statLoader} />
@@ -166,7 +158,7 @@ export function HomeScreen({
                 onPress={onNavigateToFriends}
                 activeOpacity={0.7}
               >
-                <MaterialIcons name="people" size={24} color="#FFFFFF" />
+                <Icon name="friends" size={24} color="#FFFFFF" />
                 <Text style={styles.featureButtonText}>Friends</Text>
         </TouchableOpacity>
             )}
@@ -176,7 +168,7 @@ export function HomeScreen({
               onPress={onNavigateToGroups}
               activeOpacity={0.7}
             >
-              <MaterialIcons name="group" size={24} color="#FFFFFF" />
+              <Icon name="groups" size={24} color="#FFFFFF" />
               <Text style={styles.featureButtonText}>Circles</Text>
         </TouchableOpacity>
 
@@ -186,7 +178,7 @@ export function HomeScreen({
                 onPress={onNavigateToMessages}
                 activeOpacity={0.7}
               >
-                <MaterialIcons name="message" size={24} color="#FFFFFF" />
+                <Icon name="messages" size={24} color="#FFFFFF" />
                 <Text style={styles.featureButtonText}>Messages</Text>
           </TouchableOpacity>
         )}
@@ -197,7 +189,7 @@ export function HomeScreen({
                 onPress={onNavigateToActivity}
                 activeOpacity={0.7}
               >
-                <MaterialIcons name="history" size={24} color="#FFFFFF" />
+                <Icon name="activity" size={24} color="#FFFFFF" />
                 <Text style={styles.featureButtonText}>Activity</Text>
               </TouchableOpacity>
             )}
@@ -213,7 +205,7 @@ export function HomeScreen({
               onPress={onNavigateToFinance}
               activeOpacity={0.7}
             >
-              <MaterialIcons name="account-balance-wallet" size={24} color="#FFFFFF" />
+              <Icon name="finance" size={24} color="#FFFFFF" />
               <Text style={styles.featureButtonText}>My Wallet</Text>
             </TouchableOpacity>
 
@@ -223,54 +215,13 @@ export function HomeScreen({
                 onPress={onNavigateToAnalytics}
                 activeOpacity={0.7}
               >
-                <MaterialIcons name="insights" size={24} color="#FFFFFF" />
+                <Icon name="analytics" size={24} color="#FFFFFF" />
                 <Text style={styles.featureButtonText}>Insights</Text>
           </TouchableOpacity>
         )}
           </View>
         </View>
 
-        {/* Account */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account</Text>
-          <View style={styles.buttonGrid}>
-            <TouchableOpacity
-              style={[styles.featureButton, styles.profileButton]}
-              onPress={onNavigateToProfile}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons name="person" size={24} color="#FFFFFF" />
-              <Text style={styles.featureButtonText}>My Space</Text>
-            </TouchableOpacity>
-
-            {onNavigateToNotifications && (
-              <TouchableOpacity
-                style={[styles.featureButton, styles.notificationButton]}
-                onPress={onNavigateToNotifications}
-                activeOpacity={0.7}
-              >
-                <View style={styles.notificationButtonContainer}>
-                  <MaterialIcons name="notifications" size={24} color="#FFFFFF" />
-                  {unreadCount > 0 && (
-                    <View style={styles.badge}>
-                      <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={styles.featureButtonText}>Notifications</Text>
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity
-              style={[styles.featureButton, styles.logoutButton]}
-              onPress={handleLogout}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons name="logout" size={24} color="#FFFFFF" />
-              <Text style={styles.featureButtonText}>Logout</Text>
-        </TouchableOpacity>
-      </View>
-      </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -286,13 +237,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 24,
-  },
-  header: {
-    padding: 24,
-    paddingBottom: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
   },
   headerTop: {
     flexDirection: 'row',
@@ -465,11 +409,5 @@ const styles = StyleSheet.create({
   },
   analyticsButton: {
     backgroundColor: '#6366F1',
-  },
-  profileButton: {
-    backgroundColor: '#2563EB',
-  },
-  logoutButton: {
-    backgroundColor: '#EF4444',
   },
 });

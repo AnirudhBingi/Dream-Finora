@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBudgetDto } from './dto/create-budget.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class BudgetService {
@@ -158,11 +159,13 @@ export class BudgetService {
         },
       },
       create: {
+        id: randomUUID(),
         budgetId,
         period,
         spent,
         budgeted: budgetedAmount,
         status,
+        updatedAt: new Date(),
       },
       update: {
         spent,
@@ -198,6 +201,7 @@ export class BudgetService {
 
     const budget = await this.prisma.budget.create({
       data: {
+        id: randomUUID(),
         userId,
         name: createBudgetDto.name,
         category: createBudgetDto.category,
@@ -208,6 +212,7 @@ export class BudgetService {
         accountId: createBudgetDto.accountId,
         warningThreshold: createBudgetDto.warningThreshold || 80,
         context: createBudgetDto.context || 'local',
+        updatedAt: new Date(),
       },
     });
 
@@ -232,14 +237,14 @@ export class BudgetService {
     const budgets = await this.prisma.budget.findMany({
       where,
       include: {
-        account: {
+        FinanceAccount: {
           select: {
             id: true,
             name: true,
             currency: true,
           },
         },
-        tracking: {
+        BudgetTracking: {
           orderBy: { period: 'desc' },
           take: 12, // Last 12 periods
         },
@@ -298,18 +303,18 @@ export class BudgetService {
         userId,
       },
       include: {
-        account: {
+        FinanceAccount: {
           select: {
             id: true,
             name: true,
             currency: true,
           },
         },
-        tracking: {
+        BudgetTracking: {
           orderBy: { period: 'desc' },
           take: 24, // Last 24 periods for history
         },
-        transactions: {
+        FinanceTransaction: {
           orderBy: { date: 'desc' },
           take: 50, // Recent transactions
         },

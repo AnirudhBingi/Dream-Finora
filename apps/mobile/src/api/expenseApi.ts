@@ -127,8 +127,27 @@ export async function createExpense(
   return response.json();
 }
 
-export async function getExpenses(token: string): Promise<Expense[]> {
-  const response = await fetch(`${getApiBaseUrl()}/expenses`, {
+export interface PaginatedResponse<T> {
+  expenses?: T[];
+  chores?: T[];
+  groups?: T[];
+  listings?: T[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
+export async function getExpenses(
+  token: string,
+  limit: number = 50,
+  offset: number = 0,
+): Promise<PaginatedResponse<Expense> | Expense[]> {
+  const queryParams = new URLSearchParams();
+  queryParams.append('limit', limit.toString());
+  queryParams.append('offset', offset.toString());
+
+  const response = await fetch(`${getApiBaseUrl()}/expenses?${queryParams.toString()}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -141,7 +160,13 @@ export async function getExpenses(token: string): Promise<Expense[]> {
     throw new Error(error.message || `Failed to fetch expenses: ${response.status}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  // Check if response has pagination structure
+  if (data.expenses && Array.isArray(data.expenses)) {
+    return data as PaginatedResponse<Expense>;
+  }
+  // Backward compatibility: return array if not paginated
+  return data as Expense[];
 }
 
 export async function getExpenseById(token: string, expenseId: string): Promise<Expense> {

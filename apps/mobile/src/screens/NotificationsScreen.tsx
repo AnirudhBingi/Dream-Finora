@@ -7,6 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -19,15 +20,35 @@ import {
   Notification,
   NotificationType,
 } from '../api/notificationApi';
+import { setBadgeCount } from '../services/pushNotifications';
+import { EmptyState } from '../components/EmptyState';
+import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
 
 interface NotificationsScreenProps {
   onBack: () => void;
   onViewExpense?: (expenseId: string) => void;
+  onViewChore?: (choreId: string) => void;
+  onViewSpaceV?: (spacevId: string) => void;
+  onViewRide?: (rideId: string) => void;
+  onViewGroup?: (groupId: string) => void;
+  onViewFriend?: (friendId: string) => void;
+  onViewMessage?: (chatId: string) => void;
 }
 
-export function NotificationsScreen({ onBack, onViewExpense }: NotificationsScreenProps) {
+export function NotificationsScreen({
+  onBack,
+  onViewExpense,
+  onViewChore,
+  onViewSpaceV,
+  onViewRide,
+  onViewGroup,
+  onViewFriend,
+  onViewMessage,
+}: NotificationsScreenProps) {
   const { token } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [filteredNotifications, setFilteredNotifications] = useState<Notification[]>([]);
+  const [selectedFilter, setSelectedFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,10 +65,14 @@ export function NotificationsScreen({ onBack, onViewExpense }: NotificationsScre
       setLoading(true);
       setError(null);
       const data = await getNotifications(token, 50, 0);
-      setNotifications(data.notifications);
-      setHasMore(data.hasMore);
+      setNotifications(data?.notifications || []);
+      setFilteredNotifications(data?.notifications || []);
+      setHasMore(data?.hasMore || false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load notifications');
+      setError(getUserFriendlyErrorMessage(err));
+      setNotifications([]);
+      setFilteredNotifications([]);
+      setHasMore(false);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -64,6 +89,14 @@ export function NotificationsScreen({ onBack, onViewExpense }: NotificationsScre
           n.id === notificationId ? { ...n, read: true, readAt: new Date().toISOString() } : n,
         ),
       );
+      setFilteredNotifications(prev =>
+        prev.map(n =>
+          n.id === notificationId ? { ...n, read: true, readAt: new Date().toISOString() } : n,
+        ),
+      );
+      // Update badge count
+      const unreadCount = (notifications || []).filter(n => n.id !== notificationId && !n.read).length;
+      await setBadgeCount(unreadCount);
     } catch (err) {
       console.error('Failed to mark notification as read:', err);
     }
@@ -75,8 +108,48 @@ export function NotificationsScreen({ onBack, onViewExpense }: NotificationsScre
     try {
       await markAllNotificationsAsRead(token);
       setNotifications(prev => prev.map(n => ({ ...n, read: true, readAt: new Date().toISOString() })));
+      setFilteredNotifications(prev => prev.map(n => ({ ...n, read: true, readAt: new Date().toISOString() })));
+      // Update badge count to 0
+      await setBadgeCount(0);
     } catch (err) {
       console.error('Failed to mark all notifications as read:', err);
+    }
+  }
+
+  async function handleClearAll() {
+    if (!token) return;
+
+    Alert.alert(
+      'Clear All Notifications',
+      'Are you sure you want to delete all notifications? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear All',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Delete all notifications one by one (or implement bulk delete endpoint)
+              for (const notification of notifications) {
+                await deleteNotification(token, notification.id);
+              }
+              setNotifications([]);
+              setFilteredNotifications([]);
+            } catch (err) {
+              console.error('Failed to clear all notifications:', err);
+            }
+          },
+        },
+      ],
+    );
+  }
+
+  function handleFilter(filter: string) {
+    setSelectedFilter(filter);
+    if (filter === 'all') {
+      setFilteredNotifications(notifications);
+    } else {
+      setFilteredNotifications(notifications.filter(n => n.type === filter));
     }
   }
 
@@ -99,7 +172,49 @@ export function NotificationsScreen({ onBack, onViewExpense }: NotificationsScre
     // Navigate based on notification type
     if (notification.data?.expenseId && onViewExpense) {
       onViewExpense(notification.data.expenseId);
+    } else if (notification.data?.choreId && onViewChore) {
+      onViewChore(notification.data.choreId);
+    } else if (notification.data?.listingId && onViewSpaceV) {
+      onViewSpaceV(notification.data.listingId);
+    } else if (notification.data?.rideId && onViewRide) {
+      onViewRide(notification.data.rideId);
+    } else if (notification.data?.groupId && onViewGroup) {
+      onViewGroup(notification.data.groupId);
+    } else if (notification.data?.chatId && onViewMessage) {
+      onViewMessage(notification.data.chatId);
+    } else if (notification.type === 'friend_request' && notification.data?.friendId) {
+      // For friend requests, clicking the card goes to friends list (requests tab)
+      // The "View Profile" button will handle profile navigation separately
+      if (onViewFriend) {
+        onViewFriend(notification.data.friendId);
+      }
+    } else if (notification.data?.friendId && onViewFriend) {
+      onViewFriend(notification.data.friendId);
     }
+  }
+
+  function handleViewProfile(notification: Notification) {
+    if (!notification.read) {
+      handleMarkAsRead(notification.id);
+    }
+
+    // For friend requests, "View Profile" should navigate to user's profile
+    // TODO: Navigate to UserProfileScreen when it's implemented (Phase 2.3)
+    // For now, navigate to friends list - this will be fixed when UserProfileScreen is created
+    if (notification.data?.friendId && onViewFriend) {
+      onViewFriend(notification.data.friendId);
+    }
+  }
+
+  function getActionLabel(notification: Notification): string | null {
+    if (notification.data?.expenseId) return 'View Expense';
+    if (notification.data?.choreId) return 'View Chore';
+    if (notification.data?.listingId) return 'View Listing';
+    if (notification.data?.rideId) return 'View Ride';
+    if (notification.data?.groupId) return 'View Group';
+    if (notification.data?.friendId) return 'View Profile';
+    if (notification.data?.chatId) return 'Open Chat';
+    return null;
   }
 
   function getNotificationIcon(type: NotificationType): string {
@@ -123,7 +238,15 @@ export function NotificationsScreen({ onBack, onViewExpense }: NotificationsScre
       case 'message_received':
         return 'message';
       case 'listing_interest':
+      case 'listing_favorited':
         return 'favorite';
+      case 'listing_commented':
+        return 'comment';
+      case 'ride_created':
+      case 'ride_joined':
+      case 'ride_updated':
+      case 'ride_cancelled':
+        return 'directions-car';
       default:
         return 'notifications';
     }
@@ -197,8 +320,17 @@ export function NotificationsScreen({ onBack, onViewExpense }: NotificationsScre
     return Array.from(groups.entries()).map(([date, items]) => ({ date, items }));
   }
 
-  const unreadCount = notifications.filter(n => !n.read).length;
-  const groupedNotifications = groupNotificationsByDate(notifications);
+  const unreadCount = (filteredNotifications || []).filter(n => !n.read).length;
+  const groupedNotifications = groupNotificationsByDate(filteredNotifications || []);
+
+  const filterTypes = [
+    { key: 'all', label: 'All' },
+    { key: 'expense_added', label: 'Expenses' },
+    { key: 'chore_assigned', label: 'Chores' },
+    { key: 'message_received', label: 'Messages' },
+    { key: 'friend_request', label: 'Friends' },
+    { key: 'listing_commented', label: 'Listings' },
+  ];
 
   if (loading) {
     return (
@@ -222,17 +354,60 @@ export function NotificationsScreen({ onBack, onViewExpense }: NotificationsScre
           <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Notifications</Text>
-        {unreadCount > 0 && (
-          <TouchableOpacity
-            style={styles.markAllButton}
-            onPress={handleMarkAllAsRead}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.markAllButtonText}>Mark all read</Text>
-          </TouchableOpacity>
-        )}
-        <View style={styles.placeholder} />
+        <View style={styles.headerRight}>
+          {unreadCount > 0 && (
+            <TouchableOpacity
+              style={styles.markAllButton}
+              onPress={handleMarkAllAsRead}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.markAllButtonText}>Mark all read</Text>
+            </TouchableOpacity>
+          )}
+          {(notifications || []).length > 0 && (
+            <TouchableOpacity
+              style={styles.clearAllButton}
+              onPress={handleClearAll}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="delete-outline" size={20} color="#EF4444" />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
+
+      {/* Filter Chips */}
+      {notifications.length > 0 && (
+        <View style={styles.filterWrapper}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.filterContainer}
+            contentContainerStyle={styles.filterContent}
+          >
+            {filterTypes.map((filter) => (
+              <TouchableOpacity
+                key={filter.key}
+                style={[
+                  styles.filterChip,
+                  selectedFilter === filter.key && styles.filterChipSelected,
+                ]}
+                onPress={() => handleFilter(filter.key)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    selectedFilter === filter.key && styles.filterChipTextSelected,
+                  ]}
+                >
+                  {filter.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
       <ScrollView
         style={styles.container}
@@ -250,56 +425,82 @@ export function NotificationsScreen({ onBack, onViewExpense }: NotificationsScre
           </View>
         )}
 
-        {notifications.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <MaterialIcons name="notifications-none" size={64} color="#9CA3AF" />
-            <Text style={styles.emptyText}>No notifications</Text>
-            <Text style={styles.emptySubtext}>
-              You're all caught up! Notifications will appear here when you have updates.
-            </Text>
-          </View>
+        {(filteredNotifications || []).length === 0 ? (
+          <EmptyState
+            icon="notifications-none"
+            title="No notifications"
+            message="You're all caught up! New notifications will appear here."
+          />
         ) : (
           groupedNotifications.map((group) => (
             <View key={group.date} style={styles.dateGroup}>
               <Text style={styles.dateHeader}>{group.date}</Text>
               {group.items.map((notification) => (
-                <TouchableOpacity
+                <View
                   key={notification.id}
                   style={[
                     styles.notificationCard,
                     !notification.read && styles.notificationCardUnread,
                   ]}
-                  onPress={() => handleNotificationPress(notification)}
-                  activeOpacity={0.7}
                 >
-                  <View style={styles.notificationContent}>
-                    <View
-                      style={[
-                        styles.iconContainer,
-                        { backgroundColor: `${getNotificationColor(notification.type)}20` },
-                      ]}
-                    >
-                      <MaterialIcons
-                        name={getNotificationIcon(notification.type) as any}
-                        size={24}
-                        color={getNotificationColor(notification.type)}
-                      />
-                    </View>
-                    <View style={styles.notificationText}>
-                      <Text style={styles.notificationTitle}>{notification.title}</Text>
-                      <Text style={styles.notificationMessage}>{notification.message}</Text>
-                      <Text style={styles.notificationTime}>{formatDate(notification.createdAt)}</Text>
-                    </View>
-                    {!notification.read && <View style={styles.unreadDot} />}
-                  </View>
                   <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={() => handleDelete(notification.id)}
+                    style={styles.notificationContentWrapper}
+                    onPress={() => handleNotificationPress(notification)}
                     activeOpacity={0.7}
                   >
-                    <MaterialIcons name="close" size={18} color="#9CA3AF" />
+                    <View style={styles.notificationContent}>
+                      <View
+                        style={[
+                          styles.iconContainer,
+                          { backgroundColor: `${getNotificationColor(notification.type)}20` },
+                        ]}
+                      >
+                        <MaterialIcons
+                          name={getNotificationIcon(notification.type) as any}
+                          size={24}
+                          color={getNotificationColor(notification.type)}
+                        />
+                      </View>
+                      <View style={styles.notificationText}>
+                        <View style={styles.notificationHeader}>
+                          <Text style={styles.notificationTitle}>{notification.title}</Text>
+                          {!notification.read && <View style={styles.unreadDot} />}
+                        </View>
+                        <Text style={styles.notificationMessage}>{notification.message}</Text>
+                        <Text style={styles.notificationTime}>{formatDate(notification.createdAt)}</Text>
+                      </View>
+                    </View>
                   </TouchableOpacity>
-                </TouchableOpacity>
+                  <View style={styles.notificationRight}>
+                    {getActionLabel(notification) && (
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          // For "View Profile" on friend requests, use separate handler
+                          if (notification.type === 'friend_request' && getActionLabel(notification) === 'View Profile') {
+                            handleViewProfile(notification);
+                          } else {
+                            handleNotificationPress(notification);
+                          }
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.actionButtonText}>{getActionLabel(notification)}</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      style={styles.deleteButton}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleDelete(notification.id);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialIcons name="close" size={18} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
               ))}
             </View>
           ))
@@ -329,10 +530,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
   },
   backButton: {
     padding: 8,
@@ -342,14 +544,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '600',
     color: '#111827',
     flex: 1,
     marginLeft: 8,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   markAllButton: {
-    paddingVertical: 8,
+    paddingVertical: 6,
     paddingHorizontal: 12,
   },
   markAllButtonText: {
@@ -357,8 +564,12 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#2563EB',
   },
-  placeholder: {
-    width: 40,
+  clearAllButton: {
+    padding: 8,
+    minWidth: 40,
+    minHeight: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   container: {
     flex: 1,
@@ -419,9 +630,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   notificationCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
     padding: 16,
     marginHorizontal: 24,
@@ -434,6 +642,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0F9FF',
     borderColor: '#2563EB',
     borderWidth: 1,
+  },
+  notificationContentWrapper: {
+    flex: 1,
   },
   notificationContent: {
     flexDirection: 'row',
@@ -451,11 +662,17 @@ const styles = StyleSheet.create({
   notificationText: {
     flex: 1,
   },
+  notificationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
   notificationTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#111827',
-    marginBottom: 4,
+    flex: 1,
   },
   notificationMessage: {
     fontSize: 14,
@@ -473,11 +690,69 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: '#2563EB',
     marginLeft: 8,
-    marginTop: 4,
   },
   deleteButton: {
     padding: 8,
     marginLeft: 8,
+  },
+  filterWrapper: {
+    height: 56,
+    flexShrink: 0,
+    flexGrow: 0,
+  },
+  filterContainer: {
+    height: 56,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+  },
+  filterContent: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    gap: 8,
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  filterChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginRight: 8,
+    flexShrink: 0,
+    flexGrow: 0,
+  },
+  filterChipSelected: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+  filterChipText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  filterChipTextSelected: {
+    color: '#FFFFFF',
+  },
+  notificationRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 8,
+    gap: 8,
+  },
+  actionButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    backgroundColor: '#2563EB',
+  },
+  actionButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#FFFFFF',
   },
 });
 

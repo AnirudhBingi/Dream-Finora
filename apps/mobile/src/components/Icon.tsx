@@ -3,6 +3,7 @@ import { View, StyleSheet, ViewStyle } from 'react-native';
 import Svg, { Path, Circle, Rect, Polygon, G } from 'react-native-svg';
 import { MaterialIcons } from '@expo/vector-icons';
 import { categoryIconMap, CategoryIconName, normalizeCategoryName } from '../utils/categoryIcons';
+import { navigationIconMap, NavigationIconName } from '../utils/navigationIcons';
 
 export type IconSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
@@ -15,7 +16,7 @@ const sizeMap: Record<IconSize, number> = {
 };
 
 interface IconProps {
-  name: CategoryIconName | string;
+  name: CategoryIconName | NavigationIconName | string;
   size?: IconSize | number;
   color?: string;
   style?: ViewStyle;
@@ -38,7 +39,19 @@ export function Icon({
 }: IconProps) {
   const iconSize = typeof size === 'number' ? size : sizeMap[size];
   
-  // Normalize the category name first (handles variations like "Restaurants & Dining" -> "restaurants-dining")
+  // Check if it's a navigation icon first
+  const NavigationIconComponent = navigationIconMap[name as NavigationIconName];
+  if (NavigationIconComponent) {
+    return (
+      <View style={[styles.container, style]}>
+        <Svg width={iconSize} height={iconSize} viewBox="0 0 24 24">
+          <NavigationIconComponent color={color} />
+        </Svg>
+      </View>
+    );
+  }
+  
+  // Normalize the category name (handles variations like "Restaurants & Dining" -> "restaurants-dining")
   const normalizedName = normalizeCategoryName(name);
   
   // Check if we have a custom icon for this category
@@ -75,6 +88,26 @@ export function Icon({
  * Maps category names to MaterialIcons names as fallback
  */
 function getMaterialIconName(categoryName: string): any {
+  // Navigation icons mapping
+  const navigationMapping: Record<string, any> = {
+    'notifications': 'notifications',
+    'settings': 'settings',
+    'friends': 'people',
+    'groups': 'group',
+    'messages': 'message',
+    'activity': 'history',
+    'finance': 'account-balance-wallet',
+    'analytics': 'insights',
+    'arrow-down': 'arrow-downward',
+    'arrow-up': 'arrow-upward',
+    'expenses': 'attach-money',
+  };
+  
+  // Try navigation mapping first
+  if (navigationMapping[categoryName.toLowerCase()]) {
+    return navigationMapping[categoryName.toLowerCase()];
+  }
+  
   const mapping: Record<string, any> = {
     // Food & Dining
     'groceries': 'shopping-cart',

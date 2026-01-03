@@ -13,6 +13,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ChoreService } from './chore.service';
+import { ChoreStatsService } from './chore-stats.service';
 import { CreateChoreDto } from './dto/create-chore.dto';
 import { UpdateChoreDto } from './dto/update-chore.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -21,7 +22,10 @@ import { CurrentUser } from '../auth/current-user.decorator';
 @Controller('chores')
 @UseGuards(JwtAuthGuard)
 export class ChoreController {
-  constructor(private readonly choreService: ChoreService) {}
+  constructor(
+    private readonly choreService: ChoreService,
+    private readonly choreStatsService: ChoreStatsService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -36,8 +40,12 @@ export class ChoreController {
   async getChores(
     @CurrentUser() user: { userId: string },
     @Query('groupId') groupId?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
   ) {
-    return this.choreService.getChores(user.userId, groupId);
+    const limitNum = limit ? parseInt(limit, 10) : 50;
+    const offsetNum = offset ? parseInt(offset, 10) : 0;
+    return this.choreService.getChores(user.userId, groupId, limitNum, offsetNum);
   }
 
   @Get(':id')
@@ -110,6 +118,19 @@ export class ChoreController {
     @Param('id') id: string,
   ) {
     return this.choreService.getChoreHistory(user.userId, id);
+  }
+
+  @Get('stats/me')
+  async getMyStats(@CurrentUser() user: { userId: string }) {
+    return this.choreStatsService.getUserStats(user.userId);
+  }
+
+  @Get('leaderboard/:groupId')
+  async getGroupLeaderboard(
+    @CurrentUser() user: { userId: string },
+    @Param('groupId') groupId: string,
+  ) {
+    return this.choreService.getGroupPointsLeaderboard(user.userId, groupId);
   }
 }
 

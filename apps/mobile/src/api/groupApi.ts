@@ -124,8 +124,24 @@ export async function createGroup(
   return response.json();
 }
 
-export async function getGroups(token: string): Promise<Group[]> {
-  const response = await fetch(`${getApiBaseUrl()}/groups`, {
+export interface PaginatedGroupsResponse {
+  groups: Group[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
+export async function getGroups(
+  token: string,
+  limit: number = 50,
+  offset: number = 0,
+): Promise<PaginatedGroupsResponse | Group[]> {
+  const queryParams = new URLSearchParams();
+  queryParams.append('limit', limit.toString());
+  queryParams.append('offset', offset.toString());
+
+  const response = await fetch(`${getApiBaseUrl()}/groups?${queryParams.toString()}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -138,7 +154,13 @@ export async function getGroups(token: string): Promise<Group[]> {
     throw new Error(error.message || `Failed to fetch groups: ${response.status}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  // Check if response has pagination structure
+  if (data.groups && Array.isArray(data.groups)) {
+    return data as PaginatedGroupsResponse;
+  }
+  // Backward compatibility: return array if not paginated
+  return data as Group[];
 }
 
 export async function getGroupById(token: string, groupId: string): Promise<GroupWithExpenses> {
@@ -330,6 +352,118 @@ export async function leaveGroup(
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Failed to leave group' }));
     throw new Error(error.message || `Failed to leave group: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export interface InviteMemberResponse {
+  invitationId: string;
+  token: string;
+  email?: string | null;
+  mobileNumber?: string | null;
+  expiresAt: string;
+  inviteLink: string;
+}
+
+export async function inviteGroupMember(
+  token: string,
+  groupId: string,
+  data: { email?: string; mobileNumber?: string; userId?: string },
+): Promise<InviteMemberResponse> {
+  const response = await fetch(`${getApiBaseUrl()}/groups/${groupId}/invite`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to send invitation' }));
+    throw new Error(error.message || `Failed to send invitation: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export interface GroupInvitation {
+  id: string;
+  groupId: string;
+  email?: string | null;
+  mobileNumber?: string | null;
+  token: string;
+  status: string;
+  expiresAt: string;
+  group: {
+    id: string;
+    name: string;
+    description: string | null;
+    createdAt: string;
+  };
+  inviter: {
+    id: string;
+    email: string;
+    profile?: {
+      displayName: string | null;
+      avatarUrl: string | null;
+    } | null;
+  };
+}
+
+export async function getGroupInvitation(token: string): Promise<GroupInvitation> {
+  const response = await fetch(`${getApiBaseUrl()}/groups/invitations/${token}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to get invitation' }));
+    throw new Error(error.message || `Failed to get invitation: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function acceptGroupInvitation(
+  token: string,
+  invitationToken: string,
+): Promise<{ success: boolean; groupId: string; groupName: string }> {
+  const response = await fetch(`${getApiBaseUrl()}/groups/invitations/${invitationToken}/accept`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to accept invitation' }));
+    throw new Error(error.message || `Failed to accept invitation: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function declineGroupInvitation(
+  token: string,
+  invitationToken: string,
+): Promise<{ success: boolean }> {
+  const response = await fetch(`${getApiBaseUrl()}/groups/invitations/${invitationToken}/decline`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to decline invitation' }));
+    throw new Error(error.message || `Failed to decline invitation: ${response.status}`);
   }
 
   return response.json();

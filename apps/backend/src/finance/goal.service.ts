@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateGoalDto } from './dto/create-goal.dto';
 import { UpdateGoalDto } from './dto/update-goal.dto';
 import { AddContributionDto } from './dto/add-contribution.dto';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class GoalService {
@@ -33,6 +34,7 @@ export class GoalService {
 
     const goal = await this.prisma.financialGoal.create({
       data: {
+        id: randomUUID(),
         userId,
         name: createGoalDto.name,
         targetAmount: createGoalDto.targetAmount,
@@ -43,6 +45,7 @@ export class GoalService {
         status: 'active',
         accountId: createGoalDto.accountId,
         context: createGoalDto.context || 'local',
+        updatedAt: new Date(),
       },
     });
 
@@ -64,14 +67,14 @@ export class GoalService {
     const goals = await this.prisma.financialGoal.findMany({
       where,
       include: {
-        account: {
+        FinanceAccount: {
           select: {
             id: true,
             name: true,
             currency: true,
           },
         },
-        contributions: {
+        GoalContribution: {
           orderBy: { date: 'desc' },
           take: 10, // Recent contributions
         },
@@ -95,17 +98,17 @@ export class GoalService {
         userId,
       },
       include: {
-        account: {
+        FinanceAccount: {
           select: {
             id: true,
             name: true,
             currency: true,
           },
         },
-        contributions: {
+        GoalContribution: {
           orderBy: { date: 'desc' },
           include: {
-            transaction: {
+            FinanceTransaction: {
               select: {
                 id: true,
                 type: true,
@@ -116,7 +119,7 @@ export class GoalService {
             },
           },
         },
-        transactions: {
+        FinanceTransaction: {
           orderBy: { date: 'desc' },
           take: 20, // Recent transactions
         },
@@ -278,6 +281,7 @@ export class GoalService {
     // Create contribution
     const contribution = await this.prisma.goalContribution.create({
       data: {
+        id: randomUUID(),
         goalId,
         amount: addContributionDto.amount,
         date: contributionDate,

@@ -16,7 +16,11 @@ import {
   deleteGoal,
   FinancialGoal,
 } from '../api/financeApi';
+import { getProfile, Profile } from '../api/profileApi';
 import { MaterialIcons } from '@expo/vector-icons';
+import { SkeletonGoalList } from '../components/SkeletonLoader';
+import { EmptyState } from '../components/EmptyState';
+import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
 
 interface GoalsScreenProps {
   context: 'local' | 'home';
@@ -37,10 +41,25 @@ export function GoalsScreen({
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [primaryCurrency, setPrimaryCurrency] = useState<string>('USD');
+  const [homeCountryCurrency, setHomeCountryCurrency] = useState<string>('USD');
 
   useEffect(() => {
     loadGoals();
+    loadProfile();
   }, [token, context, statusFilter]);
+
+  async function loadProfile() {
+    if (!token) return;
+    try {
+      const profile = await getProfile(token);
+      setPrimaryCurrency(profile.primaryCurrency || 'USD');
+      setHomeCountryCurrency(profile.homeCountryCurrency || 'USD');
+    } catch (err) {
+      setPrimaryCurrency('USD');
+      setHomeCountryCurrency('USD');
+    }
+  }
 
   async function loadGoals() {
     if (!token) return;
@@ -51,7 +70,7 @@ export function GoalsScreen({
       const data = await getGoals(token, context, statusFilter === 'all' ? undefined : statusFilter);
       setGoals(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load goals');
+      setError(getUserFriendlyErrorMessage(err));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -85,9 +104,10 @@ export function GoalsScreen({
   }
 
   function formatCurrency(amount: number): string {
+    const displayCurrency = context === 'local' ? primaryCurrency : homeCountryCurrency;
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD',
+      currency: displayCurrency,
     }).format(amount);
   }
 

@@ -4,6 +4,7 @@ import { CreateChoreDto } from './dto/create-chore.dto';
 import { UpdateChoreDto } from './dto/update-chore.dto';
 import { TrustScoreService } from '../trust-score/trust-score.service';
 import { NotificationService } from '../notification/notification.service';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class ChoreService {
@@ -19,7 +20,7 @@ export class ChoreService {
       const group = await this.prisma.group.findFirst({
         where: {
           id: createChoreDto.groupId,
-          members: {
+          GroupMember: {
             some: {
               userId,
             },
@@ -61,6 +62,7 @@ export class ChoreService {
     const chore = await this.prisma.$transaction(async (tx) => {
       const newChore = await tx.chore.create({
         data: {
+          id: randomUUID(),
           groupId: createChoreDto.groupId,
           createdBy: userId,
           title: createChoreDto.title,
@@ -75,6 +77,7 @@ export class ChoreService {
       // Create history entry for creation
       await tx.choreHistory.create({
         data: {
+          id: randomUUID(),
           choreId: newChore.id,
           action: 'created',
           userId,
@@ -88,17 +91,17 @@ export class ChoreService {
     const choreWithRelations = await this.prisma.chore.findUnique({
       where: { id: chore.id },
       include: {
-        group: {
+        Group: {
           select: {
             id: true,
             name: true,
           },
         },
-        createdByUser: {
+        User_Chore_createdByToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -106,11 +109,11 @@ export class ChoreService {
             },
           },
         },
-        assignedToUser: {
+        User_Chore_assignedToToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -127,7 +130,7 @@ export class ChoreService {
 
     // Notify assigned user if chore was created with assignment
     if (choreWithRelations.assignedTo && choreWithRelations.assignedTo !== userId) {
-      const creatorName = choreWithRelations.createdByUser.profile?.displayName || choreWithRelations.createdByUser.email;
+      const creatorName = choreWithRelations.User_Chore_createdByToUser.UserProfile?.displayName || choreWithRelations.User_Chore_createdByToUser.email;
       await this.notificationService.notifyChoreAssigned(
         choreWithRelations.assignedTo,
         choreWithRelations.id,
@@ -141,15 +144,15 @@ export class ChoreService {
     return choreWithRelations;
   }
 
-  async getChores(userId: string, groupId?: string) {
+  async getChores(userId: string, groupId?: string, limit: number = 50, offset: number = 0) {
     console.log('[ChoreService] Getting chores for user:', userId, 'groupId:', groupId);
     const where: any = {
       OR: [
         { createdBy: userId },
         { assignedTo: userId },
         {
-          group: {
-            members: {
+          Group: {
+            GroupMember: {
               some: {
                 userId,
               },
@@ -163,20 +166,21 @@ export class ChoreService {
       where.groupId = groupId;
     }
 
-    const chores = await this.prisma.chore.findMany({
-      where,
+    const [chores, total] = await Promise.all([
+      this.prisma.chore.findMany({
+        where,
       include: {
-        group: {
+        Group: {
           select: {
             id: true,
             name: true,
           },
         },
-        createdByUser: {
+        User_Chore_createdByToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -184,11 +188,11 @@ export class ChoreService {
             },
           },
         },
-        assignedToUser: {
+        User_Chore_assignedToToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -196,28 +200,30 @@ export class ChoreService {
             },
           },
         },
-        completions: {
+        ChoreCompletion: {
           orderBy: { completedAt: 'desc' },
           take: 1, // Latest completion
         },
       },
-      orderBy: [
-        { status: 'asc' }, // pending first, then assigned, then completed
-        { createdAt: 'desc' },
-      ],
-    });
+        orderBy: [
+          { status: 'asc' }, // pending first, then assigned, then completed
+          { createdAt: 'desc' },
+        ],
+        take: limit,
+        skip: offset,
+      }),
+      this.prisma.chore.count({ where }),
+    ]);
 
     console.log('[ChoreService] Found chores:', chores.length, 'for user:', userId);
-    chores.forEach(chore => {
-      console.log('[ChoreService] Chore:', {
-        id: chore.id,
-        createdBy: chore.createdBy,
-        assignedTo: chore.assignedTo,
-        title: chore.title,
-      });
-    });
 
-    return chores;
+    return {
+      chores,
+      total,
+      limit,
+      offset,
+      hasMore: offset + chores.length < total,
+    };
   }
 
   async getChoreById(userId: string, choreId: string) {
@@ -228,8 +234,8 @@ export class ChoreService {
           { createdBy: userId },
           { assignedTo: userId },
           {
-            group: {
-              members: {
+            Group: {
+              GroupMember: {
                 some: {
                   userId,
                 },
@@ -239,17 +245,17 @@ export class ChoreService {
         ],
       },
       include: {
-        group: {
+        Group: {
           select: {
             id: true,
             name: true,
           },
         },
-        createdByUser: {
+        User_Chore_createdByToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -257,11 +263,11 @@ export class ChoreService {
             },
           },
         },
-        assignedToUser: {
+        User_Chore_assignedToToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -269,13 +275,13 @@ export class ChoreService {
             },
           },
         },
-        completions: {
+        ChoreCompletion: {
           include: {
-            user: {
+            User: {
               select: {
                 id: true,
                 email: true,
-                profile: {
+                UserProfile: {
                   select: {
                     displayName: true,
                     avatarUrl: true,
@@ -304,8 +310,8 @@ export class ChoreService {
         OR: [
           { createdBy: userId },
           {
-            group: {
-              members: {
+            Group: {
+              GroupMember: {
                 some: {
                   userId,
                 },
@@ -359,15 +365,16 @@ export class ChoreService {
 
       // Create history entry
       await tx.choreHistory.create({
-        data: {
-          choreId,
-          action: 'assigned',
-          userId,
-          changes: {
-            before: { assignedTo: chore.assignedTo },
-            after: { assignedTo: assignToUserId },
+          data: {
+            id: randomUUID(),
+            choreId,
+            action: 'assigned',
+            userId,
+            changes: {
+              before: { assignedTo: chore.assignedTo },
+              after: { assignedTo: assignToUserId },
+            },
           },
-        },
       });
 
       return updatedChore;
@@ -377,17 +384,17 @@ export class ChoreService {
     const updatedWithRelations = await this.prisma.chore.findUnique({
       where: { id: choreId },
       include: {
-        group: {
+        Group: {
           select: {
             id: true,
             name: true,
           },
         },
-        createdByUser: {
+        User_Chore_createdByToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -395,11 +402,11 @@ export class ChoreService {
             },
           },
         },
-        assignedToUser: {
+        User_Chore_assignedToToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -412,7 +419,7 @@ export class ChoreService {
 
     // Notify assigned user
     if (assignToUserId !== userId && updatedWithRelations) {
-      const assignerName = updatedWithRelations.createdByUser.profile?.displayName || updatedWithRelations.createdByUser.email;
+      const assignerName = updatedWithRelations.User_Chore_createdByToUser.UserProfile?.displayName || updatedWithRelations.User_Chore_createdByToUser.email;
       await this.notificationService.notifyChoreAssigned(
         assignToUserId,
         updatedWithRelations.id,
@@ -435,8 +442,8 @@ export class ChoreService {
         assignedTo: null,
         OR: [
           {
-            group: {
-              members: {
+            Group: {
+              GroupMember: {
                 some: {
                   userId,
                 },
@@ -460,17 +467,17 @@ export class ChoreService {
         status: 'assigned',
       },
       include: {
-        group: {
+        Group: {
           select: {
             id: true,
             name: true,
           },
         },
-        createdByUser: {
+        User_Chore_createdByToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -478,11 +485,11 @@ export class ChoreService {
             },
           },
         },
-        assignedToUser: {
+        User_Chore_assignedToToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -527,6 +534,7 @@ export class ChoreService {
     const result = await this.prisma.$transaction(async (tx) => {
       const completion = await tx.choreCompletion.create({
         data: {
+          id: randomUUID(),
           choreId,
           userId,
           pointsEarned,
@@ -545,6 +553,7 @@ export class ChoreService {
       // Create history entry for completion
       await tx.choreHistory.create({
         data: {
+          id: randomUUID(),
           choreId,
           action: 'completed',
           userId,
@@ -565,17 +574,17 @@ export class ChoreService {
     const updatedChore = await this.prisma.chore.findUnique({
       where: { id: choreId },
       include: {
-        group: {
+        Group: {
           select: {
             id: true,
             name: true,
           },
         },
-        createdByUser: {
+        User_Chore_createdByToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -583,11 +592,11 @@ export class ChoreService {
             },
           },
         },
-        assignedToUser: {
+        User_Chore_assignedToToUser: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -595,13 +604,13 @@ export class ChoreService {
             },
           },
         },
-        completions: {
+        ChoreCompletion: {
           include: {
-            user: {
+            User: {
               select: {
                 id: true,
                 email: true,
-                profile: {
+                UserProfile: {
                   select: {
                     displayName: true,
                     avatarUrl: true,
@@ -621,7 +630,7 @@ export class ChoreService {
 
     // Notify creator when chore is completed (if creator is different from completer)
     if (updatedChore.createdBy !== userId) {
-      const completerName = updatedChore.assignedToUser?.profile?.displayName || updatedChore.assignedToUser?.email || 'Someone';
+      const completerName = updatedChore.User_Chore_assignedToToUser?.UserProfile?.displayName || updatedChore.User_Chore_assignedToToUser?.email || 'Someone';
       await this.notificationService.notifyChoreCompleted(
         updatedChore.createdBy,
         updatedChore.id,
@@ -634,7 +643,7 @@ export class ChoreService {
 
     // Notify creator when chore is completed (if creator is different from completer)
     if (updatedChore && updatedChore.createdBy !== userId) {
-      const completerName = updatedChore.assignedToUser?.profile?.displayName || updatedChore.assignedToUser?.email || 'Someone';
+      const completerName = updatedChore.User_Chore_assignedToToUser?.UserProfile?.displayName || updatedChore.User_Chore_assignedToToUser?.email || 'Someone';
       await this.notificationService.notifyChoreCompleted(
         updatedChore.createdBy,
         updatedChore.id,
@@ -659,8 +668,8 @@ export class ChoreService {
         OR: [
           { createdBy: userId },
           {
-            group: {
-              members: {
+            Group: {
+              GroupMember: {
                 some: {
                   userId,
                 },
@@ -670,11 +679,11 @@ export class ChoreService {
         ],
       },
       include: {
-        assignedToUser: {
+        User_Chore_assignedToToUser: {
           select: {
             id: true,
             email: true,
-            profile: { select: { displayName: true } },
+            UserProfile: { select: { displayName: true } },
           },
         },
       },
@@ -766,17 +775,17 @@ export class ChoreService {
         where: { id: choreId },
         data: updateData,
         include: {
-          group: {
+          Group: {
             select: {
               id: true,
               name: true,
             },
           },
-          createdByUser: {
+          User_Chore_createdByToUser: {
             select: {
               id: true,
               email: true,
-              profile: {
+              UserProfile: {
                 select: {
                   displayName: true,
                   avatarUrl: true,
@@ -784,11 +793,11 @@ export class ChoreService {
               },
             },
           },
-          assignedToUser: {
+          User_Chore_assignedToToUser: {
             select: {
               id: true,
               email: true,
-              profile: {
+              UserProfile: {
                 select: {
                   displayName: true,
                   avatarUrl: true,
@@ -803,6 +812,7 @@ export class ChoreService {
       if (Object.keys(changes).length > 0) {
         await tx.choreHistory.create({
           data: {
+            id: randomUUID(),
             choreId,
             action: 'updated',
             userId,
@@ -823,10 +833,10 @@ export class ChoreService {
         where: { id: userId },
         select: {
           email: true,
-          profile: { select: { displayName: true } },
+          UserProfile: { select: { displayName: true } },
         },
       });
-      const updaterDisplayName = updaterName?.profile?.displayName || updaterName?.email || 'Someone';
+      const updaterDisplayName = updaterName?.UserProfile?.displayName || updaterName?.email || 'Someone';
       
       await this.notificationService.notifyChoreAssigned(
         updateChoreDto.assignedTo,
@@ -849,11 +859,11 @@ export class ChoreService {
         createdBy: userId,
       },
       include: {
-        assignedToUser: {
+        User_Chore_assignedToToUser: {
           select: {
             id: true,
             email: true,
-            profile: { select: { displayName: true } },
+            UserProfile: { select: { displayName: true } },
           },
         },
       },
@@ -866,6 +876,7 @@ export class ChoreService {
     // Create history entry before deletion
     await this.prisma.choreHistory.create({
       data: {
+        id: randomUUID(),
         choreId,
         action: 'deleted',
         userId,
@@ -890,8 +901,8 @@ export class ChoreService {
           { createdBy: userId },
           { assignedTo: userId },
           {
-            group: {
-              members: {
+            Group: {
+              GroupMember: {
                 some: {
                   userId,
                 },
@@ -923,17 +934,17 @@ export class ChoreService {
           status: 'pending',
         },
         include: {
-          group: {
+          Group: {
             select: {
               id: true,
               name: true,
             },
           },
-          createdByUser: {
+          User_Chore_createdByToUser: {
             select: {
               id: true,
               email: true,
-              profile: {
+              UserProfile: {
                 select: {
                   displayName: true,
                   avatarUrl: true,
@@ -941,11 +952,11 @@ export class ChoreService {
               },
             },
           },
-          assignedToUser: {
+          User_Chore_assignedToToUser: {
             select: {
               id: true,
               email: true,
-              profile: {
+              UserProfile: {
                 select: {
                   displayName: true,
                   avatarUrl: true,
@@ -958,6 +969,7 @@ export class ChoreService {
 
       await tx.choreHistory.create({
         data: {
+          id: randomUUID(),
           choreId,
           action: 'unassigned',
           userId,
@@ -974,6 +986,75 @@ export class ChoreService {
     return updated;
   }
 
+  async getGroupPointsLeaderboard(userId: string, groupId: string) {
+    // Verify user is member of group
+    const group = await this.prisma.group.findFirst({
+      where: {
+        id: groupId,
+        GroupMember: {
+          some: {
+            userId,
+          },
+        },
+      },
+    });
+
+    if (!group) {
+      throw new NotFoundException('Group not found or you are not a member');
+    }
+
+    // Get all group members
+    const members = await this.prisma.groupMember.findMany({
+      where: { groupId },
+      include: {
+        User: {
+          include: {
+            UserProfile: {
+              select: {
+                displayName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Get total points for each member from chore completions in this group
+    const leaderboard = await Promise.all(
+      members.map(async (member) => {
+        const totalPoints = await this.prisma.choreCompletion.aggregate({
+          where: {
+            userId: member.userId,
+            Chore: {
+              groupId,
+            },
+          },
+          _sum: {
+            pointsEarned: true,
+          },
+        });
+
+        return {
+          userId: member.userId,
+          displayName: member.User.UserProfile?.displayName || member.User.email.split('@')[0],
+          avatarUrl: member.User.UserProfile?.avatarUrl || null,
+          totalPoints: totalPoints._sum?.pointsEarned || 0,
+          role: member.role,
+        };
+      }),
+    );
+
+    // Sort by points descending
+    leaderboard.sort((a, b) => b.totalPoints - a.totalPoints);
+
+    // Add rank
+    return leaderboard.map((entry, index) => ({
+      ...entry,
+      rank: index + 1,
+    }));
+  }
+
   async getChoreHistory(userId: string, choreId: string) {
     // Verify chore exists and user has permission
     const chore = await this.prisma.chore.findFirst({
@@ -983,8 +1064,8 @@ export class ChoreService {
           { createdBy: userId },
           { assignedTo: userId },
           {
-            group: {
-              members: {
+            Group: {
+              GroupMember: {
                 some: {
                   userId,
                 },
@@ -1003,11 +1084,11 @@ export class ChoreService {
     const history = await this.prisma.choreHistory.findMany({
       where: { choreId },
       include: {
-        user: {
+        User: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -1023,11 +1104,11 @@ export class ChoreService {
     const completions = await this.prisma.choreCompletion.findMany({
       where: { choreId },
       include: {
-        user: {
+        User: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -1057,7 +1138,7 @@ export class ChoreService {
         createdAt: h.createdAt,
         changes: h.changes,
         notes: h.notes,
-        user: h.user,
+        user: h.User,
       })),
       // Completion entries
       ...completions.map(c => ({
@@ -1067,7 +1148,7 @@ export class ChoreService {
         createdAt: c.completedAt,
         pointsEarned: c.pointsEarned,
         onTime: c.onTime,
-        user: c.user,
+        user: c.User,
       })),
     ];
 
@@ -1077,7 +1158,7 @@ export class ChoreService {
       select: {
         id: true,
         email: true,
-        profile: {
+        UserProfile: {
           select: {
             displayName: true,
             avatarUrl: true,

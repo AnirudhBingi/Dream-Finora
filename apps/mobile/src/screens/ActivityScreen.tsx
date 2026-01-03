@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
-import { getActivities, ActivityItem } from '../api/activityApi';
+import { getActivityFeed, ActivityItem } from '../api/activityApi';
 
 interface ActivityScreenProps {
   onBack: () => void;
@@ -35,8 +35,8 @@ export function ActivityScreen({ onBack, onViewExpense }: ActivityScreenProps) {
     try {
       setLoading(true);
       setError(null);
-      const activitiesData = await getActivities(token, 100);
-      setActivities(activitiesData);
+      const data = await getActivityFeed(token, 100, 0);
+      setActivities(data.activities);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load activities');
     } finally {
@@ -66,7 +66,7 @@ export function ActivityScreen({ onBack, onViewExpense }: ActivityScreenProps) {
   }
 
   function getUserDisplayName(activity: ActivityItem): string {
-    return activity.user.profile?.displayName || activity.user.email;
+    return activity?.user?.profile?.displayName || activity?.user?.email || 'Unknown';
   }
 
   function getActivityIcon(type: string, action: string): keyof typeof MaterialIcons.glyphMap {

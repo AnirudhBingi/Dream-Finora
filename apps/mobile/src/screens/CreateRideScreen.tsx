@@ -60,9 +60,17 @@ export function CreateRideScreen({
     try {
       setLoadingGroups(true);
       const groupsData = await getGroups(token);
-      setGroups(groupsData);
+      // Handle both array response and paginated response
+      let groupsList: Group[] = [];
+      if (Array.isArray(groupsData)) {
+        groupsList = groupsData;
+      } else if (groupsData && typeof groupsData === 'object') {
+        groupsList = (groupsData as any).groups || [];
+      }
+      setGroups(groupsList);
     } catch (err) {
       console.error('Failed to load groups:', err);
+      setGroups([]); // Set empty array on error
     } finally {
       setLoadingGroups(false);
     }
@@ -139,7 +147,7 @@ export function CreateRideScreen({
   }
 
   function getUserDisplayName(member: GroupMember): string {
-    return member.user.profile?.displayName || member.user.email;
+    return member?.user?.profile?.displayName || member?.user?.email || 'Unknown';
   }
 
   return (
@@ -299,7 +307,7 @@ export function CreateRideScreen({
                       None
                     </Text>
                   </TouchableOpacity>
-                  {groups.map((group) => (
+                  {groups && Array.isArray(groups) && groups.map((group) => (
                     <TouchableOpacity
                       key={group.id}
                       style={[
@@ -334,18 +342,18 @@ export function CreateRideScreen({
                 <View style={styles.passengerList}>
                   {members.map((member) => (
                     <TouchableOpacity
-                      key={member.user.id}
+                      key={member?.user?.id}
                       style={[
                         styles.passengerChip,
-                        selectedPassengerIds.includes(member.user.id) &&
+                        selectedPassengerIds.includes(member?.user?.id || '') &&
                           styles.passengerChipSelected,
                       ]}
-                      onPress={() => togglePassenger(member.user.id)}
+                      onPress={() => togglePassenger(member?.user?.id || '')}
                     >
                       <Text
                         style={[
                           styles.passengerChipText,
-                          selectedPassengerIds.includes(member.user.id) &&
+                          selectedPassengerIds.includes(member?.user?.id || '') &&
                             styles.passengerChipTextSelected,
                         ]}
                       >

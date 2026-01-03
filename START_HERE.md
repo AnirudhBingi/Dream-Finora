@@ -8,59 +8,41 @@ This is your **daily command center**. Use these prompts every day to keep every
 
 ## 📋 Your Daily Prompts
 
-### 🌅 START OF DAY (Copy this when you begin work)
+### 🌅 START OF DAY (Say this when you begin work)
 
+Simply type:
 ```
-START OF DAY - Day XX
+START OF DAY - Day 80-81
 
-Please:
-1. Review my progress from yesterday (check `docs/DAILY_LOGS/DAY_YY.md`)
-2. Check if there are any unresolved issues in docs/ISSUES/
-3. Update docs/DAILY_LOGS/DAY_0XX.md with today's goals:
-   - If Day 1-40: from DEVELOPMENT_ROADMAP.md (historical)
-   - If Day 41+: from DEVELOPMENT_ROADMAP_COMPREHENSIVE.md (current)
-4. Check docs/PROGRESS.md and tell me current project status
-5. Show me today's planned tasks:
-   - If Day 1-40: from DEVELOPMENT_ROADMAP.md
-   - If Day 41+: from DEVELOPMENT_ROADMAP_COMPREHENSIVE.md
-6. Check for any blockers from yesterday that need attention
-7. Confirm all documentation is in order
-```
 
-**Important:** Our files use zero-padding: Day 1 = `DAY_01.md`, Day 2 = `DAY_02.md`, etc.
-**Fill in:** `XX` = today, `YY` = yesterday.
+- Review yesterday's progress
+- Check for unresolved issues
+- Update/create today's daily log with goals from roadmap
+- Show current project status
+- Present today's planned tasks
+- Identify blockers
+- Remind you about relevant SOP documents to reference
+- Get you ready to start work
 
 ---
 
-### 🌇 END OF DAY (Copy this when you finish work)
+### 🌇 END OF DAY (Say this when you finish work)
 
+Simply type:
 ```
 END OF DAY - Day XX
-
-Please:
-1. Review what I accomplished today
-2. Update docs/DAILY_LOGS/DAY_0XX.md with:
-   - All completed tasks
-   - Any issues encountered (create issue docs if significant)
-   - Solutions found
-   - Decisions made (create ADR if significant)
-   - Time spent
-   - Code changes summary
-   - Tomorrow's goals
-   - Cross-check: what we planned vs what we did:
-     * If Day 1-40: from DEVELOPMENT_ROADMAP.md Day XX section
-     * If Day 41+: from DEVELOPMENT_ROADMAP_COMPREHENSIVE.md Day XX section
-3. Update docs/PROGRESS.md with progress made
-4. Update docs/CHANGELOG.md if there were significant changes
-5. Create ISSUE docs for any bugs/problems encountered
-6. Create ADR docs for any significant decisions made
-7. Review all open issues and suggest fixes
-8. Give me a summary of today's progress
-9. List any blockers or concerns
-10. Confirm everything is documented and committed
 ```
-
-**Replace `XX` with your actual day number**
+- Review what was accomplished today
+- Update today's daily log with all completed tasks
+- Create issue docs for any bugs encountered
+- Create ADR docs for significant decisions
+- Update PROGRESS.md
+- Update CHANGELOG.md if needed
+- Cross-check completed work against roadmap
+- Update roadmap checkmarks for completed tasks
+- Provide a summary of progress
+- List blockers or concerns
+- Remind you to commit changes
 
 ---
 
@@ -83,10 +65,8 @@ Please:
 ## 🎯 Your First Day
 
 1. **Open this file:** `START_HERE.md` (you're here!)
-2. **Copy the START OF DAY prompt** (above)
-3. **Replace `XX` with `01`**
-4. **Paste it to me**
-5. **I'll help you get organized**
+2. **Type:** `START OF DAY - Day 01`
+3. **The AI will automatically organize everything for you!**
 
 ---
 
@@ -99,14 +79,14 @@ For issues, decisions, status checks, and weekly reviews, see:
 
 ## 🗂️ Quick Links
 
-- **Current Roadmap:** [DEVELOPMENT_ROADMAP_COMPREHENSIVE.md](./DEVELOPMENT_ROADMAP_COMPREHENSIVE.md) (Days 41-110)
-- **Historical Roadmap:** [DEVELOPMENT_ROADMAP.md](./DEVELOPMENT_ROADMAP.md) (Days 1-40, completed)
-- **Roadmap Summary:** [ROADMAP_SUMMARY.md](./ROADMAP_SUMMARY.md)
+- **Current Roadmap:** [SOP/DEVELOPMENT_ROADMAP_COMPREHENSIVE.md](./SOP/DEVELOPMENT_ROADMAP_COMPREHENSIVE.md) (Days 41-110)
+- **Historical Roadmap:** [SOP/DEVELOPMENT_ROADMAP.md](./SOP/DEVELOPMENT_ROADMAP.md) (Days 1-40, completed)
+- **Roadmap Summary:** [SOP/ROADMAP_SUMMARY.md](./SOP/ROADMAP_SUMMARY.md)
 - **All SOP Docs:** [SOP/README.md](./SOP/README.md)
 - **Daily Logs:** [docs/DAILY_LOGS/README.md](./docs/DAILY_LOGS/README.md)
 - **Progress Tracker:** [docs/PROGRESS.md](./docs/PROGRESS.md)
 
 ---
 
-**Remember: Just copy the prompts and paste them to me. I'll handle all the documentation updates automatically!**
+**Remember: Just type the simple prompts (e.g., "START OF DAY - Day 69"). The AI will handle all the documentation updates automatically!**
 

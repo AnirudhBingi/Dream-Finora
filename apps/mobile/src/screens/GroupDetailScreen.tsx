@@ -13,12 +13,16 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
 import { getGroupById, getGroupBalances, GroupWithExpenses, BalanceInfo } from '../api/groupApi';
 import { createExpense, CreateExpenseDto } from '../api/expenseApi';
+import { SkeletonDetailScreen } from '../components/SkeletonLoader';
+import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
 
 interface GroupDetailScreenProps {
   groupId: string;
   onCreateExpense: () => void;
   onBack: () => void;
   onSettings?: (groupId: string) => void;
+  onAddMember?: (groupId: string) => void;
+  onNavigateToUserProfile?: (userId: string) => void;
 }
 
 export function GroupDetailScreen({
@@ -26,6 +30,8 @@ export function GroupDetailScreen({
   onCreateExpense,
   onBack,
   onSettings,
+  onAddMember,
+  onNavigateToUserProfile,
 }: GroupDetailScreenProps) {
   const { token, user } = useAuth();
   const [group, setGroup] = useState<GroupWithExpenses | null>(null);
@@ -51,7 +57,7 @@ export function GroupDetailScreen({
       setGroup(groupData);
       setBalances(balancesData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load circle');
+      setError(getUserFriendlyErrorMessage(err));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -66,13 +72,18 @@ export function GroupDetailScreen({
   }
 
   function getUserDisplayName(user: any): string {
-    return user.profile?.displayName || user.email;
+    if (!user) return 'Unknown';
+    return user.profile?.displayName || user.email || 'Unknown';
   }
 
   function isUserAdmin(): boolean {
     if (!group || !user) return false;
+    // Creator is always an admin
+    if (group.createdBy === user.id) return true;
+    // Check if user is in members array with ADMIN role
+    if (!group.members || !Array.isArray(group.members)) return false;
     const member = group.members.find(m => m.userId === user.id);
-    return member?.role === 'ADMIN' || group.createdBy === user.id;
+    return member?.role === 'ADMIN';
   }
 
   function isUserCreator(): boolean {
@@ -82,10 +93,18 @@ export function GroupDetailScreen({
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
-          <Text style={styles.loadingText}>Loading circle...</Text>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={onBack}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Circle Details</Text>
+          <View style={styles.placeholder} />
         </View>
+        <SkeletonDetailScreen />
       </SafeAreaView>
     );
   }
@@ -93,12 +112,18 @@ export function GroupDetailScreen({
   if (!group) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error || 'Circle not found'}</Text>
-          <TouchableOpacity style={styles.backButton} onPress={onBack}>
-            <Text style={styles.backButtonText}>← Back</Text>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={onBack}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
           </TouchableOpacity>
+          <Text style={styles.headerTitle}>Circle Details</Text>
+          <View style={styles.placeholder} />
         </View>
+        <ErrorState message={error || 'Circle not found'} onRetry={loadGroupData} />
       </SafeAreaView>
     );
   }
@@ -122,7 +147,7 @@ export function GroupDetailScreen({
               <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
             </TouchableOpacity>
             <View style={styles.headerActions}>
-              {isUserAdmin() && onSettings && (
+              {onSettings && (
                 <TouchableOpacity
                   style={styles.settingsButton}
                   onPress={() => onSettings(groupId)}
@@ -148,7 +173,7 @@ export function GroupDetailScreen({
               <Text style={styles.groupDescription}>{group.description}</Text>
             )}
             <Text style={styles.groupMembers}>
-              {group.members.length} member{group.members.length !== 1 ? 's' : ''}
+              {group.members?.length || 0} member{(group.members?.length || 0) !== 1 ? 's' : ''}
             </Text>
           </View>
 
@@ -203,20 +228,65 @@ export function GroupDetailScreen({
           })()}
 
           <View style={styles.membersSection}>
+            <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Members</Text>
-            {group.members.map((member) => (
-              <View key={member.id} style={styles.memberRow}>
+              {isUserAdmin() && onAddMember && (
+                <TouchableOpacity
+                  style={styles.addMemberButton}
+                  onPress={() => onAddMember(groupId)}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons name="person-add" size={18} color="#2563EB" />
+                  <Text style={styles.addMemberButtonText}>Add Member</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {(!group.members || group.members.length === 0) ? (
+              <View style={styles.emptyMembersContainer}>
+                <MaterialIcons name="people-outline" size={48} color="#9CA3AF" />
+                <Text style={styles.emptyMembersText}>No members yet</Text>
+                <Text style={styles.emptyMembersSubtext}>
+                  {isUserAdmin() 
+                    ? 'Add members to start splitting bills together'
+                    : 'Members will appear here once added'}
+                </Text>
+                {isUserAdmin() && onAddMember && (
+                  <TouchableOpacity
+                    style={styles.emptyAddButton}
+                    onPress={() => onAddMember(groupId)}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialIcons name="person-add" size={20} color="#FFFFFF" />
+                    <Text style={styles.emptyAddButtonText}>Add Your First Member</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : (
+              (group.members || []).map((member) => {
+              const isCurrentUser = member.userId === user?.id;
+              return (
+                <TouchableOpacity
+                  key={member.id}
+                  style={styles.memberRow}
+                  onPress={() => {
+                    if (!isCurrentUser && onNavigateToUserProfile) {
+                      onNavigateToUserProfile(member.userId);
+                    }
+                  }}
+                  activeOpacity={isCurrentUser ? 1 : 0.7}
+                  disabled={isCurrentUser}
+                >
                 <View style={styles.memberInfo}>
                   <View style={styles.memberAvatar}>
                     <Text style={styles.memberAvatarText}>
-                      {getUserDisplayName(member.user).charAt(0).toUpperCase()}
+                        {(getUserDisplayName(member.user) || 'U').charAt(0).toUpperCase()}
                     </Text>
                   </View>
                   <View style={styles.memberDetails}>
                 <Text style={styles.memberName}>
-                      {member.userId === user?.id ? 'You' : getUserDisplayName(member.user)}
+                        {isCurrentUser ? 'You' : getUserDisplayName(member.user)}
                 </Text>
-                    <Text style={styles.memberEmail}>{member.user.email}</Text>
+                      <Text style={styles.memberEmail}>{member.user?.email || 'No email'}</Text>
                   </View>
                 </View>
                 <View style={styles.memberBadges}>
@@ -233,13 +303,14 @@ export function GroupDetailScreen({
                     </View>
                 )}
                 </View>
-              </View>
-            ))}
+                </TouchableOpacity>
+              );
+            }))}
           </View>
 
             <Text style={styles.sectionTitle}>Circle Billchops</Text>
 
-          {group.expenses.length === 0 ? (
+          {(!group.expenses || group.expenses.length === 0) ? (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>No billchops yet</Text>
               <Text style={styles.emptySubtext}>
@@ -253,7 +324,7 @@ export function GroupDetailScreen({
               </TouchableOpacity>
             </View>
           ) : (
-            group.expenses.map((expense) => (
+            (group.expenses || []).map((expense) => (
               <View key={expense.id} style={styles.expenseCard}>
                 <View style={styles.expenseHeader}>
                   <Text style={styles.expenseDescription}>
@@ -264,7 +335,7 @@ export function GroupDetailScreen({
                   </Text>
                 </View>
                 <View style={styles.splitsContainer}>
-                  {expense.splits.map((split) => (
+                  {(expense.splits || []).map((split) => (
                     <View key={split.id} style={styles.splitRow}>
                       <Text style={styles.splitUser}>
                         {getUserDisplayName(split.user)}
@@ -452,11 +523,67 @@ const styles = StyleSheet.create({
   membersSection: {
     marginBottom: 24, // lg: 24px
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16, // md: 16px
+  },
   sectionTitle: {
     fontSize: 24, // H2: 24px
     fontWeight: '600', // Semi-bold
     color: '#111827', // Gray-900
-    marginBottom: 16, // md: 16px
+  },
+  addMemberButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#2563EB',
+  },
+  addMemberButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#2563EB',
+  },
+  emptyMembersContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  emptyMembersText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#374151',
+    marginTop: 16,
+  },
+  emptyMembersSubtext: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  emptyAddButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#2563EB',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  emptyAddButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#FFFFFF',
   },
   memberRow: {
     flexDirection: 'row',

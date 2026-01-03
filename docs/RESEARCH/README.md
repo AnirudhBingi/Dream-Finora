@@ -28,7 +28,7 @@ This directory contains research and analysis on market-leading apps, focused on
 ## Research Status
 
 ✅ **Research Complete** - Findings have been incorporated into:
-- `DEVELOPMENT_ROADMAP_COMPREHENSIVE.md` - Roadmap structure
+- `SOP/DEVELOPMENT_ROADMAP_COMPREHENSIVE.md` - Roadmap structure
 - `SOP/FEATURE_SPECIFICATIONS.md` - Feature specifications
 - `FEATURE_GAP_ANALYSIS.md` - Gap identification
 

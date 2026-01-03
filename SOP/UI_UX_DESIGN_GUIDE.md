@@ -492,6 +492,42 @@ Step 2: Split
 
 ---
 
+## Feature Naming
+
+**All user-facing features use friendly, memorable names instead of technical terms.**
+
+### Core Feature Names
+- **Billchop** - Expense splitting feature (not "Expenses")
+- **My Space** - User profile (not "Profile")
+- **Circles** - Groups (not "Groups")
+- **My Wallet** - Personal Finance (not "Finance")
+- **Chore Board** - Chore management (not "Chores")
+- **Ride Pool** - Rideshare feature (not "Rides")
+- **Market** - Listings/marketplace (not "Listings")
+- **Messages** - Messaging feature (not "Chat")
+- **Insights** - Personal Finance Analytics (not "Analytics")
+- **Billchop Analytics** - Split Expense Analytics
+
+### Screen Titles & Navigation
+All navigation labels, screen titles, buttons, and user-facing text should use these feature names:
+- Home screen navigation: `Billchop`, `My Space`, `Circles`, `My Wallet`, `Chore Board`, `Ride Pool`, `Market`, `Messages`
+- Screen titles: "Chop a bill", "New Circle", "My Wallet", "Chore Board", etc.
+- Empty states: "No bills in Billchop", "No circles yet", etc.
+
+### Implementation Notes
+1. All user-facing text should use these names
+2. Internal code can still use technical names (expense, profile, etc.)
+3. Keep consistency across all screens
+4. Use feature names in:
+   - Home screen buttons
+   - Screen titles
+   - Navigation labels
+   - Empty states
+   - Error messages
+   - Help text
+
+---
+
 ## Design Inspiration (What We Learn From)
 
 ### Good Patterns to Adopt:

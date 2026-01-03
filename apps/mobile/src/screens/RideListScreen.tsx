@@ -11,12 +11,19 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/authContext';
 import { getRides, Ride } from '../api/rideApi';
+import { Header } from '../components/Header';
+import { SkeletonRideList } from '../components/SkeletonLoader';
+import { EmptyState } from '../components/EmptyState';
+import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
 
 interface RideListScreenProps {
   onCreateRide: () => void;
   onViewRide: (rideId: string) => void;
   onBack: () => void;
   groupId?: string;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export function RideListScreen({
@@ -24,6 +31,9 @@ export function RideListScreen({
   onViewRide,
   onBack,
   groupId,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: RideListScreenProps) {
   const { token, user } = useAuth();
   const [rides, setRides] = useState<Ride[]>([]);
@@ -44,7 +54,7 @@ export function RideListScreen({
       const ridesData = await getRides(token, groupId);
       setRides(ridesData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load rides');
+      setError(getUserFriendlyErrorMessage(err));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -52,7 +62,8 @@ export function RideListScreen({
   }
 
   function getUserDisplayName(user: Ride['driver']): string {
-    return user.profile?.displayName || user.email;
+    if (!user) return 'Unknown';
+    return user?.profile?.displayName || user?.email || 'Unknown';
   }
 
   function formatDate(dateString: string): string {
@@ -71,16 +82,29 @@ export function RideListScreen({
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
-          <Text style={styles.loadingText}>Loading rides...</Text>
-        </View>
+        <Header
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
+        <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+          <View style={styles.content}>
+            <SkeletonRideList count={5} />
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      {/* Fixed Header */}
+      <Header
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
+
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
@@ -89,14 +113,8 @@ export function RideListScreen({
         }
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
+          {/* Action Button - moved from header */}
+          <View style={styles.actionButtonsContainer}>
             <TouchableOpacity
               style={styles.createButton}
               onPress={onCreateRide}
@@ -132,8 +150,8 @@ export function RideListScreen({
 
           {rides.map((ride) => {
             const isDriver = ride.driverId === user?.id;
-            const isParticipant = ride.participants.some((p) => p.userId === user?.id);
-            const participantCount = ride.participants.length;
+            const isParticipant = (ride.participants || []).some((p) => p.userId === user?.id);
+            const participantCount = (ride.participants || []).length;
 
             return (
               <TouchableOpacity
@@ -198,23 +216,13 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24, // lg: 24px
-    // No paddingTop - SafeAreaView handles top spacing
+    paddingTop: 16, // md: 16px
   },
-  header: {
+  actionButtonsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'center',
-    marginBottom: 16, // md: 16px
-  },
-  backButton: {
-    paddingVertical: 8, // sm: 8px
-    paddingHorizontal: 4, // xs: 4px
-    minHeight: 44, // Touch target
-  },
-  backButtonText: {
-    fontSize: 16, // Body: 16px
-    color: '#2563EB', // Primary Blue
-    fontWeight: '500', // Medium
+    marginBottom: 24,
   },
   createButton: {
     backgroundColor: '#2563EB', // Primary Blue

@@ -2,66 +2,117 @@
 
 ## Quick Reference
 
-Copy and paste these prompts to me at the start and end of each day. This ensures all documentation stays updated and organized.
+**These prompts are instructions for the AI assistant.** Simply type them when you start or finish work. The AI will handle all documentation updates automatically.
 
 ---
 
 ## 🌅 START OF DAY PROMPT
 
-Copy this and paste it to me when you start working:
+When the user sends you "START OF DAY - Day XX", you should:
 
 ```
 START OF DAY - Day XX
 
-Please:
-1. Review my progress from yesterday (check `docs/DAILY_LOGS/DAY_YY.md`)
-2. Check if there are any unresolved issues in docs/ISSUES/
-3. Update `docs/DAILY_LOGS/DAY_0XX.md` with today's goals:
-   - If Day 1-40: from DEVELOPMENT_ROADMAP.md
-   - If Day 41+: from DEVELOPMENT_ROADMAP_COMPREHENSIVE.md
-4. Check docs/PROGRESS.md and tell me current project status
-5. Show me today's planned tasks:
-   - If Day 1-40: from DEVELOPMENT_ROADMAP.md
-   - If Day 41+: from DEVELOPMENT_ROADMAP_COMPREHENSIVE.md
-6. Check for any blockers from yesterday that need attention
-7. Confirm all documentation is in order
-8. If today involves UI work, remind me to reference SOP/UI_UX_DESIGN_GUIDE.md
-9. If today involves feature implementation, remind me to reference SOP/FEATURE_SPECIFICATIONS.md
+When you receive this prompt, automatically:
+
+1. Review yesterday's progress by reading `docs/DAILY_LOGS/DAY_YY.md` (where YY = yesterday's day number)
+
+2. Check for unresolved issues by reviewing files in `docs/ISSUES/` directory
+
+3. Read today's goals from the appropriate roadmap:
+   - If Day 1-40: Read from `SOP/DEVELOPMENT_ROADMAP.md`
+   - If Day 41+: Read from `SOP/DEVELOPMENT_ROADMAP_COMPREHENSIVE.md`
+   
+4. Create or update `docs/DAILY_LOGS/DAY_0XX.md` (zero-padded) with:
+   - Today's date
+   - Goals extracted from the roadmap
+   - Status: 🟡 IN PROGRESS
+
+5. Read `docs/PROGRESS.md` and provide a summary of current project status
+
+6. Present today's planned tasks from the roadmap in a clear, organized format
+
+7. Identify any blockers mentioned in yesterday's log that need attention
+
+8. Verify documentation structure is in order
+
+9. Check today's tasks and proactively remind about relevant SOP docs:
+   - If UI work is involved: Mention "Remember to reference SOP/UI_UX_DESIGN_GUIDE.md"
+   - If feature implementation: Mention "Remember to reference SOP/FEATURE_SPECIFICATIONS.md"
+   - If database work: Mention "Reference SOP/DATABASE_SETUP.md if needed"
+   - If technical decisions: Mention "Reference SOP/TECHNICAL_ROADMAP.md if needed"
+
+10. Provide a clear, actionable summary to get started
 ```
 
-**Important:** Our daily log filenames are zero-padded: Day 1 = `DAY_01.md`, Day 2 = `DAY_02.md`, etc.  
-Fill in: `XX` = today, `YY` = yesterday.
+**Note:** Daily log filenames are zero-padded: Day 1 = `DAY_01.md`, Day 69 = `DAY_69.md`, etc.
 
 ---
 
 ## 🌇 END OF DAY PROMPT
 
-Copy this and paste it to me when you finish working:
+When the user sends you "END OF DAY - Day XX", you should:
 
 ```
 END OF DAY - Day XX
 
-Please:
-1. Review what I accomplished today
-2. Update `docs/DAILY_LOGS/DAY_0XX.md` with:
-   - All completed tasks
-   - Any issues encountered (create issue docs if significant)
-   - Solutions found
-   - Decisions made (create ADR if significant)
-   - Time spent
-   - Code changes summary
-   - Tomorrow's goals
-   - Cross-check: what we planned vs what we did:
-     * If Day 1-40: from DEVELOPMENT_ROADMAP.md Day XX section
-     * If Day 41+: from DEVELOPMENT_ROADMAP_COMPREHENSIVE.md Day XX section
-3. Update docs/PROGRESS.md with progress made
-4. Update docs/CHANGELOG.md if there were significant changes
-5. Create ISSUE docs for any bugs/problems encountered
-6. Create ADR docs for any significant decisions made
-7. Review all open issues and suggest fixes
-8. Give me a summary of today's progress
-9. List any blockers or concerns
-10. Confirm everything is documented and committed
+When you receive this prompt, automatically:
+
+1. Review the conversation history to identify what was accomplished today
+
+2. Update `docs/DAILY_LOGS/DAY_0XX.md` (zero-padded) with:
+   - Change status from 🟡 IN PROGRESS to ✅ COMPLETED (or ❌ BLOCKED if applicable)
+   - Mark completed tasks with checkboxes [x]
+   - Document all completed tasks in detail
+   - List any issues encountered (create new files in docs/ISSUES/ if significant)
+   - Document solutions found during the day
+   - Note any decisions made (create ADR in docs/DECISIONS/ if significant)
+   - Ask user for time spent (if not already mentioned)
+   - Summarize code changes (files modified, new files created)
+   - Extract tomorrow's goals from roadmap
+   - Cross-check completed work against roadmap:
+     * If Day 1-40: Compare with SOP/DEVELOPMENT_ROADMAP.md Day XX section
+     * If Day 41+: Compare with SOP/DEVELOPMENT_ROADMAP_COMPREHENSIVE.md Day XX section
+
+3. Update roadmap checkmarks in the appropriate roadmap file:
+   - Read the Day XX section from the roadmap (SOP/DEVELOPMENT_ROADMAP.md for Days 1-40, SOP/DEVELOPMENT_ROADMAP_COMPREHENSIVE.md for Days 41+)
+   - Mark ALL completed tasks with [x] checkmarks
+   - Add ✅ symbols to completed checklist items
+   - Update status indicators (✅ COMPLETED, 🟡 IN PROGRESS, etc.) if applicable
+   - Ensure backend tasks, mobile tasks, and checklist items are all marked appropriately
+   - This ensures the roadmap accurately reflects what has been implemented
+
+4. Update `docs/PROGRESS.md`:
+   - Mark the current day as completed
+   - Update progress percentages if applicable
+   - Add any new features completed to the feature list
+
+5. Update `docs/CHANGELOG.md` if there were significant changes:
+   - New features added
+   - Breaking changes
+   - Major bug fixes
+   - Important updates
+
+6. Create issue documentation in `docs/ISSUES/` for any bugs or problems encountered:
+   - Use ISSUE-XXX naming format
+   - Follow the template structure
+   - Include reproduction steps and solutions
+
+7. Create ADR (Architecture Decision Record) in `docs/DECISIONS/` for significant decisions:
+   - Use ADR-XXX naming format
+   - Document context, decision, and consequences
+
+8. Review all open issues in `docs/ISSUES/` and suggest fixes or next steps
+
+9. Provide a comprehensive summary including:
+   - What was accomplished
+   - Key achievements
+   - Progress made
+   - Any blockers or concerns
+
+10. List blockers or concerns that need attention tomorrow
+
+11. Confirm all documentation has been updated (daily log, progress, roadmap checkmarks) and remind user to commit changes
 ```
 
 ---
@@ -164,8 +215,8 @@ Please show me:
 4. Evening: Use **END OF DAY** prompt
 
 **Note:** 
-- Days 1-40 use `DEVELOPMENT_ROADMAP.md` (already completed)
-- Days 41+ use `DEVELOPMENT_ROADMAP_COMPREHENSIVE.md` (current roadmap)
+- Days 1-40 use `SOP/DEVELOPMENT_ROADMAP.md` (already completed)
+- Days 41+ use `SOP/DEVELOPMENT_ROADMAP_COMPREHENSIVE.md` (current roadmap)
 - See `ROADMAP_SUMMARY.md` for quick overview of comprehensive roadmap
 
 ### Weekly
@@ -177,16 +228,16 @@ Please show me:
 
 - Always use the exact prompts above (copy/paste)
 - Fill in Day XX with actual day number (zero-padded: DAY_01, DAY_02, etc.)
-- Days 1-40: Reference `DEVELOPMENT_ROADMAP.md` (completed)
-- Days 41+: Reference `DEVELOPMENT_ROADMAP_COMPREHENSIVE.md` (current)
+- Days 1-40: Reference `SOP/DEVELOPMENT_ROADMAP.md` (completed)
+- Days 41+: Reference `SOP/DEVELOPMENT_ROADMAP_COMPREHENSIVE.md` (current)
 - Be specific in your descriptions
 - Include error messages when reporting issues
 - I'll handle all documentation updates automatically
 
 ## 📚 Key Reference Documents
 
-- **Current Roadmap:** `DEVELOPMENT_ROADMAP_COMPREHENSIVE.md` (Days 41-110)
-- **Historical Roadmap:** `DEVELOPMENT_ROADMAP.md` (Days 1-40, completed)
+- **Current Roadmap:** `SOP/DEVELOPMENT_ROADMAP_COMPREHENSIVE.md` (Days 41-110)
+- **Historical Roadmap:** `SOP/DEVELOPMENT_ROADMAP.md` (Days 1-40, completed)
 - **Quick Overview:** `ROADMAP_SUMMARY.md`
 - **Feature Specs:** `SOP/FEATURE_SPECIFICATIONS.md`
 - **UI/UX Guide:** `SOP/UI_UX_DESIGN_GUIDE.md`
@@ -194,5 +245,5 @@ Please show me:
 
 ---
 
-**Remember: Just copy the prompts and paste them to me. I'll handle the rest!**
+**Remember: These are instructions for the AI assistant. You just need to type the simple prompt (e.g., "START OF DAY - Day 69") and the AI will handle everything!**
 

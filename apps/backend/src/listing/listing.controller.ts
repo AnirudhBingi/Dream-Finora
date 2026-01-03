@@ -47,11 +47,17 @@ export class ListingController {
     @Query('type') type?: ListingType,
     @Query('status') status?: ListingStatus,
     @Query('search') search?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
   ) {
+    const limitNum = limit ? parseInt(limit, 10) : 50;
+    const offsetNum = offset ? parseInt(offset, 10) : 0;
     return this.listingService.getListings(user.userId, {
       type,
       status,
       search,
+      limit: limitNum,
+      offset: offsetNum,
     });
   }
 
@@ -99,6 +105,16 @@ export class ListingController {
     @Param('id') id: string,
   ) {
     return this.listingService.deleteListing(user.userId, id);
+  }
+
+  @Put(':id')
+  @HttpCode(HttpStatus.OK)
+  async updateListing(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Body() updateListingDto: CreateListingDto,
+  ) {
+    return this.listingService.updateListing(user.userId, id, updateListingDto);
   }
 
   @Post(':id/images')
@@ -150,6 +166,62 @@ export class ListingController {
 
     // Update listing with new images
     return this.listingService.addListingImages(user.userId, id, imageUrls);
+  }
+
+  @Post(':id/favorite')
+  @HttpCode(HttpStatus.OK)
+  async toggleFavorite(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+  ) {
+    return this.listingService.toggleFavorite(user.userId, id);
+  }
+
+  @Get('favorites')
+  async getFavorites(@CurrentUser() user: { userId: string }) {
+    return this.listingService.getFavorites(user.userId);
+  }
+
+  @Get(':id/comments')
+  async getComments(@Param('id') id: string) {
+    return this.listingService.getComments(id);
+  }
+
+  @Post(':id/comments')
+  @HttpCode(HttpStatus.CREATED)
+  async addComment(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Body('content') content: string,
+  ) {
+    return this.listingService.addComment(user.userId, id, content);
+  }
+
+  @Put(':id/comments/:commentId')
+  @HttpCode(HttpStatus.OK)
+  async editComment(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Param('commentId') commentId: string,
+    @Body('content') content: string,
+  ) {
+    return this.listingService.editComment(user.userId, id, commentId, content);
+  }
+
+  @Delete(':id/comments/:commentId')
+  @HttpCode(HttpStatus.OK)
+  async deleteComment(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Param('commentId') commentId: string,
+  ) {
+    return this.listingService.deleteComment(user.userId, id, commentId);
+  }
+
+  @Post(':id/share')
+  @HttpCode(HttpStatus.OK)
+  async generateShareLink(@Param('id') id: string) {
+    return this.listingService.generateShareLink(id);
   }
 }
 

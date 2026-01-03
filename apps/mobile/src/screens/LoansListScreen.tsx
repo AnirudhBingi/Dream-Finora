@@ -13,6 +13,9 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
 import { getLoans, Loan } from '../api/financeApi';
 import { getProfile } from '../api/profileApi';
+import { SkeletonLoanList } from '../components/SkeletonLoader';
+import { EmptyState } from '../components/EmptyState';
+import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
 
 interface LoansListScreenProps {
   context: 'local' | 'home';
@@ -74,7 +77,7 @@ export function LoansListScreen({
       const data = await getLoans(token, context, status);
       setLoans(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load loans');
+      setError(getUserFriendlyErrorMessage(err));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -87,7 +90,13 @@ export function LoansListScreen({
   }, []);
 
   function formatCurrency(amount: number | undefined | null): string {
-    if (amount === undefined || amount === null || isNaN(amount)) return '$0.00';
+    if (amount === undefined || amount === null || isNaN(amount)) {
+      const displayCurrency = context === 'local' ? primaryCurrency : homeCountryCurrency;
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: displayCurrency,
+      }).format(0);
+    }
     const displayCurrency = context === 'local' ? primaryCurrency : homeCountryCurrency;
     return new Intl.NumberFormat('en-US', {
       style: 'currency',

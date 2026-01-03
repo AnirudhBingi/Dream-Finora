@@ -13,6 +13,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
 import { getLoanById, Loan, deleteLoan, updateLoan } from '../api/financeApi';
 import { getProfile } from '../api/profileApi';
+import { SkeletonDetailScreen } from '../components/SkeletonLoader';
+import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
 
 interface LoanDetailScreenProps {
   loanId: string;
@@ -170,20 +172,32 @@ export function LoanDetailScreen({
     );
   }
 
-  if (loading || !loan) {
+  if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.loadingContainer}>
-          {loading && <ActivityIndicator size="large" color="#2563EB" />}
-          <Text style={styles.loadingText}>
-            {loading ? 'Loading loan...' : 'Loan not found'}
-          </Text>
-          {!loading && (
-            <TouchableOpacity style={styles.backButton} onPress={onBack}>
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-          )}
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
+            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Loan Details</Text>
+          <View style={styles.placeholder} />
         </View>
+        <SkeletonDetailScreen />
+      </SafeAreaView>
+    );
+  }
+
+  if (!loan) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
+            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Loan Details</Text>
+          <View style={styles.placeholder} />
+        </View>
+        <ErrorState message={error || 'Loan not found'} onRetry={loadLoan} />
       </SafeAreaView>
     );
   }

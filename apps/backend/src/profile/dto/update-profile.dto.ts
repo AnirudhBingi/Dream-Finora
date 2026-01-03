@@ -1,4 +1,4 @@
-import { IsString, IsOptional, MaxLength, Length } from 'class-validator';
+import { IsString, IsOptional, MaxLength, Length, IsBoolean, IsIn } from 'class-validator';
 
 export class UpdateProfileDto {
   @IsOptional()
@@ -20,6 +20,46 @@ export class UpdateProfileDto {
   @IsString()
   @Length(3, 3)
   homeCountryCurrency?: string;
+
+  // Notification preferences
+  @IsOptional()
+  @IsBoolean()
+  notificationsEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  emailNotifications?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  pushNotifications?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  expenseReminders?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  choreReminders?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  messageNotifications?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  listingNotifications?: boolean;
+
+  // Privacy settings
+  @IsOptional()
+  @IsString()
+  @IsIn(['public', 'friends', 'private'])
+  profileVisibility?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['public', 'friends', 'private'])
+  trustScoreVisibility?: string;
 }
 
 

@@ -24,6 +24,8 @@
     "npm": ">=9.0.0"
   },
   "author": "Anirudh B",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "expo-notifications": "^0.32.15"
+  }
 }
-

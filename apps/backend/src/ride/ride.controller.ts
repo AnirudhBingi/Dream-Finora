@@ -3,6 +3,8 @@ import {
   Get,
   Post,
   Put,
+  Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -12,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { RideService } from './ride.service';
 import { CreateRideDto } from './dto/create-ride.dto';
+import { UpdateRideDto } from './dto/update-ride.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 
@@ -52,6 +55,33 @@ export class RideController {
     @Param('id') id: string,
   ) {
     return this.rideService.joinRide(user.userId, id);
+  }
+
+  @Patch(':id')
+  @HttpCode(HttpStatus.OK)
+  async updateRide(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Body() updateRideDto: UpdateRideDto,
+  ) {
+    return this.rideService.updateRide(user.userId, id, updateRideDto);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.OK)
+  async deleteRide(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+  ) {
+    return this.rideService.deleteRide(user.userId, id);
+  }
+
+  @Get(':id/history')
+  async getRideHistory(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+  ) {
+    return this.rideService.getRideHistory(user.userId, id);
   }
 }
 

@@ -88,8 +88,14 @@ This document provides detailed specifications for all features in Dream Finora.
 **Technical Requirements:**
 - Profile data in `UserProfile` table
 - Image upload to S3/Cloudinary
-- Privacy settings (who can see profile)
+- Privacy settings (who can see profile, trust score visibility)
+- Backend endpoint: `GET /profile/:userId` for other user's profile
+- Privacy enforcement (profile visibility, trust score visibility)
+- Mutual friends calculation
+- Listings count (public only)
+- Shared groups count
 - Real-time score updates
+- Navigation from all user name locations throughout app
 
 **Design Considerations:**
 - Score displayed prominently but not intimidating
@@ -112,11 +118,12 @@ This document provides detailed specifications for all features in Dream Finora.
    - Formula: `(onTimeRate * 0.5 + recencyBonus * 0.3 + volumeBonus * 0.2) * 40`
 
 2. **Chore Score (30% weight)**
-   - Completion rate
-   - On-time completion rate
-   - Points earned
-   - Voluntarily taken tasks (bonus)
-   - Formula: `(completionRate * 0.4 + onTimeRate * 0.3 + pointsBonus * 0.3) * 30`
+   - Completion rate (35%): Percentage of assigned chores completed
+   - On-time completion rate (25%): Percentage of chores completed before deadline
+   - Points earned (20%): Normalized total points (1000+ points = 1.0)
+   - Streak bonus (10%): Current consecutive day streak (30+ days = 1.0)
+   - Achievements bonus (10%): Percentage of achievements unlocked (12 total achievements)
+   - Formula: `(completionRate * 0.35 + onTimeRate * 0.25 + pointsBonus * 0.20 + streakBonus * 0.10 + achievementsBonus * 0.10) * 30`
 
 3. **Community Score (30% weight)**
    - Listings created
@@ -208,10 +215,12 @@ This document provides detailed specifications for all features in Dream Finora.
 **Description:** Create groups for shared expenses (roommates, friends, trips).
 
 **Features:**
-- Create group with name, description, avatar
-- Edit group (name, description, avatar) - admin only
+- Create group with name, description, icon (12 predefined icons)
+- Edit group (name, description, icon) - admin only
 - Delete group - admin only, with confirmation
-- Add/remove members (from friends list or by email)
+- Add/remove members (from friends list, by email, or by mobile number)
+- Invite members by email or mobile number (even if not registered users)
+- Group invitation system (invite, accept, decline)
 - Set roles (admin, member)
 - Change member roles (admin can promote/demote)
 - Transfer group ownership
@@ -223,6 +232,7 @@ This document provides detailed specifications for all features in Dream Finora.
 - Group history (member additions/removals, role changes, expenses/chores)
 - View group detail screen
 - Group settings screen
+- Add group member screen (with tabs for friends and email/phone invitation)
 
 **User Stories:**
 - As a user, I want to create a "Roommates" group
@@ -237,10 +247,13 @@ This document provides detailed specifications for all features in Dream Finora.
 
 **Technical Requirements:**
 - `Group` and `GroupMember` tables
+- `GroupInvitation` table (groupId, senderId, recipientId, email, mobileNumber, token, status, expiresAt)
 - `GroupHistory` table for tracking changes
 - Permission system (who can add expenses, edit group)
 - Cascade handling on group deletion (expenses, chores remain but group reference removed)
-- Notification on member addition/removal, role changes
+- Notification on member addition/removal, role changes, invitations
+- Email/SMS service integration for group invitations
+- Deep linking support for group invitation acceptance
 - Group chat integration (future)
 
 ---
@@ -341,18 +354,84 @@ This document provides detailed specifications for all features in Dream Finora.
 
 ### 3.2 Chore Scoring Integration
 
-**Description:** Chore completions contribute to trust score.
+**Description:** Chore completions contribute to trust score (30% of total reliability score).
 
 **Scoring Factors:**
-- Completion rate (did they do assigned chores?)
-- On-time completion (before deadline)
-- Voluntary grabs (taking unassigned tasks)
-- Points earned (activity level)
+
+1. **Completion Rate (35% of chore score)**
+   - Measures reliability: Did the user complete assigned chores?
+   - Formula: `completedChores / assignedChores`
+   - Range: 0.0 to 1.0
+   - Example: 8 out of 10 chores completed = 0.8 (80%)
+
+2. **On-Time Rate (25% of chore score)**
+   - Measures punctuality: Were chores completed before deadline?
+   - Formula: `onTimeCompletions / totalCompletions`
+   - Range: 0.0 to 1.0
+   - Example: 7 out of 8 completions on time = 0.875 (87.5%)
+
+3. **Points Bonus (20% of chore score)**
+   - Measures activity level: Total points earned from chore completions
+   - Formula: `min(totalPoints / 1000, 1.0)`
+   - Range: 0.0 to 1.0
+   - Example: 500 points = 0.5, 1000+ points = 1.0
+
+4. **Streak Bonus (10% of chore score)**
+   - Measures consistency: Consecutive days with at least one completion
+   - Formula: `min(currentStreak / 30, 1.0)`
+   - Range: 0.0 to 1.0
+   - Example: 15-day streak = 0.5, 30+ day streak = 1.0
+   - Encourages daily engagement and habit formation
+
+5. **Achievements Bonus (10% of chore score)**
+   - Measures progress: Percentage of achievements unlocked
+   - Total achievements: 12
+     - First Steps (1 completion)
+     - Getting Started (10 completions)
+     - Dedicated Helper (50 completions)
+     - Chore Master (100 completions)
+     - Point Collector (100 points)
+     - Point Champion (500 points)
+     - Point Legend (1000 points)
+     - On a Roll (3-day streak)
+     - Week Warrior (7-day streak)
+     - Monthly Master (30-day streak)
+     - Perfect Timing (10+ chores all on time)
+   - Formula: `unlockedAchievements / 12`
+   - Range: 0.0 to 1.0
+   - Example: 6 achievements unlocked = 0.5 (50%)
+
+**Chore Score Calculation:**
+```
+rawChoreScore = (
+  completionRate * 0.35 +
+  onTimeRate * 0.25 +
+  pointsBonus * 0.20 +
+  streakBonus * 0.10 +
+  achievementsBonus * 0.10
+) * 100
+
+finalChoreScore = rawChoreScore * 0.30  // 30% weight in total trust score
+```
+
+**Score Updates:**
+- Automatically recalculated when a chore is completed
+- Updated via `TrustScoreService.updateChoreScore(userId)`
+- Score history tracked for transparency
+- Real-time updates visible in user profile
 
 **Technical Requirements:**
 - Recalculate user score on chore completion
-- Cache scores for performance
-- Show chore contribution to total score
+- Cache scores for performance (recalculated daily)
+- Show chore contribution breakdown in profile
+- Track score history for user transparency
+- Handle edge cases (no assigned chores, no completions, etc.)
+
+**Edge Cases:**
+- User with no assigned chores: Uses all completions for points/streak/achievements
+- User with no completions: All factors = 0, raw score = 0
+- User with only grabbed chores: Completion rate = 0, but other factors still count
+- Streak calculation: Handles timezone and date boundaries correctly
 
 ---
 
@@ -507,76 +586,185 @@ This document provides detailed specifications for all features in Dream Finora.
 
 ### 6.1 Multi-Currency Finance
 
-**Description:** Manage finances in multiple currencies (local + home country).
+**Description:** Simplified finance tracking with direct transaction management in multiple currencies (local + home country). No account management required - users simply record income and expenses.
 
 **Features:**
-- Create accounts (local and home) with currency
-- Edit account (name, currency) - currency change triggers balance conversion
-- Delete account (validation: cannot delete if has transactions)
-- Each account has its own currency
-- Transactions in account's currency
+- Create transactions directly (income or expense) with context (local/home)
+- Edit transaction (amount, category, description, date, context)
+- Delete transaction (with confirmation)
+- Transactions track context (local or home country)
+- Currency is determined by context (primaryCurrency for local, homeCountryCurrency for home)
 - Edit transaction (amount, category, description, date)
-- Delete transaction (with confirmation, recalculates account balance)
-- Total balance view (converted to primary currency)
-- Set primary currency (in settings)
+- Delete transaction (with confirmation)
+- Total balance view (calculated from transactions, converted to primary currency for combined view)
+- Set primary currency and home country currency (in settings)
 - Currency conversion service (real-time rates)
 - Historical rates for past transactions
-- Account balance history tracking
 - Transaction history (creation, edits, deletions)
+- Balance over time tracking (calculated from transactions)
 
 **User Stories:**
 - As an international student, I want to track USD expenses and INR income
 - As a user, I want to see my total balance in my local currency
-- As a user, I want real-time currency conversion
-- As a user, I want to set my primary currency preference
+- As a user, I want real-time currency conversion for combined view
+- As a user, I want to set my primary currency and home country currency preferences
 - As a user, I want to edit a transaction if I made a mistake
 - As a user, I want to delete a transaction if it was incorrect
-- As a user, I want to see my account balance history over time
+- As a user, I want to track finances separately for local and home country contexts
 
 **Technical Requirements:**
 - Currency conversion API (ExchangeRate-API or fixer.io)
 - Cache exchange rates (update hourly)
-- `FinanceAccount` and `FinanceTransaction` tables
-- `UserSettings` table with primaryCurrency field
-- `TransactionHistory` table for tracking changes
-- Calculation: Convert all balances to primary currency for display
-- Store original currency with transactions
+- `FinanceTransaction` table (direct user reference, no accounts required)
+  - `userId` field (direct reference)
+  - `context` field (local/home)
+  - `accountId` field (optional, for backward compatibility only)
+- `UserProfile` table with `primaryCurrency` and `homeCountryCurrency` fields
+- Balance calculated from transactions (sum of income - sum of expenses per context)
+- Combined balance with currency conversion
+- Store original currency context with transactions (determined by context)
 - Use historical rates for past transactions (preserve original value)
 
 **Currency Support:**
 - All major currencies (USD, EUR, GBP, INR, etc.)
 - Historical rates for past transactions (preserve original value)
 - Manual rate override (if needed, for edge cases)
-- Currency picker in expense creation and account creation
+- Currency picker in transaction creation (determined by context)
 - Currency indicators throughout UI
 
+**Note:** Accounts were removed in Day 57 simplification. Finance now uses a simple transaction-based model where users directly record income and expenses without managing accounts.
+
 ---
 
-### 6.2 Budgets & Goals
+### 6.2 Budget Management
 
-**Description:** Set budgets, financial goals, and reminders.
+**Description:** Comprehensive budget management with tracking, period-based budgets, and context support.
 
 **Features:**
-- Create budgets by category (food, transport, etc.)
-- Set monthly/yearly budgets
-- Track spending vs. budget
-- Create savings goals
-- Set reminders for bills/recurring expenses
+- Create budgets (name, amount, period, category, context)
+- Edit budgets (all fields editable)
+- Delete budgets (with confirmation)
+- Period-based budgets (weekly, monthly, yearly, custom)
+- Category-based budgets (food, transport, entertainment, etc.)
+- Budget tracking (automatic spending calculation)
+- Budget performance analytics (adherence rate, budgets exceeded)
+- Context support (local/home country finances)
+- Budget warnings when approaching or exceeding limits
+- Visual progress indicators (progress bars, color coding)
 
 **User Stories:**
-- As a user, I want to set a $500/month food budget
-- As a user, I want to save $5000 for a trip
-- As a user, I want reminders for my rent payment
+- As a user, I want to set a $500/month food budget for my local expenses
+- As a user, I want to see how much I've spent vs. my budget
+- As a user, I want warnings when I'm approaching my budget limit
+- As a user, I want to track budgets separately for local and home country finances
+- As a user, I want to edit or delete a budget if my situation changes
 
 **Technical Requirements:**
-- `Budget` and `Goal` tables
-- Real-time budget tracking
-- Notification system for reminders
-- Separate budgets for local and home finances
+- `Budget` model with context, period, category, amount fields
+- `BudgetTracking` model for period-based tracking
+- Budget CRUD endpoints (Create, Read, Update, Delete)
+- Budget tracking service (automatic spending calculation)
+- Budget performance analytics (adherence rate calculation)
+- Real-time budget tracking (updates on transaction creation/edit/deletion)
+- Budget linking to transactions (optional budgetId field)
+- Currency support (budgets use context currency - primaryCurrency for local, homeCountryCurrency for home)
+- API Endpoints:
+  - `POST /finance/budgets` - Create budget
+  - `GET /finance/budgets` - List budgets (filter by context)
+  - `GET /finance/budgets/:id` - Get budget details
+  - `PUT /finance/budgets/:id` - Update budget
+  - `DELETE /finance/budgets/:id` - Delete budget
+  - `GET /finance/budgets/:id/tracking` - Get budget tracking
 
 ---
 
-### 6.3 Privacy
+### 6.3 Financial Goals
+
+**Description:** Set and track financial goals with progress monitoring and contributions.
+
+**Features:**
+- Create goals (name, target amount, category, priority, deadline, context)
+- Edit goals (all fields editable)
+- Delete goals (with confirmation)
+- Goal categories (savings, debt, purchase, investment)
+- Priority levels (low, medium, high)
+- Track progress with contributions
+- Goal progress calculation (percentage complete)
+- Goal progress analytics (completion rate)
+- Context support (local/home country finances)
+- Visual progress indicators (progress bars)
+- Pre-fill support (from advisor recommendations)
+
+**User Stories:**
+- As a user, I want to save $5000 for a trip (savings goal)
+- As a user, I want to track my progress toward my goal
+- As a user, I want to add contributions to my goal
+- As a user, I want to see how close I am to completing my goal
+- As a user, I want to set goals for both my local and home country finances
+
+**Technical Requirements:**
+- `FinancialGoal` model with context, category, priority, targetAmount, currentAmount fields
+- `GoalContribution` model for tracking contributions
+- Goal CRUD endpoints (Create, Read, Update, Delete)
+- Goal contribution endpoint (`POST /finance/goals/:id/contribute`)
+- Goal progress calculation (currentAmount / targetAmount)
+- Goal analytics (completion rate, progress percentage)
+- Goal linking to transactions (optional goalId field)
+- Currency support (goals use context currency - primaryCurrency for local, homeCountryCurrency for home)
+- API Endpoints:
+  - `POST /finance/goals` - Create goal
+  - `GET /finance/goals` - List goals (filter by context)
+  - `GET /finance/goals/:id` - Get goal details
+  - `PUT /finance/goals/:id` - Update goal
+  - `DELETE /finance/goals/:id` - Delete goal
+  - `POST /finance/goals/:id/contribute` - Add contribution
+
+---
+
+### 6.4 Loans Management
+
+**Description:** Track and manage loans with payment tracking and progress monitoring.
+
+**Features:**
+- Create loans (name, principal amount, interest rate, term, start date, context)
+- Edit loans (all fields editable)
+- Delete loans (with confirmation)
+- Track loan payments
+- EMI calculation
+- Remaining amount tracking
+- Loan summary analytics (total loans, remaining, progress)
+- Context support (local/home country finances)
+- Visual progress indicators (progress bars)
+- Suggested payment amount support (from advisor recommendations)
+
+**User Stories:**
+- As a user, I want to track my student loan with payments
+- As a user, I want to see my remaining loan balance
+- As a user, I want to record loan payments
+- As a user, I want to see how much I've paid off
+- As a user, I want to track loans for both local and home country finances
+
+**Technical Requirements:**
+- `Loan` model with context, principalAmount, interestRate, term, remainingAmount fields
+- `LoanPayment` model for tracking payments
+- Loan CRUD endpoints (Create, Read, Update, Delete)
+- Loan payment recording endpoint (`POST /finance/loans/:id/payments`)
+- EMI calculation (principal * (interestRate / 12) / (1 - (1 + interestRate / 12)^(-term)))
+- Remaining amount tracking (principal - sum of payments)
+- Loan summary analytics (total loans, total remaining, progress)
+- Loan linking to transactions (optional loanId field)
+- Currency support (loans use context currency - primaryCurrency for local, homeCountryCurrency for home)
+- API Endpoints:
+  - `POST /finance/loans` - Create loan
+  - `GET /finance/loans` - List loans (filter by context)
+  - `GET /finance/loans/:id` - Get loan details
+  - `PUT /finance/loans/:id` - Update loan
+  - `DELETE /finance/loans/:id` - Delete loan
+  - `POST /finance/loans/:id/payments` - Record payment
+
+---
+
+### 6.5 Privacy
 
 **Description:** Personal finance section is completely private.
 
@@ -620,39 +808,96 @@ This document provides detailed specifications for all features in Dream Finora.
 
 ### 7.2 Personal Finance Analytics
 
-**Description:** Insights for personal finance (private).
+**Description:** Comprehensive analytics and insights for personal finance (private).
 
 **Features:**
-- Spending patterns
-- Income vs. expenses
-- Budget progress
-- Savings rate
-- Financial health score (0-100)
-
-**Financial Health Score:**
-- Based on: savings rate, budget adherence, debt-to-income, emergency fund
-- Updated monthly
-- Suggestions for improvement
+- Context-based analytics (local/home/combined views)
+- Income vs. expenses analysis (with savings rate calculation)
+- Spending by category (pie chart data)
+- Monthly trends (spending over time, line charts)
+- Balance over time (calculated from transactions, shows balance trends)
+- Budget performance summary (adherence rate, budgets exceeded)
+- Goals progress summary (completion rate, progress percentage)
+- Loan summary (total loans, remaining, progress)
+- Currency conversion for combined view
+- Date range filtering
+- Visual charts and graphs
 
 **User Stories:**
-- As a user, I want to see my financial health score
-- As a user, I want to understand my spending patterns
-- As a user, I want predictions about future spending
+- As a user, I want to see my spending patterns by category
+- As a user, I want to see if I'm spending more this month
+- As a user, I want to see my income vs. expenses with savings rate
+- As a user, I want to see my budget performance
+- As a user, I want to see my goals progress
+- As a user, I want to see my loan summary
+- As a user, I want to view analytics separately for local and home finances
+- As a user, I want a combined view with currency conversion
+
+**Technical Requirements:**
+- Context-based analytics endpoints:
+  - `GET /finance/analytics/local` - Local finance analytics
+  - `GET /finance/analytics/home` - Home country finance analytics
+  - `GET /finance/analytics/combined` - Combined analytics with currency conversion
+- Analytics include:
+  - Income vs expenses with savings rate
+  - Spending by category (pie chart data)
+  - Monthly trends (spending over time)
+  - Balance over time
+  - Budget performance summary
+  - Goals progress summary
+  - Loan summary
+- Chart library (recharts or Victory)
+- Currency conversion for combined view
+- Date range filtering support
 
 ---
 
-## 8. AI Financial Coach
+## 8. AI-Powered Financial Advisor
 
-### 8.1 Personalized Coaching
+### 8.1 Personalized Recommendations
 
-**Description:** AI-powered financial coaching based on user data.
+**Description:** AI-powered financial advisor providing personalized recommendations, health score, and actionable insights.
 
 **Features:**
-- Analyze spending patterns
-- Identify problem areas
-- Suggest improvements
-- Provide educational content
-- Answer financial questions
+- Financial health score (0-100) with detailed breakdown:
+  - Budget adherence score
+  - Goal progress score
+  - Savings rate score
+  - Debt-to-income ratio
+  - Emergency fund score
+- Personalized recommendations based on:
+  - Budget adherence analysis
+  - Goal progress analysis
+  - Spending patterns
+  - Savings rate
+  - Debt analysis
+  - Emergency fund status
+- Trends analysis (spending, income, savings over time)
+- Projections (budget burn rate, goal completion timeline, emergency fund target)
+- Actionable insights with navigation to relevant screens
+- Context support (local/home/combined)
+- Deep linking from recommendations to relevant screens
+- Pre-filled data support for goal creation and loan payments
+
+**User Stories:**
+- As a user, I want to see my financial health score with breakdown
+- As a user, I want personalized recommendations to improve my finances
+- As a user, I want to see trends in my spending and savings
+- As a user, I want projections for my goals and budgets
+- As a user, I want actionable insights I can act on immediately
+- As a user, I want to navigate directly to relevant screens from recommendations
+
+**Technical Requirements:**
+- `FinancialAdvisorService` with recommendation engine
+- Financial health score calculation (0-100) with breakdown
+- Recommendation engine analyzing user financial data
+- Trends calculation (spending, income, savings over time)
+- Projections calculation (budget burn rate, goal completion, emergency fund target)
+- API Endpoints:
+  - `GET /finance/advisor/recommendations` - Get personalized recommendations
+  - `GET /finance/advisor/health-score` - Get financial health score
+- Context support (local/home/combined)
+- Deep linking support for navigation
 
 **User Stories:**
 - As a user, I want to know if I'm spending too much on food
@@ -817,17 +1062,22 @@ This document provides detailed specifications for all features in Dream Finora.
 **Description:** Social connections system for building trusted networks.
 
 **Features:**
-- Add friend (search by email or display name)
-- Send friend request
+- Add friend (search by email, mobile number, or display name)
+- Send friend request (by email or mobile number)
 - Accept/reject friend request
 - Remove/unfriend
 - Block user (prevents friend requests, messages)
+- Unblock user (restore ability to interact)
+- View blocked users list
 - Friends list screen
 - Friend requests screen (incoming/outgoing)
+- Blocked users screen
 - Mutual friends calculation
 - Friend search (with privacy controls)
 - Friend selection in expense/chore creation
 - Friend profiles (view trust score, mutual friends, listings count)
+- Invite non-users to app (by email or mobile number)
+- User invitation system with deep linking
 
 **User Stories:**
 - As a user, I want to add friends from my contacts or by searching
@@ -840,11 +1090,15 @@ This document provides detailed specifications for all features in Dream Finora.
 
 **Technical Requirements:**
 - `Friend` table (userId, friendId, status, timestamps)
-- Friend endpoints (request, accept, reject, remove, block, list, search)
+- `UserInvitation` table (invitedBy, email, mobileNumber, token, status, expiresAt)
+- Friend endpoints (request, accept, reject, remove, block, unblock, list, search, invite)
+- User invitation endpoints (invite, get by token, accept)
 - Mutual friends calculation (SQL query or algorithm)
 - Privacy controls (who can find me, who can send friend requests)
 - Friend notifications (request received, accepted, removed)
 - Friend search with privacy respect
+- Email/SMS service integration (SendGrid, Twilio) for app invitations
+- Deep linking support for invitation acceptance
 
 ---
 
@@ -916,6 +1170,9 @@ This document provides detailed specifications for all features in Dream Finora.
 - Privacy enforcement (backend checks)
 - Data export service (generate JSON/CSV)
 - Account deletion cascade (handle all user data)
+- User invitation endpoints (invite, get by token, accept)
+- Email/SMS service integration for invitations
+- Deep linking support for registration with invitation tokens
 
 ---
 
@@ -955,8 +1212,7 @@ This document provides detailed specifications for all features in Dream Finora.
 
 **Finance History:**
 - Transaction history (creation, edits, deletions)
-- Account balance history (over time)
-- Account creation/edit/deletion
+- Balance over time (calculated from transactions per context)
 
 **Message History:**
 - Edit history (message edits within time limit)
@@ -988,18 +1244,50 @@ This document provides detailed specifications for all features in Dream Finora.
 
 **Phase 1: Complete Core Features**
 1. ✅ User authentication & profiles
+   - ✅ Own profile screen (ProfileScreen)
+   - ✅ Other user's profile screen (UserProfileScreen) with privacy controls
+   - ✅ Navigation from all user name locations throughout app
+   - ✅ Mutual friends calculation and display
 2. ✅ Trust score system (complete)
+   - ✅ Chore score includes streak and achievements (Day 67)
+   - ✅ Enhanced calculation with 5 factors (Day 67)
+   - ✅ Trust score breakdown with privacy controls
 3. ✅ Basic expense splitting + Complete settlement flow
 4. ✅ Groups (complete with management)
+   - ✅ Group creation with icon picker (12 predefined icons)
+   - ✅ Group member management (add, remove, change role, transfer ownership)
+   - ✅ Group invitation system (invite by email/mobile, accept/decline)
+   - ✅ Add members by email or mobile number
+   - ✅ Invite non-registered users to groups
 5. ✅ Friends system (complete)
+   - ✅ Friend requests by email or mobile number
+   - ✅ Block/unblock users
+   - ✅ View blocked users list
+   - ✅ Invite non-users to app (by email/mobile)
+   - ✅ User invitation system with deep linking
+   - ✅ Auto-accept invitations after registration
 6. ✅ Settings screen (complete)
+   - ✅ Invite friends to app functionality
 7. ✅ Chore management (complete with gamification)
+   - ✅ Gamification UI (stats, achievements, streaks) - Day 67
+   - ✅ Notification preferences - Day 67
+   - ✅ Trust score integration - Day 67
 8. ✅ Listings (complete with interactions)
+   - ✅ Edit listing comments
 9. ✅ Messaging (1-on-1, complete with edit/delete)
 10. ✅ Personal finance (multi-currency support)
 11. ✅ Notifications (complete system)
+    - ✅ Group invitation notifications
+    - ✅ User invitation notifications
 12. ✅ History tracking (all features)
 13. ✅ Analytics (basic)
+14. ✅ Camera capture integration
+    - ✅ Image picker utility with camera support
+    - ✅ Integrated in all image upload screens
+15. ✅ Email/SMS service integration
+    - ✅ SendGrid for email invitations
+    - ✅ Twilio for SMS invitations
+    - ✅ Deep linking for invitation acceptance
 
 **Phase 2: Enhancements & Polish - Days 71-85**
 14. Complete notification system (push, email)
@@ -1035,6 +1323,47 @@ This document provides detailed specifications for all features in Dream Finora.
 
 ---
 
-*Last Updated: December 2025*  
+*Last Updated: January 2025*  
 *Aligned with DEVELOPMENT_ROADMAP_COMPREHENSIVE.md*
+
+## Recent Implementations (January 2025)
+
+### User Profile Navigation
+- ✅ UserProfileScreen for viewing other users' profiles
+- ✅ Navigation from all user name locations (12+ screens)
+- ✅ Privacy-controlled profile visibility
+- ✅ Mutual friends calculation and display
+- ✅ Friend action buttons (Add/Remove/Accept/Reject/Block)
+
+### Group Invitation System
+- ✅ Invite members by email or mobile number
+- ✅ Invite non-registered users (creates app invitation)
+- ✅ Group invitation acceptance/decline flow
+- ✅ GroupInvitationScreen for handling invitations
+- ✅ Email/SMS integration for sending invitations
+
+### User Invitation System
+- ✅ Invite non-users to app by email or mobile number
+- ✅ UserInvitationScreen for handling app invitations
+- ✅ Deep linking support for registration with invitation tokens
+- ✅ Auto-accept invitations after registration
+- ✅ Pre-fill email/mobile in registration form
+
+### Email/SMS Service Integration
+- ✅ SendGrid integration for email invitations
+- ✅ Twilio integration for SMS invitations
+- ✅ HTML email templates for invitations
+- ✅ Fallback to console logging if services not configured
+- ✅ Free tier support (100 emails/day, $15.50 SMS credit)
+
+### Group Management Enhancements
+- ✅ Group icon picker (12 predefined icons)
+- ✅ Member selection during group creation
+- ✅ Enhanced AddGroupMemberScreen with invitation tabs
+- ✅ Group settings screen with member management
+
+### Friend Management Enhancements
+- ✅ Block/unblock users functionality
+- ✅ View blocked users list
+- ✅ Invite non-users to app from Settings and FriendSearchScreen
 

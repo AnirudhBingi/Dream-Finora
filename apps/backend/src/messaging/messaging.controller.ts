@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Put,
+  Delete,
   Body,
   Param,
   Query,
@@ -54,6 +56,37 @@ export class MessagingController {
       otherUserId,
       sendMessageDto?.content,
     );
+  }
+
+  @Put('conversations/:chatId/messages/:messageId')
+  @HttpCode(HttpStatus.OK)
+  async editMessage(
+    @CurrentUser() user: { userId: string },
+    @Param('chatId') chatId: string,
+    @Param('messageId') messageId: string,
+    @Body('content') content: string,
+  ) {
+    return this.messagingService.editMessage(user.userId, chatId, messageId, content);
+  }
+
+  @Delete('conversations/:chatId/messages/:messageId')
+  @HttpCode(HttpStatus.OK)
+  async deleteMessage(
+    @CurrentUser() user: { userId: string },
+    @Param('chatId') chatId: string,
+    @Param('messageId') messageId: string,
+  ) {
+    return this.messagingService.deleteMessage(user.userId, chatId, messageId);
+  }
+
+  @Put('conversations/:chatId/messages/:messageId/read')
+  @HttpCode(HttpStatus.OK)
+  async markMessageAsRead(
+    @CurrentUser() user: { userId: string },
+    @Param('chatId') chatId: string,
+    @Param('messageId') messageId: string,
+  ) {
+    return this.messagingService.markMessageAsRead(user.userId, chatId, messageId);
   }
 }
 

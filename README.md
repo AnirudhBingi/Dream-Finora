@@ -19,9 +19,9 @@ Dream Finora is a comprehensive, socially interconnected **mobile application** 
 ## Project Status
 
 **Current Phase:** Phase 1 - Complete Core Features (Days 41-70)  
-**Overall Progress:** 36% (40/110 days)  
-**Next Steps:** Day 41-42: Expense Settlement Flow  
-**See:** `docs/PROGRESS.md` for detailed progress and `DEVELOPMENT_ROADMAP_COMPREHENSIVE.md` for the current roadmap
+**Overall Progress:** 61% (67/110 days)  
+**Next Steps:** Day 68-69: Personal Finance CRUD Operations  
+**See:** `docs/PROGRESS.md` for detailed progress and `SOP/DEVELOPMENT_ROADMAP_COMPREHENSIVE.md` for the current roadmap
 
 ---
 
@@ -46,9 +46,9 @@ Dream Finora is a comprehensive, socially interconnected **mobile application** 
 ### 🚀 Getting Started
 - **[START_HERE.md](./START_HERE.md)** - ⭐ Your daily workflow guide (READ THIS FIRST!)
 - **[Day 1 Setup Guide](./SOP/DAY_1_SETUP.md)** - Initial environment setup
-- **[Development Roadmap](./DEVELOPMENT_ROADMAP_COMPREHENSIVE.md)** - Current day-by-day development plan (Days 41-110)
-- **[Roadmap Summary](./ROADMAP_SUMMARY.md)** - Quick overview of roadmap
-- **[Historical Roadmap](./DEVELOPMENT_ROADMAP.md)** - Days 1-40 (completed, historical reference)
+- **[Development Roadmap](./SOP/DEVELOPMENT_ROADMAP_COMPREHENSIVE.md)** - Current day-by-day development plan (Days 41-110)
+- **[Roadmap Summary](./SOP/ROADMAP_SUMMARY.md)** - Quick overview of roadmap
+- **[Historical Roadmap](./SOP/DEVELOPMENT_ROADMAP.md)** - Days 1-40 (completed, historical reference)
 - **[Database Setup](./SOP/DATABASE_SETUP.md)** - PostgreSQL setup with Docker (for Day 4)
 - **[Quick Reference](./SOP/QUICK_REFERENCE.md)** - Common commands and troubleshooting
 

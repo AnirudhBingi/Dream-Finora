@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { randomUUID } from 'crypto';
 
 export enum NotificationType {
   EXPENSE_ADDED = 'expense_added',
@@ -15,8 +16,12 @@ export enum NotificationType {
   FRIEND_ACCEPTED = 'friend_accepted',
   MESSAGE_RECEIVED = 'message_received',
   LISTING_INTEREST = 'listing_interest',
+  LISTING_COMMENTED = 'listing_commented',
+  LISTING_FAVORITED = 'listing_favorited',
   RIDE_CREATED = 'ride_created',
   RIDE_JOINED = 'ride_joined',
+  RIDE_UPDATED = 'ride_updated',
+  RIDE_CANCELLED = 'ride_cancelled',
 }
 
 export interface CreateNotificationDto {
@@ -32,8 +37,48 @@ export class NotificationService {
   constructor(private prisma: PrismaService) {}
 
   async createNotification(dto: CreateNotificationDto) {
+    // Check user notification preferences
+    const profile = await this.prisma.userProfile.findUnique({
+      where: { userId: dto.userId },
+      select: {
+        notificationsEnabled: true,
+        emailNotifications: true,
+        pushNotifications: true,
+        expenseReminders: true,
+        choreReminders: true,
+        messageNotifications: true,
+        listingNotifications: true,
+      },
+    });
+
+    // If notifications are disabled globally, don't create notification
+    if (profile && profile.notificationsEnabled === false) {
+      return null;
+    }
+
+    // Check type-specific preferences
+    if (profile) {
+      const typeMap: Record<string, keyof NonNullable<typeof profile>> = {
+        [NotificationType.EXPENSE_ADDED]: 'expenseReminders',
+        [NotificationType.EXPENSE_UPDATED]: 'expenseReminders',
+        [NotificationType.EXPENSE_DELETED]: 'expenseReminders',
+        [NotificationType.EXPENSE_SETTLED]: 'expenseReminders',
+        [NotificationType.EXPENSE_SPLIT_PAID]: 'expenseReminders',
+        [NotificationType.CHORE_ASSIGNED]: 'choreReminders',
+        [NotificationType.CHORE_COMPLETED]: 'choreReminders',
+        [NotificationType.MESSAGE_RECEIVED]: 'messageNotifications',
+        [NotificationType.LISTING_INTEREST]: 'listingNotifications',
+      };
+
+      const preferenceKey = typeMap[dto.type];
+      if (preferenceKey && profile[preferenceKey] === false) {
+        return null;
+      }
+    }
+
     return this.prisma.notification.create({
       data: {
+        id: randomUUID(),
         userId: dto.userId,
         type: dto.type,
         title: dto.title,
@@ -314,6 +359,36 @@ export class NotificationService {
     });
   }
 
+  async notifyListingCommented(
+    userId: string,
+    listingId: string,
+    listingTitle: string,
+    commenterName: string,
+  ) {
+    return this.createNotification({
+      userId,
+      type: NotificationType.LISTING_COMMENTED,
+      title: 'New Comment',
+      message: `${commenterName} commented on your listing: ${listingTitle}`,
+      data: { listingId },
+    });
+  }
+
+  async notifyListingFavorited(
+    userId: string,
+    listingId: string,
+    listingTitle: string,
+    favoriterName: string,
+  ) {
+    return this.createNotification({
+      userId,
+      type: NotificationType.LISTING_FAVORITED,
+      title: 'Listing Favorited',
+      message: `${favoriterName} favorited your listing: ${listingTitle}`,
+      data: { listingId },
+    });
+  }
+
   // Ride notifications
   async notifyRideCreated(
     userId: string,
@@ -343,6 +418,38 @@ export class NotificationService {
       type: NotificationType.RIDE_JOINED,
       title: 'Ride Joined',
       message: `${joinerName} joined your ride: ${origin} → ${destination}`,
+      data: { rideId },
+    });
+  }
+
+  async notifyRideUpdated(
+    userId: string,
+    rideId: string,
+    origin: string,
+    destination: string,
+    driverName: string,
+  ) {
+    return this.createNotification({
+      userId,
+      type: NotificationType.RIDE_UPDATED,
+      title: 'Ride Updated',
+      message: `${driverName} updated the ride: ${origin} → ${destination}`,
+      data: { rideId },
+    });
+  }
+
+  async notifyRideCancelled(
+    userId: string,
+    rideId: string,
+    origin: string,
+    destination: string,
+    driverName: string,
+  ) {
+    return this.createNotification({
+      userId,
+      type: NotificationType.RIDE_CANCELLED,
+      title: 'Ride Cancelled',
+      message: `${driverName} cancelled the ride: ${origin} → ${destination}`,
       data: { rideId },
     });
   }

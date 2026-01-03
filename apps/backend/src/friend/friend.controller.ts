@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { FriendService } from './friend.service';
 import { SendFriendRequestDto } from './dto/send-friend-request.dto';
+import { InviteUserDto } from './dto/invite-user.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 
@@ -75,6 +76,20 @@ export class FriendController {
     return this.friendService.blockUser(user.userId, friendId);
   }
 
+  @Post('unblock/:friendId')
+  @HttpCode(HttpStatus.OK)
+  async unblockUser(
+    @CurrentUser() user: { userId: string },
+    @Param('friendId') friendId: string,
+  ) {
+    return this.friendService.unblockUser(user.userId, friendId);
+  }
+
+  @Get('blocked')
+  async getBlockedUsers(@CurrentUser() user: { userId: string }) {
+    return this.friendService.getBlockedUsers(user.userId);
+  }
+
   @Get('mutual/:userId')
   async getMutualFriends(
     @CurrentUser() user: { userId: string },
@@ -92,6 +107,30 @@ export class FriendController {
       return [];
     }
     return this.friendService.searchUsers(user.userId, query.trim());
+  }
+
+  @Post('invite')
+  @HttpCode(HttpStatus.CREATED)
+  async inviteUserToApp(
+    @CurrentUser() user: { userId: string },
+    @Body() inviteDto: InviteUserDto,
+  ) {
+    return this.friendService.inviteUserToApp(user.userId, inviteDto);
+  }
+
+  @Get('invitations/:token')
+  async getInvitation(@Param('token') token: string) {
+    return this.friendService.getInvitationByToken(token);
+  }
+
+  @Post('invitations/:token/accept')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async acceptInvitation(
+    @CurrentUser() user: { userId: string },
+    @Param('token') token: string,
+  ) {
+    return this.friendService.acceptInvitation(token, user.userId);
   }
 }
 

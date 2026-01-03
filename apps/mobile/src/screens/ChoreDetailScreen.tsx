@@ -13,6 +13,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
 import { getChoreById, completeChore, grabChore, assignChore, deleteChore, Chore } from '../api/choreApi';
 import { getGroupById, GroupMember } from '../api/groupApi';
+import { SkeletonDetailScreen } from '../components/SkeletonLoader';
+import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
 
 interface ChoreDetailScreenProps {
   choreId: string;
@@ -187,7 +189,8 @@ export function ChoreDetailScreen({
   }
 
   function getUserDisplayName(user: Chore['createdByUser']): string {
-    return user.profile?.displayName || user.email;
+    if (!user) return 'Unknown';
+    return user?.profile?.displayName || user?.email || 'Unknown';
   }
 
   function getStatusColor(status: Chore['status']): string {
@@ -219,10 +222,14 @@ export function ChoreDetailScreen({
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
-          <Text style={styles.loadingText}>Loading chore...</Text>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
+            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Chore Details</Text>
+          <View style={styles.placeholder} />
         </View>
+        <SkeletonDetailScreen />
       </SafeAreaView>
     );
   }
@@ -230,12 +237,14 @@ export function ChoreDetailScreen({
   if (!chore) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Chore not found</Text>
-          <TouchableOpacity style={styles.backButton} onPress={onBack}>
-            <Text style={styles.backButtonText}>← Back</Text>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
+            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
           </TouchableOpacity>
+          <Text style={styles.headerTitle}>Chore Details</Text>
+          <View style={styles.placeholder} />
         </View>
+        <ErrorState message="Chore not found" onRetry={loadChore} />
       </SafeAreaView>
     );
   }
@@ -357,7 +366,7 @@ export function ChoreDetailScreen({
                   {chore.completions.map((completion) => (
                     <View key={completion.id} style={styles.completionItem}>
                       <Text style={styles.completionText}>
-                        {completion.user?.profile?.displayName || completion.user?.email} - {completion.pointsEarned} points
+                        {completion.user?.profile?.displayName || completion.user?.email || 'Unknown'} - {completion.pointsEarned} points
                       </Text>
                       <Text style={styles.completionDate}>
                         {new Date(completion.completedAt).toLocaleDateString()}
@@ -402,13 +411,13 @@ export function ChoreDetailScreen({
                     <View style={styles.assignMenu}>
                       {members.map((member) => (
                         <TouchableOpacity
-                          key={member.user.id}
+                          key={member?.user?.id}
                           style={styles.assignMenuItem}
-                          onPress={() => handleAssign(member.user.id)}
+                          onPress={() => handleAssign(member?.user?.id || '')}
                           disabled={actionLoading}
                         >
                           <Text style={styles.assignMenuItemText}>
-                            {member.user.profile?.displayName || member.user.email}
+                            {member?.user?.profile?.displayName || member?.user?.email || 'Unknown'}
                           </Text>
                         </TouchableOpacity>
                       ))}

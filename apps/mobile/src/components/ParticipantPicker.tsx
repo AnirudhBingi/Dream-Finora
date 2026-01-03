@@ -78,9 +78,17 @@ export function ParticipantPicker({
     try {
       setLoadingGroups(true);
       const groupsData = await getGroups(token);
-      setGroups(groupsData);
+      // Handle both array response and paginated response
+      let groupsList: Group[] = [];
+      if (Array.isArray(groupsData)) {
+        groupsList = groupsData;
+      } else if (groupsData && typeof groupsData === 'object') {
+        groupsList = (groupsData as any).groups || [];
+      }
+      setGroups(groupsList);
     } catch (err) {
       console.error('Failed to load groups:', err);
+      setGroups([]); // Set empty array on error
     } finally {
       setLoadingGroups(false);
     }
@@ -101,21 +109,21 @@ export function ParticipantPicker({
   }
 
   function toggleParticipant(participant: SelectedParticipant) {
-    const isSelected = selectedParticipants.some(
+    const isSelected = (selectedParticipants || []).some(
       (p) => p.userId === participant.userId && p.type === participant.type,
     );
 
     if (isSelected) {
       // Remove participant
       onSelectionChange(
-        selectedParticipants.filter(
+        (selectedParticipants || []).filter(
           (p) => !(p.userId === participant.userId && p.type === participant.type),
         ),
       );
     } else {
       // Add participant
       if (allowMultiple) {
-        onSelectionChange([...selectedParticipants, participant]);
+        onSelectionChange([...(selectedParticipants || []), participant]);
       } else {
         onSelectionChange([participant]);
       }
@@ -123,15 +131,15 @@ export function ParticipantPicker({
   }
 
   function isParticipantSelected(userId: string, type: 'friend' | 'group-member'): boolean {
-    return selectedParticipants.some((p) => p.userId === userId && p.type === type);
+    return (selectedParticipants || []).some((p) => p.userId === userId && p.type === type);
   }
 
   function getUserDisplayName(friend: Friend): string {
-    return friend.friend.profile?.displayName || friend.friend.email;
+    return friend?.friend?.profile?.displayName || friend?.friend?.email || 'Unknown';
   }
 
   function getMemberDisplayName(member: GroupMember): string {
-    return member.user.profile?.displayName || member.user.email;
+    return member?.user?.profile?.displayName || member?.user?.email || 'Unknown';
   }
 
   return (
@@ -221,7 +229,7 @@ export function ParticipantPicker({
             </View>
           ) : groups.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <MaterialIcons name="group-outline" size={24} color="#9CA3AF" />
+              <MaterialIcons name="people-outline" size={24} color="#9CA3AF" />
               <Text style={styles.emptyText}>No groups yet</Text>
               <Text style={styles.emptySubtext}>Create a group from the Circles screen</Text>
             </View>
@@ -232,7 +240,7 @@ export function ParticipantPicker({
                 showsHorizontalScrollIndicator={false}
                 style={styles.scrollView}
               >
-                {groups.map((group) => {
+                {groups && Array.isArray(groups) && groups.map((group) => {
                   const isSelected = selectedGroupId === group.id;
                   return (
                     <TouchableOpacity

@@ -25,6 +25,15 @@ export interface Profile {
   bio: string | null;
   primaryCurrency?: string | null;
   homeCountryCurrency?: string | null;
+  notificationsEnabled?: boolean;
+  emailNotifications?: boolean;
+  pushNotifications?: boolean;
+  expenseReminders?: boolean;
+  choreReminders?: boolean;
+  messageNotifications?: boolean;
+  listingNotifications?: boolean;
+  profileVisibility?: 'public' | 'friends' | 'private';
+  trustScoreVisibility?: 'public' | 'friends' | 'private';
   createdAt: string;
   user: {
     id: string;
@@ -39,6 +48,15 @@ export interface UpdateProfileDto {
   bio?: string;
   primaryCurrency?: string;
   homeCountryCurrency?: string;
+  notificationsEnabled?: boolean;
+  emailNotifications?: boolean;
+  pushNotifications?: boolean;
+  expenseReminders?: boolean;
+  choreReminders?: boolean;
+  messageNotifications?: boolean;
+  listingNotifications?: boolean;
+  profileVisibility?: 'public' | 'friends' | 'private';
+  trustScoreVisibility?: 'public' | 'friends' | 'private';
 }
 
 export async function getProfile(token: string): Promise<Profile> {
@@ -106,6 +124,48 @@ export async function uploadAvatar(
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Failed to upload avatar' }));
     throw new Error(error.message || `Failed to upload avatar: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export interface UserProfile {
+  userId: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  bio: string | null;
+  email?: string;
+  mobileNumber?: string;
+  trustScore?: {
+    score: number;
+    breakdown?: {
+      expenseScore: number;
+      choreScore: number;
+      communityScore: number;
+      financeScore: number;
+      listingScore: number;
+    };
+  } | null;
+  friendStatus: 'none' | 'pending_incoming' | 'pending_outgoing' | 'accepted' | 'blocked';
+  mutualFriendsCount: number;
+  listingsCount: number;
+  sharedGroupsCount: number;
+  profileVisibility: 'public' | 'friends' | 'private';
+  trustScoreVisibility: 'public' | 'friends' | 'private';
+}
+
+export async function getUserProfile(token: string, userId: string): Promise<UserProfile> {
+  const response = await fetch(`${getApiBaseUrl()}/profile/${userId}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to fetch user profile' }));
+    throw new Error(error.message || `Failed to fetch user profile: ${response.status}`);
   }
 
   return response.json();

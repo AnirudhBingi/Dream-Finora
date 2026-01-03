@@ -82,14 +82,28 @@ export async function createChore(
   return response.json();
 }
 
+export interface PaginatedChoresResponse {
+  chores: Chore[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
 export async function getChores(
   token: string,
   groupId?: string,
-): Promise<Chore[]> {
-  const url = groupId
-    ? `${getApiBaseUrl()}/chores?groupId=${groupId}`
-    : `${getApiBaseUrl()}/chores`;
-  const response = await fetch(url, {
+  limit: number = 50,
+  offset: number = 0,
+): Promise<PaginatedChoresResponse | Chore[]> {
+  const queryParams = new URLSearchParams();
+  queryParams.append('limit', limit.toString());
+  queryParams.append('offset', offset.toString());
+  if (groupId) {
+    queryParams.append('groupId', groupId);
+  }
+
+  const response = await fetch(`${getApiBaseUrl()}/chores?${queryParams.toString()}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -102,7 +116,13 @@ export async function getChores(
     throw new Error(error.message || `Failed to fetch chores: ${response.status}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  // Check if response has pagination structure
+  if (data.chores && Array.isArray(data.chores)) {
+    return data as PaginatedChoresResponse;
+  }
+  // Backward compatibility: return array if not paginated
+  return data as Chore[];
 }
 
 export async function getChoreById(token: string, choreId: string): Promise<Chore> {
@@ -285,6 +305,74 @@ export async function getChoreHistory(
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Failed to fetch chore history' }));
     throw new Error(error.message || `Failed to fetch chore history: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export interface ChoreStats {
+  totalPoints: number;
+  totalCompleted: number;
+  onTimeCount: number;
+  onTimePercentage: number;
+  currentStreak: number;
+  achievements: Array<{
+    id: string;
+    name: string;
+    description: string;
+    unlocked: boolean;
+    unlockedAt?: string;
+  }>;
+  recentCompletions: Array<{
+    id: string;
+    choreTitle: string;
+    pointsEarned: number;
+    completedAt: string;
+    onTime: boolean;
+  }>;
+}
+
+export async function getChoreStats(token: string): Promise<ChoreStats> {
+  const response = await fetch(`${getApiBaseUrl()}/chores/stats/me`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to fetch chore stats' }));
+    throw new Error(error.message || `Failed to fetch chore stats: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export interface LeaderboardEntry {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  totalPoints: number;
+  rank: number;
+  role: string;
+}
+
+export async function getGroupLeaderboard(
+  token: string,
+  groupId: string,
+): Promise<LeaderboardEntry[]> {
+  const response = await fetch(`${getApiBaseUrl()}/chores/leaderboard/${groupId}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to fetch leaderboard' }));
+    throw new Error(error.message || `Failed to fetch leaderboard: ${response.status}`);
   }
 
   return response.json();

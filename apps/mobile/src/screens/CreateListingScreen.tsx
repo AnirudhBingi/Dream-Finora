@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,14 +15,16 @@ import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../auth/authContext';
 import { createListing, CreateListingDto, ListingType, uploadListingImages, suggestCategory, getItemCategories, RoommateMetadata, AccommodationMetadata, ItemMetadata, EventMetadata, RideMetadata } from '../api/listingApi';
 import { DatePicker } from '../components/DatePicker';
+import { Icon } from '../components/Icon';
+import { normalizeCategoryName } from '../utils/categoryIcons';
 import { MaterialIcons } from '@expo/vector-icons';
 
-interface CreateListingScreenProps {
+interface CreateSpaceVScreenProps {
   onBack: () => void;
   onSuccess: () => void;
 }
 
-export function CreateListingScreen({ onBack, onSuccess }: CreateListingScreenProps) {
+export function CreateSpaceVScreen({ onBack, onSuccess }: CreateSpaceVScreenProps) {
   const { token } = useAuth();
   const [type, setType] = useState<ListingType>(ListingType.ROOMMATE);
   const [title, setTitle] = useState('');
@@ -304,11 +306,11 @@ export function CreateListingScreen({ onBack, onSuccess }: CreateListingScreenPr
         }
       }
 
-      Alert.alert('Success', 'Listing created successfully!', [
+      Alert.alert('Success', 'SpaceV listing created successfully!', [
         { text: 'OK', onPress: onSuccess },
       ]);
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to create listing');
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to create SpaceV listing');
     } finally {
       setSaving(false);
     }
@@ -318,7 +320,7 @@ export function CreateListingScreen({ onBack, onSuccess }: CreateListingScreenPr
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission needed', 'We need access to your photos to upload listing images.');
+        Alert.alert('Permission needed', 'We need access to your photos to upload SpaceV images.');
         return;
       }
 
@@ -982,8 +984,9 @@ export function CreateListingScreen({ onBack, onSuccess }: CreateListingScreenPr
                 style={styles.imageUploadButton}
                 onPress={pickImages}
               >
+                <MaterialIcons name="add-photo-alternate" size={24} color="#6B7280" />
                 <Text style={styles.imageUploadButtonText}>
-                  📷 {imageUris.length > 0 ? 'Add More Images' : 'Add Images'}
+                  {imageUris.length > 0 ? 'Add More Images' : 'Add Images'}
                 </Text>
               </TouchableOpacity>
             </View>

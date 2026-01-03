@@ -269,6 +269,7 @@ model Group {
   Expense     Expense[]
   User        User          @relation(fields: [createdBy], references: [id], onDelete: Cascade)
   GroupMember GroupMember[]
+  GroupInvitation GroupInvitation[]
 }
 
 model GroupMember {
@@ -281,6 +282,48 @@ model GroupMember {
   User      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([groupId, userId])
+}
+
+model GroupInvitation {
+  id          String    @id
+  groupId     String
+  invitedBy   String
+  email       String?
+  mobileNumber String?
+  userId      String?   // If user exists in system
+  token       String    @unique
+  status      String    @default("pending") // pending, accepted, declined, expired
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  declinedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  Group       Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  Inviter     User      @relation("GroupInvitationInviter", fields: [invitedBy], references: [id], onDelete: Cascade)
+  Invitee     User?     @relation("GroupInvitationInvitee", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([groupId, status])
+  @@index([email])
+  @@index([mobileNumber])
+  @@index([token])
+  @@index([userId, status])
+}
+
+model UserInvitation {
+  id          String    @id
+  invitedBy   String
+  email       String?
+  mobileNumber String?
+  token       String    @unique
+  status      String    @default("pending") // pending, accepted, expired
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  Inviter     User      @relation("UserInvitationInviter", fields: [invitedBy], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([mobileNumber])
+  @@index([token])
+  @@index([status])
 }
 
 model Listing {
@@ -494,6 +537,9 @@ model User {
   Friend_Friend_userIdToUser          Friend[]             @relation("Friend_userIdToUser")
   Group                               Group[]
   GroupMember                         GroupMember[]
+  GroupInvitation_GroupInvitationInviter GroupInvitation[] @relation("GroupInvitationInviter")
+  GroupInvitation_GroupInvitationInvitee GroupInvitation[] @relation("GroupInvitationInvitee")
+  UserInvitation_UserInvitationInviter UserInvitation[] @relation("UserInvitationInviter")
   Listing                             Listing[]
   Message                             Message[]
   Notification                        Notification[]

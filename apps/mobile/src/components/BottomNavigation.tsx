@@ -1,13 +1,14 @@
 import React from 'react';
-import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { SpaceVIcon } from './SpaceVIcon';
 
 interface BottomNavigationProps {
   currentScreen: string;
   onNavigateToExpenses: () => void;
   onNavigateToChores: () => void;
-  onNavigateToListings: () => void;
+  onNavigateToSpaceV: () => void;
   onNavigateToRides: () => void;
   onNavigateToHome: () => void;
 }
@@ -16,7 +17,7 @@ export function BottomNavigation({
   currentScreen,
   onNavigateToExpenses,
   onNavigateToChores,
-  onNavigateToListings,
+  onNavigateToSpaceV,
   onNavigateToRides,
   onNavigateToHome,
 }: BottomNavigationProps) {
@@ -29,11 +30,16 @@ export function BottomNavigation({
           style={[styles.navItem, isActive('home') && styles.navItemActive]}
           onPress={onNavigateToHome}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Home"
+          accessibilityHint="Navigate to home screen"
+          accessibilityState={{ selected: isActive('home') }}
         >
           <MaterialIcons
             name="home"
-            size={24}
-            color={isActive('home') ? '#2563EB' : '#6B7280'}
+            size={20}
+            color={isActive('home') ? '#FFFFFF' : 'rgba(255, 255, 255, 0.7)'}
+            accessible={false}
           />
           <Text style={[styles.navLabel, isActive('home') && styles.navLabelActive]}>
             Home
@@ -44,14 +50,39 @@ export function BottomNavigation({
           style={[styles.navItem, isActive('expenses') && styles.navItemActive]}
           onPress={onNavigateToExpenses}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Billchop"
+          accessibilityHint="Navigate to expense splitting screen"
+          accessibilityState={{ selected: isActive('expenses') }}
         >
           <MaterialIcons
             name="receipt"
-            size={24}
-            color={isActive('expenses') ? '#10B981' : '#6B7280'}
+            size={20}
+            color={isActive('expenses') ? '#FFFFFF' : 'rgba(255, 255, 255, 0.7)'}
+            accessible={false}
           />
           <Text style={[styles.navLabel, isActive('expenses') && styles.navLabelActive]}>
             Billchop
+          </Text>
+        </TouchableOpacity>
+
+        {/* SpaceV tab in center - main feature */}
+        <TouchableOpacity
+          style={[styles.navItem, styles.navItemCenter, isActive('spacev') && styles.navItemActive]}
+          onPress={onNavigateToSpaceV}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="SpaceV"
+          accessibilityHint="Navigate to SpaceV marketplace screen"
+          accessibilityState={{ selected: isActive('spacev') }}
+        >
+          <SpaceVIcon
+            size={26}
+            color={isActive('spacev') ? '#FFFFFF' : 'rgba(255, 255, 255, 0.7)'}
+            active={isActive('spacev')}
+          />
+          <Text style={[styles.navLabel, styles.navLabelCenter, isActive('spacev') && styles.navLabelActive]}>
+            SpaceV
           </Text>
         </TouchableOpacity>
 
@@ -59,11 +90,16 @@ export function BottomNavigation({
           style={[styles.navItem, isActive('chores') && styles.navItemActive]}
           onPress={onNavigateToChores}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Chores"
+          accessibilityHint="Navigate to chore management screen"
+          accessibilityState={{ selected: isActive('chores') }}
         >
           <MaterialIcons
             name="check-circle"
-            size={24}
-            color={isActive('chores') ? '#F59E0B' : '#6B7280'}
+            size={20}
+            color={isActive('chores') ? '#FFFFFF' : 'rgba(255, 255, 255, 0.7)'}
+            accessible={false}
           />
           <Text style={[styles.navLabel, isActive('chores') && styles.navLabelActive]}>
             Chores
@@ -71,29 +107,19 @@ export function BottomNavigation({
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.navItem, isActive('listings') && styles.navItemActive]}
-          onPress={onNavigateToListings}
-          activeOpacity={0.7}
-        >
-          <MaterialIcons
-            name="store"
-            size={24}
-            color={isActive('listings') ? '#EC4899' : '#6B7280'}
-          />
-          <Text style={[styles.navLabel, isActive('listings') && styles.navLabelActive]}>
-            Market
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
           style={[styles.navItem, isActive('rides') && styles.navItemActive]}
           onPress={onNavigateToRides}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Rides"
+          accessibilityHint="Navigate to rideshare screen"
+          accessibilityState={{ selected: isActive('rides') }}
         >
           <MaterialIcons
             name="directions-car"
-            size={24}
-            color={isActive('rides') ? '#06B6D4' : '#6B7280'}
+            size={20}
+            color={isActive('rides') ? '#FFFFFF' : 'rgba(255, 255, 255, 0.7)'}
+            accessible={false}
           />
           <Text style={[styles.navLabel, isActive('rides') && styles.navLabelActive]}>
             Rides
@@ -106,9 +132,9 @@ export function BottomNavigation({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    backgroundColor: 'transparent',
+    paddingBottom: 6,
+    paddingHorizontal: 16,
   },
   navBar: {
     flexDirection: 'row',
@@ -116,26 +142,50 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     paddingHorizontal: 8,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#6366F1', // Matching header color
+    borderRadius: 24, // Rounded corners for floating island
+    // Floating island effect with 3D shadows
+    ...Platform.select({
+      ios: {
+        shadowColor: '#4F46E5',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.4,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 12,
+      },
+    }),
+    // Add border for depth
+    borderWidth: 1,
+    borderColor: '#4F46E5',
   },
   navItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 4,
-    minHeight: 56,
+    paddingVertical: 6,
+    minHeight: 48,
+    borderRadius: 16,
+  },
+  navItemCenter: {
+    // Center item (SpaceV) can be slightly larger if needed
+    minHeight: 50,
   },
   navItemActive: {
-    // Active state styling handled by icon/label colors
+    backgroundColor: 'rgba(255, 255, 255, 0.2)', // Subtle highlight for active item
   },
   navLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 4,
+    fontSize: 10,
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginTop: 3,
     fontWeight: '500',
   },
+  navLabelCenter: {
+    fontSize: 10.5, // Slightly larger for center item
+  },
   navLabelActive: {
-    color: '#2563EB',
+    color: '#FFFFFF',
     fontWeight: '600',
   },
 });

@@ -30,4 +30,21 @@ So to call your API from the phone, the app needs your dev machine’s LAN IP (e
 - **Backend**: `3001`
 - **Expo / Metro**: `8081`
 
+## Navigation System
+
+The mobile app uses a **root-level screen rendering** approach for smooth, flicker-free navigation:
+
+- **RootScreenRenderer**: Manages all screen rendering at the app root
+- **ScreenContainer**: Provides fade transitions (250ms) for screen changes
+- **Lazy Loading**: Screens only render after first visit (optimizes startup)
+- **Bottom Navigation**: Floating island design, absolutely positioned at bottom
+
+**Key Benefits:**
+- No flickering during navigation
+- Smooth 60fps transitions (native driver)
+- Screens stay mounted during transitions
+- Consistent experience across all screens
+
+See `docs/NAVIGATION_TRANSITIONS.md` for detailed documentation.
+
 

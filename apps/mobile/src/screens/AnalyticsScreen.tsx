@@ -13,13 +13,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PieChart, LineChart } from 'react-native-chart-kit';
 import { useAuth } from '../auth/authContext';
 import {
-  getSpendingByCategory,
-  getMonthlyTrends,
-  getBalanceOverTime,
-  SpendingByCategory,
-  MonthlyTrend,
-  BalanceOverTime,
+  getLocalAnalytics,
+  getHomeAnalytics,
+  getCombinedAnalytics,
+  ContextAnalytics,
+  CombinedAnalytics,
 } from '../api/analyticsApi';
+import { getProfile, Profile } from '../api/profileApi';
 
 interface AnalyticsScreenProps {
   onBack: () => void;
@@ -27,18 +27,32 @@ interface AnalyticsScreenProps {
 
 const screenWidth = Dimensions.get('window').width;
 
+type AnalyticsContext = 'local' | 'home' | 'combined';
+
 export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
   const { token } = useAuth();
-  const [spendingByCategory, setSpendingByCategory] = useState<SpendingByCategory[]>([]);
-  const [monthlyTrends, setMonthlyTrends] = useState<MonthlyTrend[]>([]);
-  const [balanceOverTime, setBalanceOverTime] = useState<BalanceOverTime[]>([]);
+  const [context, setContext] = useState<AnalyticsContext>('local');
+  const [analytics, setAnalytics] = useState<ContextAnalytics | CombinedAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
 
   useEffect(() => {
     loadData();
-  }, [token]);
+    loadProfile();
+  }, [token, context]);
+
+  async function loadProfile() {
+    if (!token) return;
+    try {
+      const profileData = await getProfile(token);
+      setProfile(profileData);
+    } catch (err) {
+      // Silently fail - currency will default to USD
+      console.error('Failed to load profile:', err);
+    }
+  }
 
   async function loadData() {
     if (!token) return;
@@ -46,14 +60,17 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
     try {
       setLoading(true);
       setError(null);
-      const [spendingData, trendsData, balanceData] = await Promise.all([
-        getSpendingByCategory(token),
-        getMonthlyTrends(token, 6),
-        getBalanceOverTime(token, 30),
-      ]);
-      setSpendingByCategory(spendingData);
-      setMonthlyTrends(trendsData);
-      setBalanceOverTime(balanceData);
+      
+      let data: ContextAnalytics | CombinedAnalytics;
+      if (context === 'local') {
+        data = await getLocalAnalytics(token, 6, 30);
+      } else if (context === 'home') {
+        data = await getHomeAnalytics(token, 6, 30);
+      } else {
+        data = await getCombinedAnalytics(token, 6, 30);
+      }
+      
+      setAnalytics(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load analytics data');
     } finally {
@@ -62,10 +79,32 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
     }
   }
 
-  function formatCurrency(amount: number, currency: string = 'USD'): string {
+  // Get current analytics data based on context
+  function getCurrentAnalytics(): ContextAnalytics | null {
+    if (!analytics) return null;
+    if (context === 'combined' && 'local' in analytics) {
+      // For combined view, show local by default (can be enhanced to show both)
+      return analytics.local;
+    }
+    return analytics as ContextAnalytics;
+  }
+
+  function getCurrencyForContext(): string {
+    if (!profile) return 'USD';
+    if (context === 'local') {
+      return profile.primaryCurrency || 'USD';
+    } else if (context === 'home') {
+      return profile.homeCountryCurrency || 'USD';
+    }
+    // For combined, use primary currency
+    return profile.primaryCurrency || 'USD';
+  }
+
+  function formatCurrency(amount: number, currency?: string): string {
+    const displayCurrency = currency || getCurrencyForContext();
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency,
+      currency: displayCurrency,
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
     }).format(amount);
@@ -126,6 +165,8 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
     },
   };
 
+  const currentAnalytics = getCurrentAnalytics();
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <ScrollView
@@ -142,6 +183,37 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
             <View style={styles.headerSpacer} />
           </View>
 
+          {/* Context Tabs */}
+          <View style={styles.tabsContainer}>
+            <TouchableOpacity
+              style={[styles.tab, context === 'local' && styles.tabActive]}
+              onPress={() => setContext('local')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabText, context === 'local' && styles.tabTextActive]}>
+                Local
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, context === 'home' && styles.tabActive]}
+              onPress={() => setContext('home')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabText, context === 'home' && styles.tabTextActive]}>
+                Home
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, context === 'combined' && styles.tabActive]}
+              onPress={() => setContext('combined')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabText, context === 'combined' && styles.tabTextActive]}>
+                Combined
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           {error && (
             <View style={styles.errorContainer}>
               <Text style={styles.errorText}>{error}</Text>
@@ -151,10 +223,97 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
             </View>
           )}
 
-          {/* Spending by Category - Pie Chart */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>My Wallet - Spending by Category</Text>
-            {spendingByCategory.length === 0 ? (
+          {!currentAnalytics && !loading && (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No analytics data available</Text>
+            </View>
+          )}
+
+          {currentAnalytics && (
+            <>
+              {/* Summary Cards */}
+              <View style={styles.summaryCards}>
+                {/* Budget Performance Card */}
+                {currentAnalytics.budgetPerformance && currentAnalytics.budgetPerformance.totalBudgets > 0 && (
+                  <View style={styles.summaryCard}>
+                    <Text style={styles.summaryCardTitle}>Budgets</Text>
+                    <Text style={styles.summaryCardValue}>
+                      {currentAnalytics.budgetPerformance.budgetsOnTrack} / {currentAnalytics.budgetPerformance.totalBudgets} on track
+                    </Text>
+                    <Text style={styles.summaryCardSubtext}>
+                      {currentAnalytics.budgetPerformance.averageAdherence.toFixed(0)}% adherence
+                    </Text>
+                  </View>
+                )}
+
+                {/* Goals Progress Card */}
+                {currentAnalytics.goalsProgress && currentAnalytics.goalsProgress.totalGoals > 0 && (
+                  <View style={styles.summaryCard}>
+                    <Text style={styles.summaryCardTitle}>Goals</Text>
+                    <Text style={styles.summaryCardValue}>
+                      {currentAnalytics.goalsProgress.completedGoals} / {currentAnalytics.goalsProgress.totalGoals} completed
+                    </Text>
+                    <Text style={styles.summaryCardSubtext}>
+                      {currentAnalytics.goalsProgress.overallProgress.toFixed(0)}% overall progress
+                    </Text>
+                  </View>
+                )}
+
+                {/* Loan Summary Card */}
+                {currentAnalytics.loanSummary && currentAnalytics.loanSummary.totalLoans > 0 && (
+                  <View style={styles.summaryCard}>
+                    <Text style={styles.summaryCardTitle}>Loans</Text>
+                    <Text style={styles.summaryCardValue}>
+                      {currentAnalytics.loanSummary.activeLoans} active
+                    </Text>
+                    <Text style={styles.summaryCardSubtext}>
+                      {currentAnalytics.loanSummary.progressPercentage.toFixed(0)}% paid
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Income vs Expenses Summary */}
+              {currentAnalytics.incomeVsExpenses && (
+                <View style={styles.incomeExpenseCard}>
+                  <Text style={styles.sectionTitle}>Income vs Expenses</Text>
+                  <View style={styles.incomeExpenseRow}>
+                    <View style={styles.incomeExpenseItem}>
+                      <Text style={styles.incomeExpenseLabel}>Total Income</Text>
+                      <Text style={[styles.incomeExpenseValue, styles.positiveValue]}>
+                        {formatCurrency(currentAnalytics.incomeVsExpenses.totalIncome)}
+                      </Text>
+                    </View>
+                    <View style={styles.incomeExpenseItem}>
+                      <Text style={styles.incomeExpenseLabel}>Total Expenses</Text>
+                      <Text style={[styles.incomeExpenseValue, styles.negativeValue]}>
+                        {formatCurrency(currentAnalytics.incomeVsExpenses.totalExpenses)}
+                      </Text>
+                    </View>
+                    <View style={styles.incomeExpenseItem}>
+                      <Text style={styles.incomeExpenseLabel}>Net</Text>
+                      <Text
+                        style={[
+                          styles.incomeExpenseValue,
+                          currentAnalytics.incomeVsExpenses.net >= 0
+                            ? styles.positiveValue
+                            : styles.negativeValue,
+                        ]}
+                      >
+                        {formatCurrency(currentAnalytics.incomeVsExpenses.net)}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.savingsRateText}>
+                    Savings Rate: {currentAnalytics.incomeVsExpenses.savingsRate.toFixed(1)}%
+                  </Text>
+                </View>
+              )}
+
+              {/* Spending by Category - Pie Chart */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Spending by Category</Text>
+                {currentAnalytics.spendingByCategory.length === 0 ? (
               <View style={styles.emptyChartContainer}>
                 <Text style={styles.emptyChartText}>No spending data available</Text>
                 <Text style={styles.emptyChartSubtext}>
@@ -164,10 +323,10 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
             ) : (
               <>
                 <PieChart
-                  data={spendingByCategory.map((item, index) => ({
+                  data={currentAnalytics.spendingByCategory.map((item, index) => ({
                     name: item.category,
                     amount: item.amount,
-                    color: getChartColors(spendingByCategory.length)[index],
+                    color: getChartColors(currentAnalytics.spendingByCategory.length)[index],
                     legendFontColor: '#374151',
                     legendFontSize: 12,
                   }))}
@@ -180,13 +339,13 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
                   absolute // Show absolute values instead of percentages
                 />
                 <View style={styles.categoryList}>
-                  {spendingByCategory.map((item, index) => (
+                  {currentAnalytics.spendingByCategory.map((item, index) => (
                     <View key={item.category} style={styles.categoryItem}>
                       <View style={styles.categoryRow}>
                         <View
                           style={[
                             styles.categoryColor,
-                            { backgroundColor: getChartColors(spendingByCategory.length)[index] },
+                            { backgroundColor: getChartColors(currentAnalytics.spendingByCategory.length)[index] },
                           ]}
                         />
                         <Text style={styles.categoryName} numberOfLines={1}>
@@ -206,8 +365,8 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
 
           {/* Monthly Trends - Line Chart */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>My Wallet - Monthly Trends (Last 6 Months)</Text>
-            {monthlyTrends.length === 0 ? (
+            <Text style={styles.sectionTitle}>Monthly Trends (Last 6 Months)</Text>
+            {currentAnalytics.monthlyTrends.length === 0 ? (
               <View style={styles.emptyChartContainer}>
                 <Text style={styles.emptyChartText}>No trend data available</Text>
                 <Text style={styles.emptyChartSubtext}>
@@ -222,7 +381,7 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
                     <Text style={styles.trendSummaryLabel}>Avg Income</Text>
                     <Text style={styles.trendSummaryValue}>
                       {formatCurrency(
-                        monthlyTrends.reduce((sum, t) => sum + t.income, 0) / monthlyTrends.length
+                        currentAnalytics.monthlyTrends.reduce((sum, t) => sum + t.income, 0) / currentAnalytics.monthlyTrends.length
                       )}
                     </Text>
                   </View>
@@ -230,7 +389,7 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
                     <Text style={styles.trendSummaryLabel}>Avg Expense</Text>
                     <Text style={[styles.trendSummaryValue, styles.trendSummaryValueNegative]}>
                       {formatCurrency(
-                        monthlyTrends.reduce((sum, t) => sum + t.expense, 0) / monthlyTrends.length
+                        currentAnalytics.monthlyTrends.reduce((sum, t) => sum + t.expense, 0) / currentAnalytics.monthlyTrends.length
                       )}
                     </Text>
                   </View>
@@ -239,13 +398,13 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
                     <Text
                       style={[
                         styles.trendSummaryValue,
-                        monthlyTrends.reduce((sum, t) => sum + t.net, 0) / monthlyTrends.length >= 0
+                        currentAnalytics.monthlyTrends.reduce((sum, t) => sum + t.net, 0) / currentAnalytics.monthlyTrends.length >= 0
                           ? styles.trendSummaryValuePositive
                           : styles.trendSummaryValueNegative,
                       ]}
                     >
                       {formatCurrency(
-                        monthlyTrends.reduce((sum, t) => sum + t.net, 0) / monthlyTrends.length
+                        currentAnalytics.monthlyTrends.reduce((sum, t) => sum + t.net, 0) / currentAnalytics.monthlyTrends.length
                       )}
                     </Text>
                   </View>
@@ -253,10 +412,10 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
                 {/* Net balance chart */}
                 <LineChart
                   data={{
-                    labels: monthlyTrends.map((t) => formatMonth(t.month)),
+                    labels: currentAnalytics.monthlyTrends.map((t) => formatMonth(t.month)),
                     datasets: [
                       {
-                        data: monthlyTrends.map((t) => t.net),
+                        data: currentAnalytics.monthlyTrends.map((t) => t.net),
                       },
                     ],
                   }}
@@ -266,7 +425,7 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
                     ...chartConfig,
                     color: (opacity = 1) => {
                       // Use green for positive, red for negative
-                      const avgNet = monthlyTrends.reduce((sum, t) => sum + t.net, 0) / monthlyTrends.length;
+                      const avgNet = currentAnalytics.monthlyTrends.reduce((sum, t) => sum + t.net, 0) / currentAnalytics.monthlyTrends.length;
                       if (avgNet >= 0) {
                         return `rgba(16, 185, 129, ${opacity})`; // Green
                       }
@@ -292,8 +451,8 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
 
           {/* Balance Over Time - Line Chart */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>My Wallet - Balance Over Time (Last 30 Days)</Text>
-            {balanceOverTime.length === 0 ? (
+            <Text style={styles.sectionTitle}>Balance Over Time (Last 30 Days)</Text>
+            {currentAnalytics.balanceOverTime.length === 0 ? (
               <View style={styles.emptyChartContainer}>
                 <Text style={styles.emptyChartText}>No balance data available</Text>
                 <Text style={styles.emptyChartSubtext}>
@@ -304,10 +463,10 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
               <>
                 <LineChart
                   data={{
-                    labels: balanceOverTime.map((b) => formatDate(b.date)),
+                    labels: currentAnalytics.balanceOverTime.map((b) => formatDate(b.date)),
                     datasets: [
                       {
-                        data: balanceOverTime.map((b) => b.balance),
+                        data: currentAnalytics.balanceOverTime.map((b) => b.balance),
                         color: (opacity = 1) => `rgba(16, 185, 129, ${opacity})`, // Green
                         strokeWidth: 2,
                       },
@@ -333,6 +492,8 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
               </>
             )}
           </View>
+            </>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -522,6 +683,115 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     textAlign: 'center',
     marginTop: 8,
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    marginBottom: 24,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    padding: 4,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    alignItems: 'center',
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  tabActive: {
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  tabTextActive: {
+    color: '#2563EB',
+    fontWeight: '600',
+  },
+  summaryCards: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 24,
+    gap: 12,
+  },
+  summaryCard: {
+    flex: 1,
+    minWidth: '30%',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  summaryCardTitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  summaryCardValue: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  summaryCardSubtext: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  incomeExpenseCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  incomeExpenseRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 12,
+  },
+  incomeExpenseItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  incomeExpenseLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  incomeExpenseValue: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  positiveValue: {
+    color: '#10B981',
+  },
+  negativeValue: {
+    color: '#EF4444',
+  },
+  savingsRateText: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  emptyContainer: {
+    padding: 32,
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#6B7280',
   },
 });
 

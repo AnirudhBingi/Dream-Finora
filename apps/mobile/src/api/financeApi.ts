@@ -45,6 +45,23 @@ export interface BalanceInfo {
   };
   billchopBalance?: number; // Only for local context
   billchopOwedToUser?: number; // Only for local context
+  localCurrency?: string;
+  homeCurrency?: string;
+}
+
+export interface CombinedBalanceInfo {
+  combinedTotal: number;
+  localBalance: {
+    amount: number;
+    currency: string;
+  };
+  homeBalance: {
+    amount: number;
+    currency: string;
+    convertedAmount: number;
+    convertedCurrency: string;
+  };
+  billchopBalance: number;
 }
 
 export interface Categories {
@@ -102,6 +119,26 @@ export async function getTransactions(
   return response.json();
 }
 
+export async function getTransactionById(
+  token: string,
+  transactionId: string,
+): Promise<FinanceTransaction> {
+  const response = await fetch(`${getApiBaseUrl()}/finance/transactions/${transactionId}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to fetch transaction' }));
+    throw new Error(error.message || `Failed to fetch transaction: ${response.status}`);
+  }
+
+  return response.json();
+}
+
 export async function getBalance(
   token: string,
   context?: 'local' | 'home',
@@ -126,6 +163,32 @@ export async function getBalance(
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Failed to fetch balance' }));
     throw new Error(error.message || `Failed to fetch balance: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function getCombinedBalance(
+  token: string,
+  primaryCurrency?: string,
+): Promise<CombinedBalanceInfo> {
+  const params = new URLSearchParams();
+  params.append('combined', 'true');
+  if (primaryCurrency) {
+    params.append('primaryCurrency', primaryCurrency);
+  }
+  const url = `${getApiBaseUrl()}/finance/balance?${params.toString()}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to fetch combined balance' }));
+    throw new Error(error.message || `Failed to fetch combined balance: ${response.status}`);
   }
 
   return response.json();
@@ -168,6 +231,37 @@ export async function getCategories(token: string): Promise<Categories> {
   return response.json();
 }
 
+export interface UpdateTransactionDto {
+  amount?: number;
+  context?: 'local' | 'home';
+  source?: string; // For income
+  category?: string; // For expense
+  description?: string;
+  date?: string;
+}
+
+export async function updateTransaction(
+  token: string,
+  transactionId: string,
+  data: UpdateTransactionDto,
+): Promise<FinanceTransaction> {
+  const response = await fetch(`${getApiBaseUrl()}/finance/transactions/${transactionId}`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to update transaction' }));
+    throw new Error(error.message || `Failed to update transaction: ${response.status}`);
+  }
+
+  return response.json();
+}
+
 export async function deleteTransaction(
   token: string,
   transactionId: string,
@@ -183,6 +277,191 @@ export async function deleteTransaction(
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Failed to delete transaction' }));
     throw new Error(error.message || `Failed to delete transaction: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// Account interfaces and functions
+export interface FinanceAccount {
+  id: string;
+  userId: string;
+  name: string;
+  currency: string;
+  balance: number;
+  context: 'local' | 'home';
+  accountType: string;
+  createdAt: string;
+  updatedAt: string;
+  transactions?: FinanceTransaction[];
+}
+
+export interface CreateAccountDto {
+  name: string;
+  currency?: string;
+  context?: 'local' | 'home';
+  accountType?: string;
+}
+
+export interface UpdateAccountDto {
+  name?: string;
+  currency?: string;
+  context?: 'local' | 'home';
+  accountType?: string;
+}
+
+export async function createAccount(
+  token: string,
+  data: CreateAccountDto,
+): Promise<FinanceAccount> {
+  const response = await fetch(`${getApiBaseUrl()}/finance/accounts`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to create account' }));
+    throw new Error(error.message || `Failed to create account: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function getAccounts(
+  token: string,
+  context?: 'local' | 'home',
+): Promise<FinanceAccount[]> {
+  const params = new URLSearchParams();
+  if (context) {
+    params.append('context', context);
+  }
+  const url = `${getApiBaseUrl()}/finance/accounts${params.toString() ? `?${params.toString()}` : ''}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to fetch accounts' }));
+    throw new Error(error.message || `Failed to fetch accounts: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function getAccountById(
+  token: string,
+  accountId: string,
+): Promise<FinanceAccount> {
+  const response = await fetch(`${getApiBaseUrl()}/finance/accounts/${accountId}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to fetch account' }));
+    throw new Error(error.message || `Failed to fetch account: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function updateAccount(
+  token: string,
+  accountId: string,
+  data: UpdateAccountDto,
+): Promise<FinanceAccount> {
+  const response = await fetch(`${getApiBaseUrl()}/finance/accounts/${accountId}`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to update account' }));
+    throw new Error(error.message || `Failed to update account: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function deleteAccount(
+  token: string,
+  accountId: string,
+): Promise<{ success: boolean }> {
+  const response = await fetch(`${getApiBaseUrl()}/finance/accounts/${accountId}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to delete account' }));
+    throw new Error(error.message || `Failed to delete account: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// Finance History interfaces and functions
+export interface FinanceHistory {
+  transactions: FinanceTransaction[];
+  accounts: FinanceAccount[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
+}
+
+export async function getFinanceHistory(
+  token: string,
+  context?: 'local' | 'home',
+  accountId?: string,
+  limit?: number,
+  offset?: number,
+): Promise<FinanceHistory> {
+  const params = new URLSearchParams();
+  if (context) {
+    params.append('context', context);
+  }
+  if (accountId) {
+    params.append('accountId', accountId);
+  }
+  if (limit !== undefined) {
+    params.append('limit', limit.toString());
+  }
+  if (offset !== undefined) {
+    params.append('offset', offset.toString());
+  }
+  const url = `${getApiBaseUrl()}/finance/history${params.toString() ? `?${params.toString()}` : ''}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to fetch finance history' }));
+    throw new Error(error.message || `Failed to fetch finance history: ${response.status}`);
   }
 
   return response.json();
@@ -848,6 +1127,103 @@ export async function deleteLoanPayment(
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Failed to delete loan payment' }));
     throw new Error(error.message || `Failed to delete loan payment: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// Financial Advisor Interfaces
+export interface FinancialRecommendation {
+  id: string;
+  type: 'budget' | 'goal' | 'spending' | 'savings' | 'debt' | 'emergency';
+  priority: 'high' | 'medium' | 'low';
+  title: string;
+  description: string;
+  action?: string;
+  impact?: 'high' | 'medium' | 'low';
+  metrics?: {
+    current?: number;
+    target?: number;
+    difference?: number;
+    percentage?: number;
+    trend?: 'increasing' | 'decreasing' | 'stable';
+    daysRemaining?: number;
+    projectedDate?: string;
+  };
+  details?: string[];
+}
+
+export interface FinancialHealthScore {
+  overall: number;
+  breakdown: {
+    budgetAdherence: number;
+    goalProgress: number;
+    savingsRate: number;
+    debtToIncome: number;
+    emergencyFund: number;
+  };
+  insights: string[];
+  trends?: {
+    spendingTrend?: 'increasing' | 'decreasing' | 'stable';
+    savingsTrend?: 'increasing' | 'decreasing' | 'stable';
+    incomeTrend?: 'increasing' | 'decreasing' | 'stable';
+  };
+  projections?: {
+    budgetBurnRate?: number;
+    goalCompletionDate?: string;
+    emergencyFundTargetDate?: string;
+  };
+}
+
+/**
+ * Get personalized financial recommendations
+ */
+export async function getRecommendations(
+  token: string,
+  context: 'local' | 'home' | 'combined' = 'local',
+): Promise<FinancialRecommendation[]> {
+  const params = new URLSearchParams();
+  if (context) params.append('context', context);
+
+  const url = `${getApiBaseUrl()}/finance/advisor/recommendations${params.toString() ? `?${params.toString()}` : ''}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to fetch recommendations' }));
+    throw new Error(error.message || `Failed to fetch recommendations: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Get financial health score with breakdown
+ */
+export async function getHealthScore(
+  token: string,
+  context: 'local' | 'home' | 'combined' = 'local',
+): Promise<FinancialHealthScore> {
+  const params = new URLSearchParams();
+  if (context) params.append('context', context);
+
+  const url = `${getApiBaseUrl()}/finance/advisor/health-score${params.toString() ? `?${params.toString()}` : ''}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to fetch health score' }));
+    throw new Error(error.message || `Failed to fetch health score: ${response.status}`);
   }
 
   return response.json();

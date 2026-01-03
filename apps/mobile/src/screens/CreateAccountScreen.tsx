@@ -10,6 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
 import { createAccount, CreateAccountDto } from '../api/financeApi';
 
@@ -96,8 +97,9 @@ export function CreateAccountScreen({ onBack, onSuccess }: CreateAccountScreenPr
             </View>
 
             <View style={styles.infoBox}>
+              <MaterialIcons name="info-outline" size={20} color="#2563EB" style={styles.infoIcon} />
               <Text style={styles.infoText}>
-                💡 This account will start with a balance of $0.00. Add transactions to track your finances!
+                This account will start with a balance of $0.00. Add transactions to track your finances!
               </Text>
             </View>
 
@@ -196,8 +198,15 @@ const styles = StyleSheet.create({
     borderRadius: 8, // Button: 8px
     padding: 16, // md: 16px
     marginBottom: 24, // lg: 24px
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12, // md: 12px
+  },
+  infoIcon: {
+    marginTop: 2,
   },
   infoText: {
+    flex: 1,
     fontSize: 14, // Body: 14px
     color: '#6B7280', // Gray-500
     lineHeight: 21, // 1.5 line-height

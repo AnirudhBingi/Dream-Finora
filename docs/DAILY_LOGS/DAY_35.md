@@ -3,35 +3,37 @@
 **Date:** 2025-12-29  
 **Start Time:** [To be filled]  
 **End Time:** [To be filled]  
-**Status:** 🟡 IN PROGRESS
+**Status:** ✅ COMPLETED
 
 ---
 
 ## Goals
 
-- [ ] Spending by category (pie chart)
-- [ ] Monthly spending trends
-- [ ] Balance over time
+- [x] Spending by category (pie chart)
+- [x] Monthly spending trends
+- [x] Balance over time
 
 ### Backend Tasks:
-- [ ] Create analytics endpoints (GET spending by category, GET monthly trends, GET balance over time)
-- [ ] Calculate spending by category from personal finance transactions
-- [ ] Calculate monthly spending trends
-- [ ] Calculate balance over time (account balance history)
+- [x] Create analytics endpoints (GET spending by category, GET monthly trends, GET balance over time)
+- [x] Calculate spending by category from personal finance transactions
+- [x] Calculate monthly spending trends
+- [x] Calculate balance over time (account balance history)
 
 ### Mobile Tasks:
-- [ ] Install chart library (react-native-chart-kit)
-- [ ] Create Analytics screen
-- [ ] Display spending by category (pie chart)
-- [ ] Display monthly spending trends (line or bar chart)
-- [ ] Display balance over time (line chart)
-- [ ] Add Analytics navigation to HomeScreen
+- [x] Install chart library (`react-native-chart-kit`)
+- [x] Create `AnalyticsScreen`
+- [x] Display spending by category (pie chart)
+- [x] Display monthly spending trends (line chart)
+- [x] Display balance over time (line chart)
+- [x] Add Analytics navigation from Home/Finance flows
 
 ---
 
 ## Work Done
 
-[To be filled during/after work]
+- Added analytics endpoints in the backend (`AnalyticsService` + `AnalyticsController`) to compute spending by category, monthly income/expense trends, and balance over time from `FinanceTransaction` data.
+- Implemented `analyticsApi` client helpers and `AnalyticsScreen` using `react-native-chart-kit` for pie/line charts on mobile.
+- Wired navigation so analytics can be reached from the finance section, with data loading, error handling, and pull-to-refresh.
 
 ---
 
@@ -50,9 +52,9 @@
 ## Verification / Checks
 
 **End of Day 37 Checklist:**
-- [ ] Can see spending by category (pie chart)
-- [ ] Can see monthly spending trends
-- [ ] Can see balance over time
+- [x] Can see spending by category (pie chart)
+- [x] Can see monthly spending trends
+- [x] Can see balance over time
 
 ---
 
@@ -64,6 +66,6 @@
 
 ## Next Steps
 
-- Continue with Analytics implementation (Day 36-37)
-- Move to Day 38-40: Trust Score Enhancement
+- Analytics (basic) is complete and in use inside the mobile app.
+- Move to **Day 38-40: Trust Score Enhancement** (deeper trust score signals and analytics integration).
 

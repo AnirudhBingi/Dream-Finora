@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateLoanDto } from './dto/create-loan.dto';
 import { UpdateLoanDto } from './dto/update-loan.dto';
 import { AddPaymentDto } from './dto/add-payment.dto';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class LoanService {
@@ -33,6 +34,7 @@ export class LoanService {
 
     const loan = await this.prisma.loan.create({
       data: {
+        id: randomUUID(),
         userId,
         name: createLoanDto.name,
         lender: createLoanDto.lender,
@@ -47,6 +49,7 @@ export class LoanService {
         paymentFrequency: createLoanDto.paymentFrequency || 'monthly',
         accountId: createLoanDto.accountId,
         context: createLoanDto.context || 'local',
+        updatedAt: new Date(),
       },
     });
 
@@ -67,19 +70,6 @@ export class LoanService {
 
     const loans = await this.prisma.loan.findMany({
       where,
-      include: {
-        account: {
-          select: {
-            id: true,
-            name: true,
-            currency: true,
-          },
-        },
-        payments: {
-          orderBy: { paymentDate: 'desc' },
-          take: 10, // Recent payments
-        },
-      },
       orderBy: [
         { status: 'asc' }, // Active loans first
         { nextPaymentDate: 'asc' }, // Next payment date
@@ -98,18 +88,6 @@ export class LoanService {
       where: {
         id: loanId,
         userId,
-      },
-      include: {
-        account: {
-          select: {
-            id: true,
-            name: true,
-            currency: true,
-          },
-        },
-        payments: {
-          orderBy: { paymentDate: 'desc' },
-        },
       },
     });
 
@@ -236,6 +214,7 @@ export class LoanService {
     // Create payment
     const payment = await this.prisma.loanPayment.create({
       data: {
+        id: randomUUID(),
         loanId,
         amount: addPaymentDto.amount,
         principalPaid: addPaymentDto.principalPaid,

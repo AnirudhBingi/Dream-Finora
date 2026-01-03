@@ -12,8 +12,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/authContext';
 import {
   getBalance,
+  getCombinedBalance,
   getTransactions,
   BalanceInfo,
+  CombinedBalanceInfo,
   FinanceTransaction,
 } from '../api/financeApi';
 import { getProfile } from '../api/profileApi';
@@ -25,6 +27,9 @@ interface FinanceScreenProps {
   onViewBudgets: (context: 'local' | 'home') => void;
   onViewGoals: (context: 'local' | 'home') => void;
   onViewLoans: (context: 'local' | 'home') => void;
+  onViewAdvisor: (context: 'local' | 'home') => void;
+  onEditTransaction?: (transactionId: string) => void;
+  onViewHistory?: (context?: 'local' | 'home') => void;
   onBack: () => void;
 }
 
@@ -34,11 +39,15 @@ export function FinanceScreen({
   onViewBudgets,
   onViewGoals,
   onViewLoans,
+  onViewAdvisor,
+  onEditTransaction,
+  onViewHistory,
   onBack,
 }: FinanceScreenProps) {
   const { token } = useAuth();
   const [context, setContext] = useState<'local' | 'home'>('local');
   const [balance, setBalance] = useState<BalanceInfo | null>(null);
+  const [combinedBalance, setCombinedBalance] = useState<CombinedBalanceInfo | null>(null);
   const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -78,11 +87,13 @@ export function FinanceScreen({
       setLoading(true);
       setError(null);
       const currency = context === 'local' ? primaryCurrency : homeCountryCurrency;
-      const [balanceData, transactionsData] = await Promise.all([
+      const [balanceData, transactionsData, combinedBalanceData] = await Promise.all([
         getBalance(token, context, context === 'local', currency), // Include Billchop for local
         getTransactions(token, context, context === 'local'), // Include Billchop for local
+        getCombinedBalance(token, primaryCurrency), // Get combined balance with currency conversion
       ]);
       setBalance(balanceData);
+      setCombinedBalance(combinedBalanceData);
       setTransactions(transactionsData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load finances');
@@ -94,11 +105,16 @@ export function FinanceScreen({
 
   function formatCurrency(amount: number | undefined | null, currency?: string): string {
     if (amount === undefined || amount === null || isNaN(amount)) return '$0.00';
-    const displayCurrency = currency || (context === 'local' ? primaryCurrency : homeCountryCurrency);
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: displayCurrency,
-    }).format(amount);
+    const displayCurrency = currency || (context === 'local' ? primaryCurrency : homeCountryCurrency) || 'USD';
+    try {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: displayCurrency,
+      }).format(amount);
+    } catch (e) {
+      // Fallback if currency format fails
+      return `$${amount.toFixed(2)}`;
+    }
   }
 
   function formatDate(dateString: string | undefined | null): string {
@@ -200,7 +216,28 @@ export function FinanceScreen({
             </TouchableOpacity>
           </View>
 
-          {/* Balance Card */}
+          {/* Combined Total Balance Card */}
+          {combinedBalance && (
+            <View style={styles.balanceCard}>
+              <Text style={styles.balanceTitle}>Total Available Balance</Text>
+              <Text style={styles.balanceAmount}>
+                {formatCurrency(combinedBalance.combinedTotal, primaryCurrency)}
+              </Text>
+              <View style={styles.balanceBreakdown}>
+                <Text style={styles.balanceSubtext}>
+                  Local ({combinedBalance.localBalance.currency || 'USD'}): {formatCurrency(combinedBalance.localBalance.amount, combinedBalance.localBalance.currency)}
+                </Text>
+                <Text style={styles.balanceSubtext}>
+                  Home ({combinedBalance.homeBalance.currency || 'USD'}): {formatCurrency(combinedBalance.homeBalance.amount, combinedBalance.homeBalance.currency)}
+                  {combinedBalance.homeBalance.currency !== primaryCurrency ? (
+                    <Text style={styles.balanceSubtext}> ≈ {formatCurrency(combinedBalance.homeBalance.convertedAmount, primaryCurrency)}</Text>
+                  ) : null}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Context-Specific Balance Card */}
           {balance && (
             <View style={styles.balanceCard}>
               <Text style={styles.balanceTitle}>
@@ -209,7 +246,7 @@ export function FinanceScreen({
               <Text style={styles.balanceAmount}>
                 {formatCurrency(balance.totalBalance)}
               </Text>
-              {context === 'local' && balance.billchopBalance && balance.billchopBalance > 0 && (
+              {context === 'local' && balance.billchopBalance && balance.billchopBalance > 0 ? (
                 <View style={styles.balanceBreakdown}>
                   <Text style={styles.balanceSubtext}>
                     Finance: {formatCurrency(balance.totalBalance - balance.billchopBalance)}
@@ -221,7 +258,7 @@ export function FinanceScreen({
                     Total Available: {formatCurrency(balance.totalAvailableBalance)}
                   </Text>
                 </View>
-              )}
+              ) : null}
             </View>
           )}
 
@@ -274,20 +311,40 @@ export function FinanceScreen({
               <Text style={styles.financeActionButtonText}>Loans</Text>
               <MaterialIcons name="chevron-right" size={20} color="#6B7280" />
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.financeActionButton}
+              onPress={() => onViewAdvisor(context)}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="psychology" size={24} color="#8B5CF6" />
+              <Text style={styles.financeActionButtonText}>AI Advisor</Text>
+              <MaterialIcons name="chevron-right" size={20} color="#6B7280" />
+            </TouchableOpacity>
           </View>
 
           {/* Transactions List */}
           <View style={styles.transactionsHeader}>
             <Text style={styles.sectionTitle}>Transactions</Text>
-            <TouchableOpacity
-              style={styles.filterButton}
-              onPress={() => {
-                // TODO: Add filter options (all, income, expense)
-              }}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons name="filter-list" size={20} color="#6B7280" />
-            </TouchableOpacity>
+            <View style={styles.transactionsHeaderActions}>
+              {onViewHistory && (
+                <TouchableOpacity
+                  style={styles.historyButton}
+                  onPress={() => onViewHistory(context)}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons name="history" size={20} color="#2563EB" />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={styles.filterButton}
+                onPress={() => {
+                  // TODO: Add filter options (all, income, expense)
+                }}
+                activeOpacity={0.7}
+              >
+                <MaterialIcons name="filter-list" size={20} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {transactions.length === 0 ? (
@@ -321,6 +378,7 @@ export function FinanceScreen({
                 key={transaction.id}
                 style={styles.transactionCard}
                 activeOpacity={0.7}
+                onPress={() => onEditTransaction?.(transaction.id)}
               >
                 <View style={styles.transactionHeader}>
                   <View style={styles.transactionLeft}>
@@ -578,6 +636,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+  },
+  transactionsHeaderActions: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  historyButton: {
+    padding: 8,
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   sectionTitle: {
     fontSize: 24,

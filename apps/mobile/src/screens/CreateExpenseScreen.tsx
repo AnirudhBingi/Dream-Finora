@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
+import { pickImage } from '../utils/imagePicker';
 import { useAuth } from '../auth/authContext';
 import { createExpense, CreateExpenseDto, uploadReceipt, SplitType } from '../api/expenseApi';
 import { getCategories, Categories, suggestCategory } from '../api/financeApi';
@@ -267,21 +267,9 @@ export function CreateExpenseScreen({ onBack, onSuccess, groupId }: CreateExpens
 
   async function pickReceipt() {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission needed', 'We need access to your photos to upload receipts.');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        setReceiptUri(result.assets[0].uri);
+      const uri = await pickImage({ aspect: [4, 3] });
+      if (uri) {
+        setReceiptUri(uri);
       }
     } catch (err) {
       Alert.alert('Error', 'Failed to pick image');
@@ -610,10 +598,11 @@ export function CreateExpenseScreen({ onBack, onSuccess, groupId }: CreateExpens
             {/* Info Box */}
               {selectedParticipants.length > 0 && (
               <View style={styles.infoBox}>
+                <MaterialIcons name="info-outline" size={20} color="#2563EB" style={styles.infoIcon} />
                 <Text style={styles.infoText}>
-                  {splitType === 'EQUAL' && `💡 This expense will be split equally among you and ${selectedParticipants.length} other${selectedParticipants.length !== 1 ? 's' : ''}.`}
-                  {splitType === 'CUSTOM' && '💡 Enter custom amounts for each participant. The total must equal the expense amount.'}
-                  {splitType === 'PERCENTAGE' && '💡 Enter percentages for each participant. The total must equal 100%.'}
+                  {splitType === 'EQUAL' && `This expense will be split equally among you and ${selectedParticipants.length} other${selectedParticipants.length !== 1 ? 's' : ''}.`}
+                  {splitType === 'CUSTOM' && 'Enter custom amounts for each participant. The total must equal the expense amount.'}
+                  {splitType === 'PERCENTAGE' && 'Enter percentages for each participant. The total must equal 100%.'}
                 </Text>
               </View>
             )}
@@ -643,7 +632,8 @@ export function CreateExpenseScreen({ onBack, onSuccess, groupId }: CreateExpens
                   style={styles.receiptUploadButton}
                   onPress={pickReceipt}
                 >
-                  <Text style={styles.receiptUploadButtonText}>📷 Upload Receipt</Text>
+                  <MaterialIcons name="add-photo-alternate" size={24} color="#6B7280" />
+                  <Text style={styles.receiptUploadButtonText}>Upload Receipt</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -652,15 +642,25 @@ export function CreateExpenseScreen({ onBack, onSuccess, groupId }: CreateExpens
               style={[styles.saveButton, saving && styles.saveButtonDisabled]}
               onPress={handleSave}
               disabled={saving}
+              accessibilityRole="button"
+              accessibilityLabel="Chop a bill"
+              accessibilityHint="Creates the expense and splits it among selected participants"
+              accessibilityState={{ disabled: saving }}
             >
               {saving ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color="#fff" accessible={false} />
               ) : (
                 <Text style={styles.saveButtonText}>Chop a bill</Text>
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.cancelButton} onPress={onBack}>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={onBack}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel"
+              accessibilityHint="Cancels expense creation and returns to previous screen"
+            >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
           </View>
@@ -769,8 +769,15 @@ const styles = StyleSheet.create({
     borderRadius: 8, // Button: 8px
     padding: 16, // md: 16px
     marginBottom: 24, // lg: 24px
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12, // md: 12px
+  },
+  infoIcon: {
+    marginTop: 2, // Small offset for alignment
   },
   infoText: {
+    flex: 1,
     fontSize: 14, // Body: 14px
     color: '#6B7280', // Gray-500
     lineHeight: 21, // 1.5 line-height
@@ -817,11 +824,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 100,
+    gap: 8, // sm: 8px
   },
   receiptUploadButtonText: {
     fontSize: 16, // Body: 16px
     color: '#6B7280', // Gray-500
     fontWeight: '500', // Medium
+    marginTop: 8, // sm: 8px
   },
   receiptContainer: {
     borderWidth: 1,

@@ -19,6 +19,8 @@ import {
   GoalContribution,
 } from '../api/financeApi';
 import { MaterialIcons } from '@expo/vector-icons';
+import { SkeletonDetailScreen } from '../components/SkeletonLoader';
+import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
 
 interface GoalDetailScreenProps {
   goalId: string;
@@ -52,7 +54,7 @@ export function GoalDetailScreen({
       const data = await getGoalById(token, goalId);
       setGoal(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load goal');
+      setError(getUserFriendlyErrorMessage(err));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -178,10 +180,29 @@ export function GoalDetailScreen({
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
-          <Text style={styles.loadingText}>Loading goal...</Text>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
+            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Goal Details</Text>
+          <View style={styles.placeholder} />
         </View>
+        <SkeletonDetailScreen />
+      </SafeAreaView>
+    );
+  }
+
+  if (error || !goal) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
+            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Goal Details</Text>
+          <View style={styles.placeholder} />
+        </View>
+        <ErrorState message={error || 'Goal not found'} onRetry={loadGoal} />
       </SafeAreaView>
     );
   }

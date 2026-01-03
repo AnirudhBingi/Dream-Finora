@@ -154,6 +154,38 @@ export async function blockUser(token: string, friendId: string): Promise<Friend
   return response.json();
 }
 
+export async function unblockUser(token: string, friendId: string): Promise<void> {
+  const response = await fetch(`${getApiBaseUrl()}/friends/unblock/${friendId}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to unblock user' }));
+    throw new Error(error.message || `Failed to unblock user: ${response.status}`);
+  }
+}
+
+export async function getBlockedUsers(token: string): Promise<Friend[]> {
+  const response = await fetch(`${getApiBaseUrl()}/friends/blocked`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to get blocked users' }));
+    throw new Error(error.message || `Failed to get blocked users: ${response.status}`);
+  }
+
+  return response.json();
+}
+
 export async function searchUsers(token: string, query: string): Promise<SearchUser[]> {
   if (!query || query.trim().length === 0) {
     return [];
@@ -187,6 +219,36 @@ export async function getMutualFriends(token: string, userId: string): Promise<F
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Failed to get mutual friends' }));
     throw new Error(error.message || `Failed to get mutual friends: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export interface InviteUserResponse {
+  invitationId: string;
+  token: string;
+  email?: string | null;
+  mobileNumber?: string | null;
+  expiresAt: string;
+  inviteLink: string;
+}
+
+export async function inviteUserToApp(
+  token: string,
+  data: { email?: string; mobileNumber?: string },
+): Promise<InviteUserResponse> {
+  const response = await fetch(`${getApiBaseUrl()}/friends/invite`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to send invitation' }));
+    throw new Error(error.message || `Failed to send invitation: ${response.status}`);
   }
 
   return response.json();

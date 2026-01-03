@@ -8,13 +8,15 @@ import { CurrentUser } from '../auth/current-user.decorator';
 export class ActivityController {
   constructor(private readonly activityService: ActivityService) {}
 
-  @Get()
-  async getActivities(
+  @Get('feed')
+  async getActivityFeed(
     @CurrentUser() user: { userId: string },
     @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('filter') filter?: string,
   ) {
     const limitNum = limit ? parseInt(limit, 10) : 50;
-    return this.activityService.getAllActivities(user.userId, limitNum);
+    const offsetNum = offset ? parseInt(offset, 10) : 0;
+    return this.activityService.getActivityFeed(user.userId, limitNum, offsetNum, filter);
   }
 }
-

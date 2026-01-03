@@ -9,24 +9,32 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
-import { getRideById, joinRide, Ride } from '../api/rideApi';
+import { getRideById, joinRide, deleteRide, getRideHistory, Ride, RideHistoryEntry } from '../api/rideApi';
+import { SkeletonDetailScreen } from '../components/SkeletonLoader';
+import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
 
 interface RideDetailScreenProps {
   rideId: string;
   onBack: () => void;
   onRefresh: () => void;
+  onNavigateToEdit?: (rideId: string) => void;
 }
 
 export function RideDetailScreen({
   rideId,
   onBack,
   onRefresh,
+  onNavigateToEdit,
 }: RideDetailScreenProps) {
   const { token, user } = useAuth();
   const [ride, setRide] = useState<Ride | null>(null);
+  const [history, setHistory] = useState<RideHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
     loadRide();
@@ -40,12 +48,65 @@ export function RideDetailScreen({
       const rideData = await getRideById(token, rideId);
       setRide(rideData);
     } catch (err) {
-      Alert.alert(
-        'Error',
-        err instanceof Error ? err.message : 'Failed to load ride',
-      );
+      // Error will be handled by error state
+      console.error('Failed to load ride:', err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadHistory() {
+    if (!token) return;
+
+    try {
+      setLoadingHistory(true);
+      const historyData = await getRideHistory(token, rideId);
+      setHistory(historyData);
+    } catch (err) {
+      console.error('Failed to load history:', err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!token) return;
+
+    Alert.alert(
+      'Delete Ride',
+      'Are you sure you want to delete this ride? This will also remove the associated expense. All participants will be notified.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setActionLoading(true);
+              await deleteRide(token, rideId);
+              Alert.alert('Success', 'Ride deleted successfully', [
+                { text: 'OK', onPress: () => {
+                  onRefresh();
+                  onBack();
+                }},
+              ]);
+            } catch (err) {
+              Alert.alert(
+                'Error',
+                err instanceof Error ? err.message : 'Failed to delete ride',
+              );
+            } finally {
+              setActionLoading(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+
+  function handleEdit() {
+    if (onNavigateToEdit) {
+      onNavigateToEdit(rideId);
     }
   }
 
@@ -106,10 +167,14 @@ export function RideDetailScreen({
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
-          <Text style={styles.loadingText}>Loading ride...</Text>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
+            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Ride Details</Text>
+          <View style={styles.placeholder} />
         </View>
+        <SkeletonDetailScreen />
       </SafeAreaView>
     );
   }
@@ -117,20 +182,22 @@ export function RideDetailScreen({
   if (!ride) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Ride not found</Text>
-          <TouchableOpacity style={styles.backButton} onPress={onBack}>
-            <Text style={styles.backButtonText}>← Back</Text>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
+            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
           </TouchableOpacity>
+          <Text style={styles.headerTitle}>Ride Details</Text>
+          <View style={styles.placeholder} />
         </View>
+        <ErrorState message="Ride not found" onRetry={loadRide} />
       </SafeAreaView>
     );
   }
 
   const isDriver = ride.driverId === user?.id;
-  const isParticipant = ride.participants.some((p) => p.userId === user?.id);
+  const isParticipant = (ride.participants || []).some((p) => p.userId === user?.id);
   const canJoin = !isDriver && !isParticipant;
-  const passengers = ride.participants.filter((p) => !p.isDriver);
+  const passengers = (ride.participants || []).filter((p) => !p.isDriver);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -147,6 +214,34 @@ export function RideDetailScreen({
             >
               <Text style={styles.backButtonText}>← Back</Text>
             </TouchableOpacity>
+            {isDriver && (
+              <View style={styles.headerActions}>
+                <TouchableOpacity
+                  style={styles.headerButton}
+                  onPress={() => setShowHistory(!showHistory)}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons name="history" size={24} color="#2563EB" />
+                </TouchableOpacity>
+                {onNavigateToEdit && (
+                  <TouchableOpacity
+                    style={styles.headerButton}
+                    onPress={handleEdit}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialIcons name="edit" size={24} color="#2563EB" />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={styles.headerButton}
+                  onPress={handleDelete}
+                  disabled={actionLoading}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons name="delete-outline" size={24} color="#EF4444" />
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
           <View style={styles.rideCard}>
@@ -256,6 +351,47 @@ export function RideDetailScreen({
               )}
             </TouchableOpacity>
           )}
+
+          {/* History Section */}
+          {showHistory && (
+            <View style={styles.historySection}>
+              <View style={styles.historyHeader}>
+                <Text style={styles.historyTitle}>Ride History</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (history.length === 0) {
+                      loadHistory();
+                    }
+                    setShowHistory(true);
+                  }}
+                >
+                  <MaterialIcons name="refresh" size={20} color="#2563EB" />
+                </TouchableOpacity>
+              </View>
+              {loadingHistory ? (
+                <View style={styles.historyLoading}>
+                  <ActivityIndicator size="small" color="#2563EB" />
+                </View>
+              ) : history.length === 0 ? (
+                <Text style={styles.historyEmpty}>No history available</Text>
+              ) : (
+                <View style={styles.historyList}>
+                  {history.map((entry, index) => (
+                    <View key={index} style={styles.historyItem}>
+                      <View style={styles.historyItemContent}>
+                        <Text style={styles.historyItemDescription}>
+                          {entry.description}
+                        </Text>
+                        <Text style={styles.historyItemTime}>
+                          {formatDate(entry.timestamp)}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -279,7 +415,34 @@ const styles = StyleSheet.create({
     // No paddingTop - SafeAreaView handles top spacing
   },
   header: {
-    marginBottom: 16, // md: 16px
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  placeholder: {
+    width: 24,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+  },
+  headerButton: {
+    padding: 8,
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   backButton: {
     paddingVertical: 8, // sm: 8px
@@ -429,6 +592,56 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16, // Button: 16px
     fontWeight: '500', // Medium
+  },
+  historySection: {
+    marginTop: 24,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  historyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  historyLoading: {
+    padding: 16,
+    alignItems: 'center',
+  },
+  historyEmpty: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    padding: 16,
+  },
+  historyList: {
+    gap: 12,
+  },
+  historyItem: {
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  historyItemContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  historyItemDescription: {
+    flex: 1,
+    fontSize: 14,
+    color: '#111827',
+    marginRight: 12,
+  },
+  historyItemTime: {
+    fontSize: 12,
+    color: '#6B7280',
   },
 });
 

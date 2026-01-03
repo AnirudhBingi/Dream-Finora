@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef 
 import { PrismaService } from '../prisma/prisma.service';
 import { TrustScoreService } from '../trust-score/trust-score.service';
 import { NotificationService } from '../notification/notification.service';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class MessagingService {
@@ -20,7 +21,7 @@ export class MessagingService {
     const existingChat = await this.prisma.chat.findFirst({
       where: {
         type: 'direct',
-        participants: {
+        ChatParticipant: {
           every: {
             userId: {
               in: [userId1, userId2],
@@ -29,14 +30,14 @@ export class MessagingService {
         },
         AND: [
           {
-            participants: {
+            ChatParticipant: {
               some: {
                 userId: userId1,
               },
             },
           },
           {
-            participants: {
+            ChatParticipant: {
               some: {
                 userId: userId2,
               },
@@ -45,13 +46,13 @@ export class MessagingService {
         ],
       },
       include: {
-        participants: {
+        ChatParticipant: {
           include: {
-            user: {
+            User: {
               select: {
                 id: true,
                 email: true,
-                profile: {
+                UserProfile: {
                   select: {
                     displayName: true,
                     avatarUrl: true,
@@ -61,7 +62,7 @@ export class MessagingService {
             },
           },
         },
-        messages: {
+        Message: {
           orderBy: { sentAt: 'desc' },
           take: 1,
         },
@@ -75,22 +76,24 @@ export class MessagingService {
     // Create new direct chat
     const chat = await this.prisma.chat.create({
       data: {
+        id: randomUUID(),
         type: 'direct',
-        participants: {
+        updatedAt: new Date(),
+        ChatParticipant: {
           create: [
-            { userId: userId1 },
-            { userId: userId2 },
+            { id: randomUUID(), userId: userId1 },
+            { id: randomUUID(), userId: userId2 },
           ],
         },
       },
       include: {
-        participants: {
+        ChatParticipant: {
           include: {
-            user: {
+            User: {
               select: {
                 id: true,
                 email: true,
-                profile: {
+                UserProfile: {
                   select: {
                     displayName: true,
                     avatarUrl: true,
@@ -100,7 +103,7 @@ export class MessagingService {
             },
           },
         },
-        messages: {
+        Message: {
           orderBy: { sentAt: 'desc' },
           take: 1,
         },
@@ -116,20 +119,20 @@ export class MessagingService {
   async getConversations(userId: string) {
     const chats = await this.prisma.chat.findMany({
       where: {
-        participants: {
+        ChatParticipant: {
           some: {
             userId,
           },
         },
       },
       include: {
-        participants: {
+        ChatParticipant: {
           include: {
-            user: {
+            User: {
               select: {
                 id: true,
                 email: true,
-                profile: {
+                UserProfile: {
                   select: {
                     displayName: true,
                     avatarUrl: true,
@@ -139,7 +142,7 @@ export class MessagingService {
             },
           },
         },
-        messages: {
+        Message: {
           orderBy: { sentAt: 'desc' },
           take: 1, // Get last message for preview
         },
@@ -151,13 +154,13 @@ export class MessagingService {
 
     // For each chat, get the other participant (for direct chats)
     return chats.map((chat) => {
-      const otherParticipant = chat.participants.find((p) => p.userId !== userId);
-      const lastMessage = chat.messages[0] || null;
+      const otherParticipant = chat.ChatParticipant.find((p) => p.userId !== userId);
+      const lastMessage = chat.Message[0] || null;
 
       return {
         id: chat.id,
         type: chat.type,
-        otherParticipant: otherParticipant?.user || null,
+        otherParticipant: otherParticipant?.User || null,
         lastMessage: lastMessage
           ? {
               id: lastMessage.id,
@@ -180,7 +183,7 @@ export class MessagingService {
     const chat = await this.prisma.chat.findFirst({
       where: {
         id: chatId,
-        participants: {
+        ChatParticipant: {
           some: {
             userId,
           },
@@ -203,15 +206,15 @@ export class MessagingService {
       },
     });
 
-    // Get messages
+    // Get messages (include deleted messages but mark them)
     const messages = await this.prisma.message.findMany({
       where: { chatId },
       include: {
-        sender: {
+        User: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -234,7 +237,7 @@ export class MessagingService {
     const chat = await this.prisma.chat.findFirst({
       where: {
         id: chatId,
-        participants: {
+        ChatParticipant: {
           some: {
             userId,
           },
@@ -249,16 +252,17 @@ export class MessagingService {
     // Create message
     const message = await this.prisma.message.create({
       data: {
+        id: randomUUID(),
         chatId,
         senderId: userId,
         content: content.trim(),
       },
       include: {
-        sender: {
+        User: {
           select: {
             id: true,
             email: true,
-            profile: {
+            UserProfile: {
               select: {
                 displayName: true,
                 avatarUrl: true,
@@ -303,7 +307,7 @@ export class MessagingService {
     }
 
     // Notify other participants about the new message
-    const senderName = message.sender.profile?.displayName || message.sender.email || 'Someone';
+    const senderName = message.User.UserProfile?.displayName || message.User.email || 'Someone';
     const messagePreview = content.trim();
     
     for (const participant of participants) {
@@ -350,13 +354,13 @@ export class MessagingService {
     return this.prisma.chat.findUnique({
       where: { id: chat.id },
       include: {
-        participants: {
+        ChatParticipant: {
           include: {
-            user: {
+            User: {
               select: {
                 id: true,
                 email: true,
-                profile: {
+                UserProfile: {
                   select: {
                     displayName: true,
                     avatarUrl: true,
@@ -366,12 +370,251 @@ export class MessagingService {
             },
           },
         },
-        messages: {
+        Message: {
           orderBy: { sentAt: 'desc' },
           take: 1,
         },
       },
     });
+  }
+
+  /**
+   * Edit a message (within time limit, e.g., 5 minutes)
+   */
+  async editMessage(userId: string, chatId: string, messageId: string, newContent: string) {
+    // Verify user is a participant
+    const chat = await this.prisma.chat.findFirst({
+      where: {
+        id: chatId,
+        ChatParticipant: {
+          some: {
+            userId,
+          },
+        },
+      },
+    });
+
+    if (!chat) {
+      throw new NotFoundException('Chat not found or you do not have access');
+    }
+
+    // Get message
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      select: {
+        id: true,
+        chatId: true,
+        senderId: true,
+        content: true,
+        sentAt: true,
+        readAt: true,
+        editedAt: true,
+        deletedAt: true,
+      },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    if (message.chatId !== chatId) {
+      throw new BadRequestException('Message does not belong to this chat');
+    }
+
+    if (message.senderId !== userId) {
+      throw new BadRequestException('You can only edit your own messages');
+    }
+
+    // Check if message was deleted
+    if (message.deletedAt) {
+      throw new BadRequestException('Cannot edit a deleted message');
+    }
+
+    // Check time limit (5 minutes = 300000 ms)
+    const timeSinceSent = Date.now() - message.sentAt.getTime();
+    const FIVE_MINUTES = 5 * 60 * 1000;
+    if (timeSinceSent > FIVE_MINUTES) {
+      throw new BadRequestException('Message can only be edited within 5 minutes of sending');
+    }
+
+    if (!newContent.trim()) {
+      throw new BadRequestException('Message content cannot be empty');
+    }
+
+    // Update message
+    const updated = await this.prisma.message.update({
+      where: { id: messageId },
+      data: {
+        content: newContent.trim(),
+        editedAt: new Date(),
+      },
+      include: {
+        User: {
+          select: {
+            id: true,
+            email: true,
+            UserProfile: {
+              select: {
+                displayName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Delete a message (soft delete)
+   */
+  async deleteMessage(userId: string, chatId: string, messageId: string) {
+    // Verify user is a participant
+    const chat = await this.prisma.chat.findFirst({
+      where: {
+        id: chatId,
+        ChatParticipant: {
+          some: {
+            userId,
+          },
+        },
+      },
+    });
+
+    if (!chat) {
+      throw new NotFoundException('Chat not found or you do not have access');
+    }
+
+    // Get message
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      select: {
+        id: true,
+        chatId: true,
+        senderId: true,
+        content: true,
+        sentAt: true,
+        readAt: true,
+        editedAt: true,
+        deletedAt: true,
+      },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    if (message.chatId !== chatId) {
+      throw new BadRequestException('Message does not belong to this chat');
+    }
+
+    if (message.senderId !== userId) {
+      throw new BadRequestException('You can only delete your own messages');
+    }
+
+    if (message.deletedAt) {
+      throw new BadRequestException('Message is already deleted');
+    }
+
+    // Soft delete
+    const updated = await this.prisma.message.update({
+      where: { id: messageId },
+      data: {
+        deletedAt: new Date(),
+        content: '', // Clear content for deleted messages
+      },
+      include: {
+        User: {
+          select: {
+            id: true,
+            email: true,
+            UserProfile: {
+              select: {
+                displayName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Mark message as read
+   */
+  async markMessageAsRead(userId: string, chatId: string, messageId: string) {
+    // Verify user is a participant
+    const chat = await this.prisma.chat.findFirst({
+      where: {
+        id: chatId,
+        ChatParticipant: {
+          some: {
+            userId,
+          },
+        },
+      },
+    });
+
+    if (!chat) {
+      throw new NotFoundException('Chat not found or you do not have access');
+    }
+
+    // Get message
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      select: {
+        id: true,
+        chatId: true,
+        senderId: true,
+        content: true,
+        sentAt: true,
+        readAt: true,
+        editedAt: true,
+        deletedAt: true,
+      },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    if (message.chatId !== chatId) {
+      throw new BadRequestException('Message does not belong to this chat');
+    }
+
+    // Only mark as read if not sent by current user
+    if (message.senderId === userId) {
+      return message;
+    }
+
+    // Update readAt
+    const updated = await this.prisma.message.update({
+      where: { id: messageId },
+      data: {
+        readAt: new Date(),
+      },
+      include: {
+        User: {
+          select: {
+            id: true,
+            email: true,
+            UserProfile: {
+              select: {
+                displayName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return updated;
   }
 }
 

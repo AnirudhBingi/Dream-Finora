@@ -17,7 +17,11 @@ import {
   Budget,
   BudgetTracking,
 } from '../api/financeApi';
+import { getProfile, Profile } from '../api/profileApi';
 import { MaterialIcons } from '@expo/vector-icons';
+import { SkeletonBudgetList } from '../components/SkeletonLoader';
+import { EmptyState } from '../components/EmptyState';
+import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
 
 interface BudgetScreenProps {
   context: 'local' | 'home';
@@ -37,10 +41,25 @@ export function BudgetScreen({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [primaryCurrency, setPrimaryCurrency] = useState<string>('USD');
+  const [homeCountryCurrency, setHomeCountryCurrency] = useState<string>('USD');
 
   useEffect(() => {
     loadBudgets();
+    loadProfile();
   }, [token, context]);
+
+  async function loadProfile() {
+    if (!token) return;
+    try {
+      const profile = await getProfile(token);
+      setPrimaryCurrency(profile.primaryCurrency || 'USD');
+      setHomeCountryCurrency(profile.homeCountryCurrency || 'USD');
+    } catch (err) {
+      setPrimaryCurrency('USD');
+      setHomeCountryCurrency('USD');
+    }
+  }
 
   async function loadBudgets() {
     if (!token) return;
@@ -51,7 +70,7 @@ export function BudgetScreen({
       const data = await getBudgets(token, context);
       setBudgets(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load budgets');
+      setError(getUserFriendlyErrorMessage(err));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -85,9 +104,10 @@ export function BudgetScreen({
   }
 
   function formatCurrency(amount: number): string {
+    const displayCurrency = context === 'local' ? primaryCurrency : homeCountryCurrency;
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD',
+      currency: displayCurrency,
     }).format(amount);
   }
 

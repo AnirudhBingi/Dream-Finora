@@ -29,6 +29,9 @@ export interface Listing {
   metadata?: RoommateMetadata | AccommodationMetadata | ItemMetadata | EventMetadata | RideMetadata | null;
   createdAt: string;
   updatedAt: string;
+  isFavorited?: boolean;
+  favoriteCount?: number;
+  commentCount?: number;
   user: {
     id: string;
     email: string;
@@ -97,6 +100,23 @@ export interface CreateListingDto {
   metadata?: RoommateMetadata | AccommodationMetadata | ItemMetadata | EventMetadata | RideMetadata;
 }
 
+export interface ListingComment {
+  id: string;
+  listingId: string;
+  userId: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  user: {
+    id: string;
+    email: string;
+    profile?: {
+      displayName: string | null;
+      avatarUrl: string | null;
+    } | null;
+  };
+}
+
 export async function createListing(
   token: string,
   data: CreateListingDto,
@@ -118,18 +138,30 @@ export async function createListing(
   return response.json();
 }
 
+export interface PaginatedListingsResponse {
+  listings: Listing[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
 export async function getListings(
   token: string,
   filters?: {
     type?: ListingType;
     status?: ListingStatus;
     search?: string;
+    limit?: number;
+    offset?: number;
   },
-): Promise<Listing[]> {
+): Promise<PaginatedListingsResponse | Listing[]> {
   const params = new URLSearchParams();
   if (filters?.type) params.append('type', filters.type);
   if (filters?.status) params.append('status', filters.status);
   if (filters?.search) params.append('search', filters.search);
+  if (filters?.limit !== undefined) params.append('limit', filters.limit.toString());
+  if (filters?.offset !== undefined) params.append('offset', filters.offset.toString());
 
   const url = `${getApiBaseUrl()}/listings${params.toString() ? `?${params.toString()}` : ''}`;
 
@@ -146,7 +178,13 @@ export async function getListings(
     throw new Error(error.message || `Failed to fetch listings: ${response.status}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  // Check if response has pagination structure
+  if (data.listings && Array.isArray(data.listings)) {
+    return data as PaginatedListingsResponse;
+  }
+  // Backward compatibility: return array if not paginated
+  return data as Listing[];
 }
 
 export async function getMyListings(token: string): Promise<Listing[]> {
@@ -287,6 +325,166 @@ export async function uploadListingImages(
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Failed to upload images' }));
     throw new Error(error.message || `Failed to upload images: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function updateListing(
+  token: string,
+  listingId: string,
+  data: Partial<CreateListingDto>,
+): Promise<Listing> {
+  const response = await fetch(`${getApiBaseUrl()}/listings/${listingId}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to update listing' }));
+    throw new Error(error.message || `Failed to update listing: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function toggleFavorite(
+  token: string,
+  listingId: string,
+): Promise<{ favorited: boolean }> {
+  const response = await fetch(`${getApiBaseUrl()}/listings/${listingId}/favorite`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to toggle favorite' }));
+    throw new Error(error.message || `Failed to toggle favorite: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function getFavorites(token: string): Promise<Listing[]> {
+  const response = await fetch(`${getApiBaseUrl()}/listings/favorites`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to fetch favorites' }));
+    throw new Error(error.message || `Failed to fetch favorites: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function getComments(token: string, listingId: string): Promise<ListingComment[]> {
+  const response = await fetch(`${getApiBaseUrl()}/listings/${listingId}/comments`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to fetch comments' }));
+    throw new Error(error.message || `Failed to fetch comments: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function addComment(
+  token: string,
+  listingId: string,
+  content: string,
+): Promise<ListingComment> {
+  const response = await fetch(`${getApiBaseUrl()}/listings/${listingId}/comments`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ content }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to add comment' }));
+    throw new Error(error.message || `Failed to add comment: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function editComment(
+  token: string,
+  listingId: string,
+  commentId: string,
+  content: string,
+): Promise<ListingComment> {
+  const response = await fetch(`${getApiBaseUrl()}/listings/${listingId}/comments/${commentId}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ content }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to edit comment' }));
+    throw new Error(error.message || `Failed to edit comment: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function deleteComment(
+  token: string,
+  listingId: string,
+  commentId: string,
+): Promise<void> {
+  const response = await fetch(`${getApiBaseUrl()}/listings/${listingId}/comments/${commentId}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to delete comment' }));
+    throw new Error(error.message || `Failed to delete comment: ${response.status}`);
+  }
+}
+
+export async function generateShareLink(
+  token: string,
+  listingId: string,
+): Promise<{ shareLink: string; listingId: string }> {
+  const response = await fetch(`${getApiBaseUrl()}/listings/${listingId}/share`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to generate share link' }));
+    throw new Error(error.message || `Failed to generate share link: ${response.status}`);
   }
 
   return response.json();

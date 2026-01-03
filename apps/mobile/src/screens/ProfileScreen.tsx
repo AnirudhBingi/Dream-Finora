@@ -10,18 +10,22 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
+import { Icon } from '../components/Icon';
 import { useAuth } from '../auth/authContext';
 import { getProfile, Profile } from '../api/profileApi';
 import { getApiBaseUrl } from '../api/getApiBaseUrl';
 import { getTrustScoreBreakdown, TrustScoreWithBreakdown } from '../api/trustScoreApi';
+import { SkeletonDetailScreen } from '../components/SkeletonLoader';
+import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
 
 interface ProfileScreenProps {
   onEdit: () => void;
   onBack: () => void;
+  onSettings?: () => void;
+  onViewTrustScoreInsights?: () => void;
 }
 
-export function ProfileScreen({ onEdit, onBack, onSettings }: ProfileScreenProps) {
+export function ProfileScreen({ onEdit, onBack, onSettings, onViewTrustScoreInsights }: ProfileScreenProps) {
   const { token, user } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [trustScoreBreakdown, setTrustScoreBreakdown] = useState<TrustScoreWithBreakdown | null>(null);
@@ -47,7 +51,7 @@ export function ProfileScreen({ onEdit, onBack, onSettings }: ProfileScreenProps
       setProfile(profileData);
       setTrustScoreBreakdown(breakdownData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load profile');
+      setError(getUserFriendlyErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -77,10 +81,7 @@ export function ProfileScreen({ onEdit, onBack, onSettings }: ProfileScreenProps
   if (loading) {
     return (
       <View style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
-          <Text style={styles.loadingText}>Loading profile...</Text>
-        </View>
+        <SkeletonDetailScreen />
       </View>
     );
   }
@@ -88,12 +89,7 @@ export function ProfileScreen({ onEdit, onBack, onSettings }: ProfileScreenProps
   if (error) {
     return (
       <View style={styles.container}>
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadProfile}>
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </TouchableOpacity>
-        </View>
+        <ErrorState message={error} onRetry={loadProfile} />
       </View>
     );
   }
@@ -141,7 +137,7 @@ export function ProfileScreen({ onEdit, onBack, onSettings }: ProfileScreenProps
         </Text>
         <Text style={styles.email}>{user?.email}</Text>
 
-        {profile?.user?.trustScore ? (
+        {profile?.user?.trustScore?.score !== undefined && profile?.user?.trustScore?.score !== null ? (
           <View style={styles.trustScoreContainer}>
             <Text style={styles.trustScoreLabel}>Trust Score</Text>
             <View style={styles.trustScoreValueContainer}>
@@ -158,7 +154,7 @@ export function ProfileScreen({ onEdit, onBack, onSettings }: ProfileScreenProps
                 style={[
                   styles.trustScoreBarFill,
                   { 
-                    width: `${profile.user.trustScore.score}%`,
+                    width: `${Math.min(100, Math.max(0, profile.user.trustScore.score))}%`,
                     backgroundColor: getTrustScoreColor(profile.user.trustScore.score),
                   },
                 ]}
@@ -240,6 +236,15 @@ export function ProfileScreen({ onEdit, onBack, onSettings }: ProfileScreenProps
                 </View>
               </View>
             )}
+            {onViewTrustScoreInsights && (
+              <TouchableOpacity
+                style={styles.insightsButton}
+                onPress={onViewTrustScoreInsights}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.insightsButtonText}>View Insights & Trends</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           <View style={styles.trustScoreContainer}>
@@ -261,7 +266,7 @@ export function ProfileScreen({ onEdit, onBack, onSettings }: ProfileScreenProps
             </TouchableOpacity>
             {onSettings && (
               <TouchableOpacity style={styles.settingsButton} onPress={onSettings}>
-                <MaterialIcons name="settings" size={20} color="#2563EB" />
+                <Icon name="settings" size={20} color="#2563EB" />
                 <Text style={styles.settingsButtonText}>Settings</Text>
               </TouchableOpacity>
             )}
@@ -525,6 +530,19 @@ const styles = StyleSheet.create({
   breakdownDetails: {
     fontSize: 12,
     color: '#6B7280',
+  },
+  insightsButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: '#2563EB',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  insightsButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
   },
 });
 

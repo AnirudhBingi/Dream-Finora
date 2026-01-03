@@ -7,6 +7,8 @@ export interface Message {
   content: string;
   sentAt: string;
   readAt: string | null;
+  editedAt?: string | null;
+  deletedAt?: string | null;
   sender: {
     id: string;
     email: string;
@@ -118,6 +120,71 @@ export async function startConversation(
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Failed to start conversation' }));
     throw new Error(error.message || `Failed to start conversation: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function editMessage(
+  token: string,
+  chatId: string,
+  messageId: string,
+  content: string,
+): Promise<Message> {
+  const response = await fetch(`${getApiBaseUrl()}/messaging/conversations/${chatId}/messages/${messageId}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ content }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to edit message' }));
+    throw new Error(error.message || `Failed to edit message: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function deleteMessage(
+  token: string,
+  chatId: string,
+  messageId: string,
+): Promise<Message> {
+  const response = await fetch(`${getApiBaseUrl()}/messaging/conversations/${chatId}/messages/${messageId}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to delete message' }));
+    throw new Error(error.message || `Failed to delete message: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function markMessageAsRead(
+  token: string,
+  chatId: string,
+  messageId: string,
+): Promise<Message> {
+  const response = await fetch(`${getApiBaseUrl()}/messaging/conversations/${chatId}/messages/${messageId}/read`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to mark message as read' }));
+    throw new Error(error.message || `Failed to mark message as read: ${response.status}`);
   }
 
   return response.json();

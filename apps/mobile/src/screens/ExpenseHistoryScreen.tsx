@@ -57,7 +57,7 @@ export function ExpenseHistoryScreen({ expenseId, onBack }: ExpenseHistoryScreen
   }
 
   function getUserDisplayName(historyItem: ExpenseHistory): string {
-    return historyItem.user.profile?.displayName || historyItem.user.email;
+    return historyItem?.user?.profile?.displayName || historyItem?.user?.email || 'Unknown';
   }
 
   function getActionIcon(action: string): keyof typeof MaterialIcons.glyphMap {

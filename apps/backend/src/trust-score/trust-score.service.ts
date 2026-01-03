@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { randomUUID } from 'crypto';
 
 export interface TrustScoreBreakdown {
   total: number;
@@ -17,6 +19,8 @@ export interface TrustScoreBreakdown {
       completionRate: number;
       onTimeRate: number;
       pointsBonus: number;
+      streakBonus: number;
+      achievementsBonus: number;
       rawScore: number;
     };
     community: {
@@ -47,7 +51,9 @@ export class TrustScoreService {
   /**
    * Calculate detailed trust score breakdown
    */
-  async calculateTrustScoreBreakdown(userId: string): Promise<TrustScoreBreakdown> {
+  async calculateTrustScoreBreakdown(
+    userId: string,
+  ): Promise<TrustScoreBreakdown> {
     const expenseScoreData = await this.calculateExpenseScore(userId);
     const choreScoreData = await this.calculateChoreScore(userId);
     const communityScoreData = await this.calculateCommunityScore(userId);
@@ -57,7 +63,10 @@ export class TrustScoreService {
     const choreScore = choreScoreData.rawScore * 0.3; // 30% weight
     const communityScore = communityScoreData.rawScore * 0.3; // 30% weight
 
-    const total = Math.min(Math.round(expenseScore + choreScore + communityScore), 100);
+    const total = Math.min(
+      Math.round(expenseScore + choreScore + communityScore),
+      100,
+    );
 
     return {
       total,
@@ -88,11 +97,7 @@ export class TrustScoreService {
         paidAt: { not: null },
       },
       include: {
-        expense: {
-          select: {
-            createdAt: true,
-          },
-        },
+        Expense: true,
       },
       orderBy: {
         paidAt: 'desc',
@@ -112,10 +117,12 @@ export class TrustScoreService {
     const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
     const onTimeSettlements = splits.filter((split) => {
       if (!split.paidAt) return false;
-      const timeToPay = split.paidAt.getTime() - split.expense.createdAt.getTime();
+      const timeToPay =
+        split.paidAt.getTime() - split.Expense.createdAt.getTime();
       return timeToPay <= sevenDaysInMs;
     });
-    const onTimeSettlementRate = splits.length > 0 ? onTimeSettlements.length / splits.length : 0;
+    const onTimeSettlementRate =
+      splits.length > 0 ? onTimeSettlements.length / splits.length : 0;
 
     // Calculate recent activity bonus (activity in last 30 days)
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -135,7 +142,10 @@ export class TrustScoreService {
 
     // Calculate raw score (0-100)
     const rawScore = Math.round(
-      (onTimeSettlementRate * 0.5 + recentActivityBonus * 0.3 + volumeBonus * 0.2) * 100,
+      (onTimeSettlementRate * 0.5 +
+        recentActivityBonus * 0.3 +
+        volumeBonus * 0.2) *
+        100,
     );
 
     return {
@@ -149,9 +159,11 @@ export class TrustScoreService {
   /**
    * Calculate chore score (max 100 points, weighted to 30%)
    * Components:
-   * - Completion rate (40%): Percentage of assigned chores completed
-   * - On-time rate (30%): Percentage of chores completed on time
-   * - Points bonus (30%): Normalized points earned
+   * - Completion rate (35%): Percentage of assigned chores completed
+   * - On-time rate (25%): Percentage of chores completed on time
+   * - Points bonus (20%): Normalized points earned
+   * - Streak bonus (10%): Current streak normalized (30+ days = 1.0)
+   * - Achievements bonus (10%): Percentage of achievements unlocked
    */
   private async calculateChoreScore(userId: string) {
     // Get all chores assigned to user
@@ -160,7 +172,7 @@ export class TrustScoreService {
         assignedTo: userId,
       },
       include: {
-        completions: {
+        ChoreCompletion: {
           where: {
             userId,
           },
@@ -168,26 +180,39 @@ export class TrustScoreService {
       },
     });
 
-    if (assignedChores.length === 0) {
+    // Get all completions for streak and points calculation
+    const allCompletions = await this.prisma.choreCompletion.findMany({
+      where: { userId },
+      orderBy: { completedAt: 'desc' },
+    });
+
+    if (assignedChores.length === 0 && allCompletions.length === 0) {
       return {
         completionRate: 0,
         onTimeRate: 0,
         pointsBonus: 0,
+        streakBonus: 0,
+        achievementsBonus: 0,
         rawScore: 0,
       };
     }
 
-    // Calculate completion rate
-    const completedChores = assignedChores.filter((chore) => chore.completions.length > 0);
-    const completionRate = completedChores.length / assignedChores.length;
+    // Calculate completion rate (only for assigned chores)
+    const completedChores = assignedChores.filter(
+      (chore) => chore.ChoreCompletion.length > 0,
+    );
+    const completionRate =
+      assignedChores.length > 0
+        ? completedChores.length / assignedChores.length
+        : 0;
 
     // Calculate on-time rate (from completed chores)
     const completedChoresWithCompletions = assignedChores.filter(
-      (chore) => chore.completions.length > 0,
+      (chore) => chore.ChoreCompletion.length > 0,
     );
     let onTimeCount = 0;
     for (const chore of completedChoresWithCompletions) {
-      const completion = chore.completions[0]; // Most recent completion
+      const completion = chore.ChoreCompletion[0]; // Most recent completion
       if (completion.onTime) {
         onTimeCount++;
       }
@@ -198,24 +223,142 @@ export class TrustScoreService {
         : 0;
 
     // Calculate points bonus (normalized: 1000+ points = 1.0)
-    const totalPoints = completedChores.reduce(
-      (sum, chore) => sum + (chore.completions[0]?.pointsEarned || 0),
+    const totalPoints = allCompletions.reduce(
+      (sum, completion) => sum + completion.pointsEarned,
       0,
     );
     const pointsBonus = Math.min(totalPoints / 1000, 1.0);
 
+    // Calculate streak bonus (normalized: 30+ days = 1.0)
+    const streak = await this.calculateStreak(userId);
+    const streakBonus = Math.min(streak / 30, 1.0);
+
+    // Calculate achievements bonus (percentage of achievements unlocked)
+    const achievementsBonus = await this.calculateAchievementsBonus(
+      userId,
+      allCompletions.length,
+      totalPoints,
+      streak,
+    );
+
     // Calculate raw score (0-100)
-    // Multiply by 100 first, then round to avoid rounding small decimals to 0
+    // Weights: completionRate (35%), onTimeRate (25%), pointsBonus (20%), streakBonus (10%), achievementsBonus (10%)
     const rawScore = Math.round(
-      (completionRate * 0.4 + onTimeRate * 0.3 + pointsBonus * 0.3) * 100,
+      (completionRate * 0.35 +
+        onTimeRate * 0.25 +
+        pointsBonus * 0.2 +
+        streakBonus * 0.1 +
+        achievementsBonus * 0.1) *
+        100,
     );
 
     return {
       completionRate,
       onTimeRate,
       pointsBonus,
+      streakBonus,
+      achievementsBonus,
       rawScore,
     };
+  }
+
+  /**
+   * Calculate streak (consecutive days with at least one completion)
+   */
+  private async calculateStreak(userId: string): Promise<number> {
+    const completions = await this.prisma.choreCompletion.findMany({
+      where: { userId },
+      orderBy: { completedAt: 'desc' },
+    });
+
+    if (completions.length === 0) {
+      return 0;
+    }
+
+    // Group completions by date (ignoring time)
+    const completionsByDate = new Map<string, number>();
+    for (const completion of completions) {
+      const dateKey = completion.completedAt.toISOString().split('T')[0];
+      completionsByDate.set(dateKey, (completionsByDate.get(dateKey) || 0) + 1);
+    }
+
+    // Calculate streak (consecutive days with at least one completion)
+    const sortedDates = Array.from(completionsByDate.keys()).sort().reverse();
+    let streak = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (let i = 0; i < sortedDates.length; i++) {
+      const date = new Date(sortedDates[i]);
+      date.setHours(0, 0, 0, 0);
+
+      const expectedDate = new Date(today);
+      expectedDate.setDate(expectedDate.getDate() - i);
+
+      if (date.getTime() === expectedDate.getTime()) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+
+    return streak;
+  }
+
+  /**
+   * Calculate achievements bonus (percentage of achievements unlocked)
+   * Total achievements: 12
+   * - First Steps (1 completion)
+   * - Getting Started (10 completions)
+   * - Dedicated Helper (50 completions)
+   * - Chore Master (100 completions)
+   * - Point Collector (100 points)
+   * - Point Champion (500 points)
+   * - Point Legend (1000 points)
+   * - On a Roll (3-day streak)
+   * - Week Warrior (7-day streak)
+   * - Monthly Master (30-day streak)
+   * - Perfect Timing (10+ chores all on time)
+   */
+  private async calculateAchievementsBonus(
+    userId: string,
+    totalCompleted: number,
+    totalPoints: number,
+    streak: number,
+  ): Promise<number> {
+    let unlockedCount = 0;
+    const totalAchievements = 12;
+
+    // First Steps
+    if (totalCompleted >= 1) unlockedCount++;
+
+    // Milestone achievements
+    if (totalCompleted >= 10) unlockedCount++;
+    if (totalCompleted >= 50) unlockedCount++;
+    if (totalCompleted >= 100) unlockedCount++;
+
+    // Points achievements
+    if (totalPoints >= 100) unlockedCount++;
+    if (totalPoints >= 500) unlockedCount++;
+    if (totalPoints >= 1000) unlockedCount++;
+
+    // Streak achievements
+    if (streak >= 3) unlockedCount++;
+    if (streak >= 7) unlockedCount++;
+    if (streak >= 30) unlockedCount++;
+
+    // Perfect timing achievement
+    const onTimeCount = await this.prisma.choreCompletion.count({
+      where: {
+        userId,
+        onTime: true,
+      },
+    });
+    if (totalCompleted >= 10 && onTimeCount === totalCompleted) {
+      unlockedCount++;
+    }
+
+    return unlockedCount / totalAchievements;
   }
 
   /**
@@ -235,9 +378,11 @@ export class TrustScoreService {
 
     // Calculate listing success rate (status = "completed" or "closed")
     const successfulListings = listings.filter(
-      (listing) => listing.status === 'completed' || listing.status === 'closed',
+      (listing) =>
+        listing.status === 'completed' || listing.status === 'closed',
     );
-    const listingSuccessRate = listings.length > 0 ? successfulListings.length / listings.length : 0;
+    const listingSuccessRate =
+      listings.length > 0 ? successfulListings.length / listings.length : 0;
 
     // Calculate engagement rate (normalized: 10+ listings = 1.0)
     const engagementRate = Math.min(listings.length / 10, 1.0);
@@ -249,9 +394,9 @@ export class TrustScoreService {
         userId,
       },
       include: {
-        chat: {
+        Chat: {
           include: {
-            messages: {
+            Message: {
               orderBy: {
                 sentAt: 'asc',
               },
@@ -267,20 +412,21 @@ export class TrustScoreService {
     const twentyFourHoursInMs = 24 * 60 * 60 * 1000;
 
     for (const participant of chatParticipants) {
-      const messages = participant.chat.messages;
-      
+      const messages = participant.Chat.Message;
+
       for (let i = 0; i < messages.length; i++) {
         const message = messages[i];
-        
+
         // If message is from someone else, count it as received
         if (message.senderId !== userId) {
           messagesReceived++;
-          
+
           // Check if user responded within 24 hours (look for next message from user)
           for (let j = i + 1; j < messages.length; j++) {
             const nextMessage = messages[j];
             if (nextMessage.senderId === userId) {
-              const timeToRespond = nextMessage.sentAt.getTime() - message.sentAt.getTime();
+              const timeToRespond =
+                nextMessage.sentAt.getTime() - message.sentAt.getTime();
               if (timeToRespond <= twentyFourHoursInMs) {
                 responsesWithin24h++;
               }
@@ -291,12 +437,14 @@ export class TrustScoreService {
       }
     }
 
-    const responseRate = messagesReceived > 0 ? responsesWithin24h / messagesReceived : 0;
+    const responseRate =
+      messagesReceived > 0 ? responsesWithin24h / messagesReceived : 0;
 
     // Calculate raw score (0-100)
     // Multiply by 100 first, then round to avoid rounding small decimals to 0
     const rawScore = Math.round(
-      (listingSuccessRate * 0.5 + engagementRate * 0.3 + responseRate * 0.2) * 100,
+      (listingSuccessRate * 0.5 + engagementRate * 0.3 + responseRate * 0.2) *
+        100,
     );
 
     return {
@@ -314,7 +462,7 @@ export class TrustScoreService {
     let trustScore = await this.prisma.trustScore.findUnique({
       where: { userId },
       include: {
-        history: {
+        TrustScoreHistory: {
           orderBy: { createdAt: 'desc' },
           take: 10,
         },
@@ -330,6 +478,7 @@ export class TrustScoreService {
       try {
         const newTrustScore = await this.prisma.trustScore.create({
           data: {
+            id: randomUUID(),
             userId,
             score,
             verified: false,
@@ -337,13 +486,17 @@ export class TrustScoreService {
         });
 
         // Add initial history entry
-        await this.addHistoryEntry(newTrustScore.id, score, 'Initial score calculation');
+        await this.addHistoryEntry(
+          newTrustScore.id,
+          score,
+          'Initial score calculation',
+        );
 
         // Fetch with history
         trustScore = await this.prisma.trustScore.findUnique({
           where: { id: newTrustScore.id },
           include: {
-            history: {
+            TrustScoreHistory: {
               orderBy: { createdAt: 'desc' },
               take: 10,
             },
@@ -353,13 +506,19 @@ export class TrustScoreService {
         if (!trustScore) {
           throw new Error('Failed to create trust score');
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         // If unique constraint error (race condition), just fetch the existing one
-        if (error.code === 'P2002' && error.meta?.target?.includes('userId')) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002' &&
+          error.meta &&
+          Array.isArray(error.meta.target) &&
+          error.meta.target.includes('userId')
+        ) {
           trustScore = await this.prisma.trustScore.findUnique({
             where: { userId },
             include: {
-              history: {
+              TrustScoreHistory: {
                 orderBy: { createdAt: 'desc' },
                 take: 10,
               },
@@ -367,7 +526,9 @@ export class TrustScoreService {
           });
           // If still null after fetching, something is wrong
           if (!trustScore) {
-            throw new Error('Failed to retrieve trust score after race condition');
+            throw new Error(
+              'Failed to retrieve trust score after race condition',
+            );
           }
         } else {
           // Re-throw if it's a different error
@@ -387,7 +548,7 @@ export class TrustScoreService {
             updatedAt: new Date(),
           },
           include: {
-            history: {
+            TrustScoreHistory: {
               orderBy: { createdAt: 'desc' },
               take: 10,
             },
@@ -395,7 +556,11 @@ export class TrustScoreService {
         });
 
         // Add history entry for the change
-        await this.addHistoryEntry(trustScore.id, calculatedScore, 'Score recalculation');
+        await this.addHistoryEntry(
+          trustScore.id,
+          calculatedScore,
+          'Score recalculation',
+        );
       }
     }
 
@@ -433,6 +598,7 @@ export class TrustScoreService {
   ) {
     await this.prisma.trustScoreHistory.create({
       data: {
+        id: randomUUID(),
         trustScoreId,
         score,
         reason,
@@ -441,20 +607,304 @@ export class TrustScoreService {
   }
 
   /**
-   * Get trust score history for a user
+   * Get trust score history for a user (detailed)
    */
-  async getTrustScoreHistory(userId: string, limit: number = 20) {
+  async getTrustScoreHistory(userId: string, limit: number = 50) {
     const trustScore = await this.prisma.trustScore.findUnique({
       where: { userId },
       include: {
-        history: {
+        TrustScoreHistory: {
           orderBy: { createdAt: 'desc' },
           take: limit,
         },
       },
     });
 
-    return trustScore?.history || [];
+    return trustScore?.TrustScoreHistory || [];
+  }
+
+  /**
+   * Compare trust score with friends
+   */
+  async compareTrustScoreWithFriends(userId: string) {
+    // Get user's trust score
+    const userTrustScore = await this.getOrCreateTrustScore(userId);
+    const userBreakdown = await this.calculateTrustScoreBreakdown(userId);
+
+    // Get user's friends
+    const friendships = await this.prisma.friend.findMany({
+      where: {
+        OR: [
+          { userId, status: 'accepted' },
+          { friendId: userId, status: 'accepted' },
+        ],
+      },
+      include: {
+        User_Friend_userIdToUser: {
+          include: {
+            UserProfile: true,
+          },
+        },
+        User_Friend_friendIdToUser: {
+          include: {
+            UserProfile: true,
+          },
+        },
+      },
+    });
+
+    // Get trust scores for friends
+    const friendScores = await Promise.all(
+      friendships.map(async (friendship) => {
+        const friendId =
+          friendship.userId === userId
+            ? friendship.friendId
+            : friendship.userId;
+        const friend =
+          friendship.userId === userId
+            ? friendship.User_Friend_friendIdToUser
+            : friendship.User_Friend_userIdToUser;
+
+        // Check privacy settings
+        if (friend.UserProfile?.trustScoreVisibility === 'private') {
+          return null;
+        }
+
+        const friendTrustScore = await this.getOrCreateTrustScore(
+          friendId,
+        ).catch(() => null);
+        if (!friendTrustScore) return null;
+
+        // If visibility is 'friends', show score; if 'public', show score
+        // If visibility is 'private', we already returned null above
+        return {
+          userId: friendId,
+          displayName: friend.UserProfile?.displayName || friend.email,
+          avatarUrl: friend.UserProfile?.avatarUrl,
+          score: friendTrustScore.score,
+          rank: 0, // Will be calculated below
+        };
+      }),
+    );
+
+    // Filter out nulls and sort by score
+    const validFriendScores = friendScores.filter((f) => f !== null) as Array<{
+      userId: string;
+      displayName: string;
+      avatarUrl: string | null;
+      score: number;
+      rank: number;
+    }>;
+
+    // Add user's own score
+    const allScores = [
+      {
+        userId,
+        displayName: 'You',
+        avatarUrl: null,
+        score: userTrustScore.score,
+        rank: 0,
+      },
+      ...validFriendScores,
+    ];
+
+    // Sort by score descending and assign ranks
+    allScores.sort((a, b) => b.score - a.score);
+    allScores.forEach((entry, index) => {
+      entry.rank = index + 1;
+    });
+
+    return {
+      userScore: userTrustScore.score,
+      userRank: allScores.find((e) => e.userId === userId)?.rank || 0,
+      totalFriends: validFriendScores.length,
+      breakdown: userBreakdown,
+      friends: validFriendScores.map((f) => ({
+        userId: f.userId,
+        displayName: f.displayName,
+        avatarUrl: f.avatarUrl,
+        score: f.score,
+        rank: f.rank,
+      })),
+    };
+  }
+
+  /**
+   * Get trust score insights (what affects score, how to improve, trends)
+   */
+  async getTrustScoreInsights(userId: string) {
+    const breakdown = await this.calculateTrustScoreBreakdown(userId);
+    const history = await this.getTrustScoreHistory(userId, 30); // Last 30 entries for trends
+
+    // Calculate trends (last 7 days vs previous 7 days)
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+
+    const recentHistory = history.filter(
+      (h) => new Date(h.createdAt) >= sevenDaysAgo,
+    );
+    const previousHistory = history.filter(
+      (h) =>
+        new Date(h.createdAt) >= fourteenDaysAgo &&
+        new Date(h.createdAt) < sevenDaysAgo,
+    );
+
+    const recentAvg =
+      recentHistory.length > 0
+        ? recentHistory.reduce((sum, h) => sum + h.score, 0) /
+          recentHistory.length
+        : breakdown.total;
+    const previousAvg =
+      previousHistory.length > 0
+        ? previousHistory.reduce((sum, h) => sum + h.score, 0) /
+          previousHistory.length
+        : breakdown.total;
+
+    const trend = recentAvg - previousAvg;
+    const trendDirection = trend > 0 ? 'up' : trend < 0 ? 'down' : 'stable';
+
+    // Generate improvement suggestions
+    const suggestions: string[] = [];
+
+    // Expense suggestions
+    if (breakdown.breakdown.expense.rawScore < 70) {
+      if (breakdown.breakdown.expense.onTimeSettlementRate < 0.8) {
+        suggestions.push('Pay expenses on time to improve your expense score');
+      }
+      if (breakdown.breakdown.expense.recentActivityBonus < 0.5) {
+        suggestions.push(
+          'Complete more expense transactions to boost your activity bonus',
+        );
+      }
+      if (breakdown.breakdown.expense.volumeBonus < 0.5) {
+        suggestions.push(
+          'Engage in more expense transactions to increase your volume bonus',
+        );
+      }
+    }
+
+    // Chore suggestions
+    if (breakdown.breakdown.chore.rawScore < 70) {
+      if (breakdown.breakdown.chore.completionRate < 0.8) {
+        suggestions.push(
+          'Complete more assigned chores to improve your completion rate',
+        );
+      }
+      if (breakdown.breakdown.chore.onTimeRate < 0.8) {
+        suggestions.push('Complete chores on time to boost your on-time rate');
+      }
+      if (breakdown.breakdown.chore.pointsBonus < 0.5) {
+        suggestions.push(
+          'Earn more points by completing chores to increase your points bonus',
+        );
+      }
+      if (breakdown.breakdown.chore.streakBonus < 0.5) {
+        suggestions.push(
+          'Maintain a daily chore completion streak to boost your streak bonus',
+        );
+      }
+    }
+
+    // Community suggestions
+    if (breakdown.breakdown.community.rawScore < 70) {
+      if (breakdown.breakdown.community.listingSuccessRate < 0.7) {
+        suggestions.push(
+          'Complete or close more listings to improve your listing success rate',
+        );
+      }
+      if (breakdown.breakdown.community.engagementRate < 0.5) {
+        suggestions.push(
+          'Create more listings to increase your engagement rate',
+        );
+      }
+      if (breakdown.breakdown.community.responseRate < 0.8) {
+        suggestions.push(
+          'Respond to messages within 24 hours to improve your response rate',
+        );
+      }
+    }
+
+    // What affects score breakdown
+    const affectsScore = {
+      expense: {
+        weight: 40,
+        components: [
+          {
+            name: 'On-time settlement rate',
+            impact: breakdown.breakdown.expense.onTimeSettlementRate * 50,
+          },
+          {
+            name: 'Recent activity',
+            impact: breakdown.breakdown.expense.recentActivityBonus * 30,
+          },
+          {
+            name: 'Transaction volume',
+            impact: breakdown.breakdown.expense.volumeBonus * 20,
+          },
+        ],
+      },
+      chore: {
+        weight: 30,
+        components: [
+          {
+            name: 'Completion rate',
+            impact: breakdown.breakdown.chore.completionRate * 35,
+          },
+          {
+            name: 'On-time rate',
+            impact: breakdown.breakdown.chore.onTimeRate * 25,
+          },
+          {
+            name: 'Points earned',
+            impact: breakdown.breakdown.chore.pointsBonus * 20,
+          },
+          {
+            name: 'Streak bonus',
+            impact: breakdown.breakdown.chore.streakBonus * 10,
+          },
+          {
+            name: 'Achievements',
+            impact: breakdown.breakdown.chore.achievementsBonus * 10,
+          },
+        ],
+      },
+      community: {
+        weight: 30,
+        components: [
+          {
+            name: 'Listing success rate',
+            impact: breakdown.breakdown.community.listingSuccessRate * 50,
+          },
+          {
+            name: 'Engagement rate',
+            impact: breakdown.breakdown.community.engagementRate * 30,
+          },
+          {
+            name: 'Message response rate',
+            impact: breakdown.breakdown.community.responseRate * 20,
+          },
+        ],
+      },
+    };
+
+    return {
+      currentScore: breakdown.total,
+      trend: {
+        direction: trendDirection,
+        change: Math.abs(trend),
+        recentAverage: Math.round(recentAvg),
+        previousAverage: Math.round(previousAvg),
+      },
+      breakdown: breakdown.breakdown,
+      affectsScore,
+      suggestions,
+      history: history.slice(0, 30).map((h) => ({
+        score: h.score,
+        timestamp: h.createdAt,
+        reason: h.reason,
+      })),
+    };
   }
 
   /**
@@ -475,7 +925,11 @@ export class TrustScoreService {
         },
       });
 
-      await this.addHistoryEntry(trustScore.id, calculatedScore, 'Chore completed');
+      await this.addHistoryEntry(
+        trustScore.id,
+        calculatedScore,
+        'Chore completed',
+      );
     }
   }
 
@@ -500,7 +954,11 @@ export class TrustScoreService {
         },
       });
 
-      await this.addHistoryEntry(trustScore.id, calculatedScore, 'Expense paid');
+      await this.addHistoryEntry(
+        trustScore.id,
+        calculatedScore,
+        'Expense paid',
+      );
     }
   }
 
@@ -525,7 +983,11 @@ export class TrustScoreService {
         },
       });
 
-      await this.addHistoryEntry(trustScore.id, calculatedScore, 'Community activity');
+      await this.addHistoryEntry(
+        trustScore.id,
+        calculatedScore,
+        'Community activity',
+      );
     }
   }
 }

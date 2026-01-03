@@ -13,7 +13,13 @@ export type NotificationType =
   | 'friend_request'
   | 'friend_accepted'
   | 'message_received'
-  | 'listing_interest';
+  | 'listing_interest'
+  | 'listing_commented'
+  | 'listing_favorited'
+  | 'ride_created'
+  | 'ride_joined'
+  | 'ride_updated'
+  | 'ride_cancelled';
 
 export interface Notification {
   id: string;

@@ -16,19 +16,21 @@ import { addLoanPayment, getLoanById, Loan } from '../api/financeApi';
 import { DatePicker } from '../components/DatePicker';
 
 interface RecordLoanPaymentScreenProps {
-  loanId: string;
+  loanId?: string;
+  suggestedAmount?: number;
   onBack: () => void;
   onSuccess: () => void;
 }
 
 export function RecordLoanPaymentScreen({
   loanId,
+  suggestedAmount,
   onBack,
   onSuccess,
 }: RecordLoanPaymentScreenProps) {
   const { token } = useAuth();
   const [loan, setLoan] = useState<Loan | null>(null);
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState(suggestedAmount?.toString() || '');
   const [principalPaid, setPrincipalPaid] = useState('');
   const [interestPaid, setInterestPaid] = useState('');
   const [paymentDate, setPaymentDate] = useState('');
@@ -56,7 +58,16 @@ export function RecordLoanPaymentScreen({
         ).padStart(2, '0')}`,
       );
 
-      if (data.emi && data.remainingAmount > 0) {
+      if (suggestedAmount && suggestedAmount > 0) {
+        // Use suggested amount from advisor
+        const monthlyRate = data.interestRate > 0 ? data.interestRate / 12 / 100 : 0;
+        const estimatedInterest = data.remainingAmount * monthlyRate;
+        const estimatedPrincipal = Math.max(0, suggestedAmount - estimatedInterest);
+        setAmount(suggestedAmount.toFixed(2));
+        setPrincipalPaid(estimatedPrincipal.toFixed(2));
+        setInterestPaid(estimatedInterest.toFixed(2));
+      } else if (data.emi && data.remainingAmount > 0) {
+        // Default to EMI
         const monthlyRate = data.interestRate > 0 ? data.interestRate / 12 / 100 : 0;
         const estimatedInterest = data.remainingAmount * monthlyRate;
         const estimatedPrincipal = Math.max(0, data.emi - estimatedInterest);

@@ -21,21 +21,23 @@ import { Icon } from '../components/Icon';
 
 interface CreateGoalScreenProps {
   context: 'local' | 'home';
+  prefill?: { name: string; targetAmount: number; category: 'savings' | 'debt' | 'purchase' | 'investment' };
   onBack: () => void;
   onSuccess: () => void;
 }
 
 export function CreateGoalScreen({
   context,
+  prefill,
   onBack,
   onSuccess,
 }: CreateGoalScreenProps) {
   const { token } = useAuth();
-  const [name, setName] = useState('');
-  const [targetAmount, setTargetAmount] = useState('');
+  const [name, setName] = useState(prefill?.name || '');
+  const [targetAmount, setTargetAmount] = useState(prefill?.targetAmount?.toString() || '');
   const [currentAmount, setCurrentAmount] = useState('0');
   const [targetDate, setTargetDate] = useState('');
-  const [category, setCategory] = useState<'savings' | 'debt' | 'purchase' | 'investment'>('savings');
+  const [category, setCategory] = useState<'savings' | 'debt' | 'purchase' | 'investment'>(prefill?.category || 'savings');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);

@@ -18,6 +18,7 @@ import {
   Categories,
   CreateTransactionDto,
 } from '../api/financeApi';
+import { getProfile, Profile } from '../api/profileApi';
 import { MaterialIcons } from '@expo/vector-icons';
 import { DatePicker } from '../components/DatePicker';
 import { Icon } from '../components/Icon';
@@ -48,6 +49,7 @@ export function AddTransactionScreen({
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isAutoDetected, setIsAutoDetected] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const categorySuggestTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const categoryScrollViewRef = useRef<ScrollView>(null);
   const categoryChipRefs = useRef<Record<string, any>>({});
@@ -55,9 +57,45 @@ export function AddTransactionScreen({
   // Income sources (common options)
   const incomeSources = ['Salary', 'Freelance', 'Investment', 'Gift', 'Other Income'];
 
+  // Get currency symbol based on context
+  function getCurrencySymbol(): string {
+    if (!profile) return '$';
+    const currency = context === 'local' 
+      ? (profile.primaryCurrency || 'USD')
+      : (profile.homeCountryCurrency || 'USD');
+    
+    // Common currency symbols
+    const currencySymbols: Record<string, string> = {
+      'USD': '$',
+      'EUR': '€',
+      'GBP': '£',
+      'INR': '₹',
+      'JPY': '¥',
+      'CNY': '¥',
+      'AUD': 'A$',
+      'CAD': 'C$',
+      'CHF': 'CHF',
+      'SGD': 'S$',
+    };
+    
+    return currencySymbols[currency] || currency;
+  }
+
   useEffect(() => {
     loadData();
+    loadProfile();
   }, [token]);
+
+  async function loadProfile() {
+    if (!token) return;
+    try {
+      const profileData = await getProfile(token);
+      setProfile(profileData);
+    } catch (err) {
+      // Silently fail - currency will default to USD
+      console.error('Failed to load profile:', err);
+    }
+  }
 
   useEffect(() => {
     // Clear category when switching type
@@ -332,7 +370,7 @@ export function AddTransactionScreen({
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Amount</Text>
               <View style={styles.amountContainer}>
-                <Text style={styles.currencySymbol}>$</Text>
+                <Text style={styles.currencySymbol}>{getCurrencySymbol()}</Text>
                 <TextInput
                   style={styles.amountInput}
                   placeholder="0.00"

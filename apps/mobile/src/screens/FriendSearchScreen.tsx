@@ -15,20 +15,26 @@ import { useAuth } from '../auth/authContext';
 import {
   searchUsers,
   sendFriendRequest,
+  inviteUserToApp,
   SearchUser,
 } from '../api/friendApi';
 
 interface FriendSearchScreenProps {
   onBack: () => void;
   onRequestSent?: () => void;
+  onViewProfile?: (userId: string) => void;
 }
 
-export function FriendSearchScreen({ onBack, onRequestSent }: FriendSearchScreenProps) {
+export function FriendSearchScreen({ onBack, onRequestSent, onViewProfile }: FriendSearchScreenProps) {
   const { token } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchUser[]>([]);
   const [searching, setSearching] = useState(false);
   const [sendingRequest, setSendingRequest] = useState<string | null>(null);
+  const [inviting, setInviting] = useState(false);
+  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteMobile, setInviteMobile] = useState('');
 
   useEffect(() => {
     // Debounce search
@@ -76,9 +82,78 @@ export function FriendSearchScreen({ onBack, onRequestSent }: FriendSearchScreen
         },
       ]);
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to send friend request');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to send friend request';
+      // If user not found, offer to invite them
+      if (errorMessage.includes('not found') || errorMessage.includes('User not found')) {
+        Alert.alert(
+          'User Not Found',
+          'This person is not on Dream Finora yet. Would you like to invite them to join?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Invite',
+              onPress: () => {
+                // Pre-fill the invite form with the search query
+                const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userIdentifier);
+                if (isEmail) {
+                  setInviteEmail(userIdentifier);
+                } else {
+                  setInviteMobile(userIdentifier);
+                }
+                setShowInviteForm(true);
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Error', errorMessage);
+      }
     } finally {
       setSendingRequest(null);
+    }
+  }
+
+  async function handleInviteUser() {
+    if (!token) return;
+
+    const email = inviteEmail.trim();
+    const mobile = inviteMobile.trim();
+
+    if (!email && !mobile) {
+      Alert.alert('Error', 'Please enter an email or mobile number');
+      return;
+    }
+
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
+
+    try {
+      setInviting(true);
+      const result = await inviteUserToApp(token, {
+        email: email || undefined,
+        mobileNumber: mobile || undefined,
+      });
+      
+      Alert.alert(
+        'Invitation Sent!',
+        `We've sent an invitation to ${email || mobile}. They'll receive a link to join Dream Finora.`,
+        [
+          { text: 'OK', onPress: () => {
+            setInviteEmail('');
+            setInviteMobile('');
+            setShowInviteForm(false);
+            if (onRequestSent) {
+              onRequestSent();
+            }
+          }},
+        ]
+      );
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to send invitation');
+    } finally {
+      setInviting(false);
     }
   }
 
@@ -167,6 +242,65 @@ export function FriendSearchScreen({ onBack, onRequestSent }: FriendSearchScreen
               Enter at least 2 characters to search by email or display name
             </Text>
           </View>
+        ) : showInviteForm ? (
+          <View style={styles.inviteForm}>
+            <Text style={styles.inviteFormTitle}>Invite to Dream Finora</Text>
+            <Text style={styles.inviteFormSubtitle}>
+              Send an invitation to someone who isn't on the app yet
+            </Text>
+            
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Email</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="email@example.com"
+                value={inviteEmail}
+                onChangeText={setInviteEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <Text style={styles.orText}>OR</Text>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Mobile Number</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="+1234567890"
+                value={inviteMobile}
+                onChangeText={setInviteMobile}
+                keyboardType="phone-pad"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={styles.inviteFormActions}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => {
+                  setShowInviteForm(false);
+                  setInviteEmail('');
+                  setInviteMobile('');
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.inviteButton, inviting && styles.inviteButtonDisabled]}
+                onPress={handleInviteUser}
+                disabled={inviting}
+              >
+                {inviting ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.inviteButtonText}>Send Invitation</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
         ) : searchResults.length === 0 && !searching ? (
           <View style={styles.emptyContainer}>
             <MaterialIcons name="person-off" size={64} color="#9CA3AF" />
@@ -174,6 +308,13 @@ export function FriendSearchScreen({ onBack, onRequestSent }: FriendSearchScreen
             <Text style={styles.emptySubtext}>
               Try searching with a different email or name
             </Text>
+            <TouchableOpacity
+              style={styles.inviteButton}
+              onPress={() => setShowInviteForm(true)}
+            >
+              <MaterialIcons name="person-add" size={18} color="#FFFFFF" />
+              <Text style={styles.inviteButtonText}>Invite by Email/Phone</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           searchResults.map((user) => {
@@ -182,7 +323,16 @@ export function FriendSearchScreen({ onBack, onRequestSent }: FriendSearchScreen
             const canSendRequest = !user.friendStatus || user.friendStatus === 'none';
 
             return (
-              <View key={user.id} style={styles.userCard}>
+              <TouchableOpacity
+                key={user.id}
+                style={styles.userCard}
+                onPress={() => {
+                  if (onViewProfile) {
+                    onViewProfile(user.id);
+                  }
+                }}
+                activeOpacity={0.7}
+              >
                 <View style={styles.userInfo}>
                   <View style={styles.avatar}>
                     <MaterialIcons name="person" size={24} color="#6B7280" />
@@ -200,7 +350,10 @@ export function FriendSearchScreen({ onBack, onRequestSent }: FriendSearchScreen
                   {canSendRequest && (
                     <TouchableOpacity
                       style={styles.addButton}
-                      onPress={() => handleSendRequest(userIdentifier)}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleSendRequest(userIdentifier);
+                      }}
                       disabled={isSending}
                       activeOpacity={0.7}
                     >
@@ -215,7 +368,7 @@ export function FriendSearchScreen({ onBack, onRequestSent }: FriendSearchScreen
                     </TouchableOpacity>
                   )}
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })
         )}
@@ -406,6 +559,83 @@ const styles = StyleSheet.create({
   addButtonText: {
     color: '#FFFFFF',
     fontSize: 14,
+    fontWeight: '600',
+  },
+  inviteForm: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 24,
+    marginTop: 16,
+  },
+  inviteFormTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  inviteFormSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 24,
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#111827',
+    backgroundColor: '#FFFFFF',
+  },
+  orText: {
+    textAlign: 'center',
+    fontSize: 14,
+    color: '#6B7280',
+    marginVertical: 16,
+    fontWeight: '500',
+  },
+  inviteFormActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: '#374151',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  inviteButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2563EB',
+    borderRadius: 8,
+    padding: 16,
+    gap: 8,
+  },
+  inviteButtonDisabled: {
+    opacity: 0.6,
+  },
+  inviteButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
     fontWeight: '600',
   },
 });

@@ -15,6 +15,10 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
 import { getExpenses, getBalances, Expense, BalanceInfo } from '../api/expenseApi';
 import { getApiBaseUrl } from '../api/getApiBaseUrl';
+import { Header } from '../components/Header';
+import { EmptyState } from '../components/EmptyState';
+import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
+import { SkeletonExpenseList } from '../components/SkeletonLoader';
 
 interface ExpenseListScreenProps {
   onCreateExpense: () => void;
@@ -24,45 +28,102 @@ interface ExpenseListScreenProps {
   onViewExpense?: (expenseId: string) => void;
   onViewFriends?: () => void;
   onViewGroups?: () => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
-export function ExpenseListScreen({ onCreateExpense, onBack, onViewAnalytics, onViewBalances, onViewExpense, onViewFriends, onViewGroups }: ExpenseListScreenProps) {
+export function ExpenseListScreen({ 
+  onCreateExpense, 
+  onBack, 
+  onViewAnalytics, 
+  onViewBalances, 
+  onViewExpense, 
+  onViewFriends, 
+  onViewGroups,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
+}: ExpenseListScreenProps) {
   const { token, user } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [balances, setBalances] = useState<BalanceInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const limit = 20;
 
   useEffect(() => {
-    loadData();
+    loadData(true); // Initial load should show skeleton
   }, [token]);
 
-  async function loadData() {
+  async function loadData(reset: boolean = false) {
     if (!token) return;
 
     try {
-      setLoading(true);
+      if (reset) {
+        setLoading(true);
+        setOffset(0);
+      } else {
+        setLoadingMore(true);
+      }
       setError(null);
       console.log('[ExpenseListScreen] Loading expenses and balances...');
+      const currentOffset = reset ? 0 : offset;
       const [expensesData, balancesData] = await Promise.all([
-        getExpenses(token),
+        getExpenses(token, limit, currentOffset),
         getBalances(token),
       ]);
-      console.log('[ExpenseListScreen] Loaded expenses:', expensesData.length);
+      
+      // Handle paginated response
+      let expensesList: Expense[];
+      let paginationInfo: { hasMore: boolean; total: number } | null = null;
+      
+      if (Array.isArray(expensesData)) {
+        expensesList = expensesData;
+      } else {
+        expensesList = expensesData.expenses || [];
+        paginationInfo = {
+          hasMore: expensesData.hasMore || false,
+          total: expensesData.total || 0,
+        };
+      }
+      
+      console.log('[ExpenseListScreen] Loaded expenses:', expensesList.length);
       console.log('[ExpenseListScreen] Balance data:', {
         totalOwed: balancesData.totalOwed,
         totalOwedToUser: balancesData.totalOwedToUser,
         netBalance: balancesData.netBalance,
       });
-      setExpenses(expensesData);
+      
+      if (reset) {
+        setExpenses(expensesList);
+        setOffset(limit);
+      } else {
+        setExpenses(prev => [...prev, ...expensesList]);
+        setOffset(prev => prev + limit);
+      }
+      
+      if (paginationInfo) {
+        setHasMore(paginationInfo.hasMore);
+      }
+      
       setBalances(balancesData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load billchops');
+      setError(getUserFriendlyErrorMessage(err));
     } finally {
       setLoading(false);
+      setLoadingMore(false);
       setRefreshing(false);
     }
+  }
+
+  async function loadMore() {
+    if (loadingMore || !hasMore) return;
+    await loadData(false);
   }
 
   function formatCurrency(amount: number, currency: string = 'USD'): string {
@@ -72,51 +133,68 @@ export function ExpenseListScreen({ onCreateExpense, onBack, onViewAnalytics, on
     }).format(amount);
   }
 
-  function getUserDisplayName(user: Expense['createdByUser']): string {
-    if (user.id === user?.id) {
+  function getUserDisplayName(user: Expense['createdByUser'], currentUserId?: string): string {
+    if (!user) return 'Unknown';
+    if (user?.id === currentUserId) {
       return 'you';
     }
-    return user.profile?.displayName || user.email;
+    return user?.profile?.displayName || user?.email || 'Unknown';
   }
   
-  function getUserDisplayNameForSplit(splitUser: { id: string; email: string; profile?: { displayName?: string } }): string {
-    if (splitUser.id === user?.id) {
+  function getUserDisplayNameForSplit(splitUser?: { id: string; email: string; profile?: { displayName?: string } }): string {
+    if (!splitUser) return 'Unknown';
+    if (splitUser?.id === user?.id) {
       return 'you';
     }
-    return splitUser.profile?.displayName || splitUser.email;
+    return splitUser?.profile?.displayName || splitUser?.email || 'Unknown';
   }
-
 
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
-          <Text style={styles.loadingText}>Loading billchops...</Text>
-        </View>
+        <Header
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
+        <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+          <View style={styles.content}>
+            <SkeletonExpenseList count={5} />
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      {/* Fixed Header */}
+      <Header
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
+
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={loadData} />
+          <RefreshControl refreshing={refreshing} onRefresh={() => loadData(true)} />
         }
+        onScroll={(e) => {
+          const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+          const paddingToBottom = 20;
+          if (layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom) {
+            if (hasMore && !loadingMore) {
+              loadMore();
+            }
+          }
+        }}
+        scrollEventThrottle={400}
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-            <View style={styles.headerRight}>
+          {/* Action Buttons - moved from header */}
+          <View style={styles.actionButtonsContainer}>
               {onViewAnalytics && (
                 <TouchableOpacity
                   style={styles.analyticsButton}
@@ -133,7 +211,6 @@ export function ExpenseListScreen({ onCreateExpense, onBack, onViewAnalytics, on
               >
                 <Text style={styles.createButtonText}>+ New</Text>
               </TouchableOpacity>
-            </View>
           </View>
 
           {error && (
@@ -216,74 +293,85 @@ export function ExpenseListScreen({ onCreateExpense, onBack, onViewAnalytics, on
           <Text style={styles.sectionTitle}>Recent Billchops</Text>
 
           {expenses.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No billchops yet</Text>
-              <Text style={styles.emptySubtext}>
-                Create your first billchop to get started!
-              </Text>
-              <TouchableOpacity
-                style={styles.emptyButton}
-                onPress={onCreateExpense}
-              >
-                <Text style={styles.emptyButtonText}>Chop a bill</Text>
-              </TouchableOpacity>
-            </View>
+            <EmptyState
+              icon="receipt"
+              title="No billchops yet"
+              message="Create your first billchop to start splitting bills with friends!"
+              actionLabel="Chop a bill"
+              onAction={onCreateExpense}
+            />
           ) : (
-            expenses.map((expense) => (
-              <TouchableOpacity
-                key={expense.id}
-                style={styles.expenseCard}
-                onPress={() => onViewExpense?.(expense.id)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.expenseHeader}>
-                  <View style={styles.expenseHeaderLeft}>
-                  <Text style={styles.expenseDescription}>
-                    {expense.description}
-                  </Text>
-                  <Text style={styles.expenseAmount}>
-                    {formatCurrency(expense.amount, expense.currency)}
-                  </Text>
-                  </View>
-                  <MaterialIcons name="chevron-right" size={24} color="#9CA3AF" />
-                </View>
-                <Text style={styles.expenseCreator}>
-                  Created by {expense.createdByUser.id === user?.id ? 'you' : getUserDisplayName(expense.createdByUser)}
-                </Text>
-                {expense.receiptUrl && (
-                  <View style={styles.receiptContainer}>
-                    <Text style={styles.receiptLabel}>📄 Receipt</Text>
-                    <Image
-                      source={{
-                        uri: expense.receiptUrl.startsWith('http')
-                          ? expense.receiptUrl
-                          : `${getApiBaseUrl()}${expense.receiptUrl}`,
-                      }}
-                      style={styles.receiptThumbnail}
-                      resizeMode="cover"
-                    />
-                  </View>
-                )}
-                <View style={styles.splitsContainer}>
-                  {expense.splits.map((split) => (
-                    <View key={split.id} style={styles.splitRow}>
-                      <Text style={styles.splitUser}>
-                        {getUserDisplayNameForSplit(split.user)}
+            <>
+              {expenses.map((expense) => (
+                <TouchableOpacity
+                  key={expense.id}
+                  style={styles.expenseCard}
+                  onPress={() => onViewExpense?.(expense.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.expenseHeader}>
+                    <View style={styles.expenseHeaderLeft}>
+                      <Text style={styles.expenseDescription}>
+                        {expense.description}
                       </Text>
-                      <Text
-                        style={[
-                          styles.splitAmount,
-                          split.isPaid && styles.splitPaid,
-                        ]}
-                      >
-                        {formatCurrency(split.amount, expense.currency)}
-                        {split.isPaid ? ' ✓' : ''}
+                      <Text style={styles.expenseAmount}>
+                        {formatCurrency(expense.amount, expense.currency)}
                       </Text>
                     </View>
-                  ))}
-                </View>
-              </TouchableOpacity>
-            ))
+                    <MaterialIcons name="chevron-right" size={24} color="#9CA3AF" />
+                  </View>
+                  <Text style={styles.expenseCreator}>
+                    Created by {expense?.createdByUser?.id === user?.id ? 'you' : getUserDisplayName(expense.createdByUser, user?.id)}
+                  </Text>
+                  {expense.receiptUrl && (
+                    <View style={styles.receiptContainer}>
+                      <Text style={styles.receiptLabel}>📄 Receipt</Text>
+                      <Image
+                        source={{
+                          uri: expense.receiptUrl.startsWith('http')
+                            ? expense.receiptUrl
+                            : `${getApiBaseUrl()}${expense.receiptUrl}`,
+                        }}
+                        style={styles.receiptThumbnail}
+                        resizeMode="cover"
+                      />
+                    </View>
+                  )}
+                  <View style={styles.splitsContainer}>
+                    {(expense.splits || []).map((split) => (
+                      <View key={split?.id || ''} style={styles.splitRow}>
+                        <Text style={styles.splitUser}>
+                          {getUserDisplayNameForSplit(split?.user)}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.splitAmount,
+                            split?.isPaid && styles.splitPaid,
+                          ]}
+                        >
+                          {formatCurrency(split?.amount || 0, expense.currency)}
+                          {split?.isPaid ? ' ✓' : ''}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </TouchableOpacity>
+              ))}
+              {hasMore && (
+                <TouchableOpacity
+                  style={styles.loadMoreButton}
+                  onPress={loadMore}
+                  disabled={loadingMore}
+                  activeOpacity={0.7}
+                >
+                  {loadingMore ? (
+                    <ActivityIndicator size="small" color="#2563EB" />
+                  ) : (
+                    <Text style={styles.loadMoreButtonText}>Load More</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </>
           )}
         </View>
       </ScrollView>
@@ -305,40 +393,26 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24, // lg: 24px
-    // No paddingTop - SafeAreaView handles top spacing
+    paddingTop: 16, // md: 16px
   },
-  header: {
+  actionButtonsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'center',
-    marginBottom: 16, // md: 16px
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    gap: 12,
+    marginBottom: 24,
   },
   analyticsButton: {
     backgroundColor: '#6366F1',
     borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    minHeight: 36,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    minHeight: 44,
   },
   analyticsButtonText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '500',
-  },
-  backButton: {
-    paddingVertical: 8, // sm: 8px
-    paddingHorizontal: 4, // xs: 4px
-    minHeight: 44, // Touch target
-  },
-  backButtonText: {
-    fontSize: 16, // Body: 16px
-    color: '#2563EB', // Primary Blue
-    fontWeight: '500', // Medium
   },
   createButton: {
     backgroundColor: '#2563EB', // Primary Blue
@@ -562,6 +636,21 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 150,
     borderRadius: 8, // Button: 8px
+  },
+  loadMoreButton: {
+    backgroundColor: '#2563EB',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    marginTop: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  loadMoreButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
   },
 });
 
