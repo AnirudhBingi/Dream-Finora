@@ -18,8 +18,10 @@ Dream Finora is a comprehensive, socially interconnected **mobile application** 
 
 ## Project Status
 
-**Current Phase:** Foundation & Research Complete  
-**Next Steps:** See `DEVELOPMENT_ROADMAP.md` for the day-by-day plan
+**Current Phase:** Phase 1 - Complete Core Features (Days 41-70)  
+**Overall Progress:** 36% (40/110 days)  
+**Next Steps:** Day 41-42: Expense Settlement Flow  
+**See:** `docs/PROGRESS.md` for detailed progress and `DEVELOPMENT_ROADMAP_COMPREHENSIVE.md` for the current roadmap
 
 ---
 
@@ -29,7 +31,7 @@ Dream Finora is a comprehensive, socially interconnected **mobile application** 
 - ✅ Technical architecture & stack decisions
 - ✅ Complete UI/UX design system
 - ✅ Detailed user flows for all features
-- ✅ Day-by-day development roadmap (50 days)
+- ✅ Day-by-day development roadmap (110 days total: Days 1-40 completed, Days 41-110 current)
 - ✅ Competitive analysis & strategy
 - ✅ Feature specifications
 - ✅ Database schema design
@@ -44,7 +46,9 @@ Dream Finora is a comprehensive, socially interconnected **mobile application** 
 ### 🚀 Getting Started
 - **[START_HERE.md](./START_HERE.md)** - ⭐ Your daily workflow guide (READ THIS FIRST!)
 - **[Day 1 Setup Guide](./SOP/DAY_1_SETUP.md)** - Initial environment setup
-- **[Development Roadmap](./DEVELOPMENT_ROADMAP.md)** - Day-by-day development plan (50 days)
+- **[Development Roadmap](./DEVELOPMENT_ROADMAP_COMPREHENSIVE.md)** - Current day-by-day development plan (Days 41-110)
+- **[Roadmap Summary](./ROADMAP_SUMMARY.md)** - Quick overview of roadmap
+- **[Historical Roadmap](./DEVELOPMENT_ROADMAP.md)** - Days 1-40 (completed, historical reference)
 - **[Database Setup](./SOP/DATABASE_SETUP.md)** - PostgreSQL setup with Docker (for Day 4)
 - **[Quick Reference](./SOP/QUICK_REFERENCE.md)** - Common commands and troubleshooting
 
@@ -75,7 +79,10 @@ Dream Finora is a comprehensive, socially interconnected **mobile application** 
 
 **Daily Workflow:**
 - **Morning:** Use **START OF DAY** prompt (from DAILY_PROMPTS.md)
-- **During work:** Reference [DEVELOPMENT_ROADMAP.md](./DEVELOPMENT_ROADMAP.md)
+- **During work:** 
+  - Reference [DEVELOPMENT_ROADMAP_COMPREHENSIVE.md](./DEVELOPMENT_ROADMAP_COMPREHENSIVE.md) for tasks (Days 41+)
+  - Reference [DEVELOPMENT_ROADMAP.md](./DEVELOPMENT_ROADMAP.md) for historical context (Days 1-40)
+  - **For UI work:** Always check [UI/UX Design Guide](./SOP/UI_UX_DESIGN_GUIDE.md) first
 - **Evening:** Use **END OF DAY** prompt (from DAILY_PROMPTS.md)
 
 **Documentation:**

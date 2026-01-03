@@ -18,6 +18,7 @@ interface RegisterScreenProps {
 
 export function RegisterScreen({ onSwitchToLogin }: RegisterScreenProps) {
   const [email, setEmail] = useState('');
+  const [mobileNumber, setMobileNumber] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -25,7 +26,7 @@ export function RegisterScreen({ onSwitchToLogin }: RegisterScreenProps) {
 
   async function handleRegister() {
     if (!email.trim() || !password.trim() || !confirmPassword.trim()) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
 
@@ -39,10 +40,16 @@ export function RegisterScreen({ onSwitchToLogin }: RegisterScreenProps) {
       return;
     }
 
+    // Validate mobile number format if provided (E.164 format: +1234567890)
+    if (mobileNumber.trim() && !/^\+?[1-9]\d{1,14}$/.test(mobileNumber.trim())) {
+      Alert.alert('Error', 'Please provide a valid mobile number (e.g., +1234567890)');
+      return;
+    }
+
     setIsLoading(true);
     try {
       console.log('Attempting registration for:', email.trim());
-      await register(email.trim(), password);
+      await register(email.trim(), password, mobileNumber.trim() || undefined);
       console.log('Registration successful');
       // Navigation will happen automatically via auth state change
     } catch (error) {
@@ -67,7 +74,7 @@ export function RegisterScreen({ onSwitchToLogin }: RegisterScreenProps) {
         <View style={styles.form}>
           <TextInput
             style={styles.input}
-            placeholder="Email"
+            placeholder="Email *"
             placeholderTextColor="#9CA3AF"
             value={email}
             onChangeText={setEmail}
@@ -79,7 +86,19 @@ export function RegisterScreen({ onSwitchToLogin }: RegisterScreenProps) {
 
           <TextInput
             style={styles.input}
-            placeholder="Password (min 6 characters)"
+            placeholder="Mobile Number (optional, e.g., +1234567890)"
+            placeholderTextColor="#9CA3AF"
+            value={mobileNumber}
+            onChangeText={setMobileNumber}
+            autoCapitalize="none"
+            keyboardType="phone-pad"
+            autoComplete="tel"
+            editable={!isLoading}
+          />
+
+          <TextInput
+            style={styles.input}
+            placeholder="Password (min 6 characters) *"
             placeholderTextColor="#9CA3AF"
             value={password}
             onChangeText={setPassword}

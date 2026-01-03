@@ -16,9 +16,13 @@ START OF DAY - Day XX
 Please:
 1. Review my progress from yesterday (check `docs/DAILY_LOGS/DAY_YY.md`)
 2. Check if there are any unresolved issues in docs/ISSUES/
-3. Update docs/DAILY_LOGS/DAY_0XX.md with today's goals from DEVELOPMENT_ROADMAP.md
+3. Update docs/DAILY_LOGS/DAY_0XX.md with today's goals:
+   - If Day 1-40: from DEVELOPMENT_ROADMAP.md (historical)
+   - If Day 41+: from DEVELOPMENT_ROADMAP_COMPREHENSIVE.md (current)
 4. Check docs/PROGRESS.md and tell me current project status
-5. Show me today's planned tasks from DEVELOPMENT_ROADMAP.md
+5. Show me today's planned tasks:
+   - If Day 1-40: from DEVELOPMENT_ROADMAP.md
+   - If Day 41+: from DEVELOPMENT_ROADMAP_COMPREHENSIVE.md
 6. Check for any blockers from yesterday that need attention
 7. Confirm all documentation is in order
 ```
@@ -43,7 +47,9 @@ Please:
    - Time spent
    - Code changes summary
    - Tomorrow's goals
-   - Cross-check: what we planned vs what we did (from DEVELOPMENT_ROADMAP.md Day XX section)
+   - Cross-check: what we planned vs what we did:
+     * If Day 1-40: from DEVELOPMENT_ROADMAP.md Day XX section
+     * If Day 41+: from DEVELOPMENT_ROADMAP_COMPREHENSIVE.md Day XX section
 3. Update docs/PROGRESS.md with progress made
 4. Update docs/CHANGELOG.md if there were significant changes
 5. Create ISSUE docs for any bugs/problems encountered
@@ -93,7 +99,9 @@ For issues, decisions, status checks, and weekly reviews, see:
 
 ## 🗂️ Quick Links
 
-- **Development Plan:** [DEVELOPMENT_ROADMAP.md](./DEVELOPMENT_ROADMAP.md)
+- **Current Roadmap:** [DEVELOPMENT_ROADMAP_COMPREHENSIVE.md](./DEVELOPMENT_ROADMAP_COMPREHENSIVE.md) (Days 41-110)
+- **Historical Roadmap:** [DEVELOPMENT_ROADMAP.md](./DEVELOPMENT_ROADMAP.md) (Days 1-40, completed)
+- **Roadmap Summary:** [ROADMAP_SUMMARY.md](./ROADMAP_SUMMARY.md)
 - **All SOP Docs:** [SOP/README.md](./SOP/README.md)
 - **Daily Logs:** [docs/DAILY_LOGS/README.md](./docs/DAILY_LOGS/README.md)
 - **Progress Tracker:** [docs/PROGRESS.md](./docs/PROGRESS.md)

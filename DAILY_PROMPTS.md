@@ -16,11 +16,17 @@ START OF DAY - Day XX
 Please:
 1. Review my progress from yesterday (check `docs/DAILY_LOGS/DAY_YY.md`)
 2. Check if there are any unresolved issues in docs/ISSUES/
-3. Update `docs/DAILY_LOGS/DAY_0XX.md` with today's goals from DEVELOPMENT_ROADMAP.md
+3. Update `docs/DAILY_LOGS/DAY_0XX.md` with today's goals:
+   - If Day 1-40: from DEVELOPMENT_ROADMAP.md
+   - If Day 41+: from DEVELOPMENT_ROADMAP_COMPREHENSIVE.md
 4. Check docs/PROGRESS.md and tell me current project status
-5. Show me today's planned tasks from DEVELOPMENT_ROADMAP.md
+5. Show me today's planned tasks:
+   - If Day 1-40: from DEVELOPMENT_ROADMAP.md
+   - If Day 41+: from DEVELOPMENT_ROADMAP_COMPREHENSIVE.md
 6. Check for any blockers from yesterday that need attention
 7. Confirm all documentation is in order
+8. If today involves UI work, remind me to reference SOP/UI_UX_DESIGN_GUIDE.md
+9. If today involves feature implementation, remind me to reference SOP/FEATURE_SPECIFICATIONS.md
 ```
 
 **Important:** Our daily log filenames are zero-padded: Day 1 = `DAY_01.md`, Day 2 = `DAY_02.md`, etc.  
@@ -45,7 +51,9 @@ Please:
    - Time spent
    - Code changes summary
    - Tomorrow's goals
-   - Cross-check: what we planned vs what we did (from DEVELOPMENT_ROADMAP.md Day XX section)
+   - Cross-check: what we planned vs what we did:
+     * If Day 1-40: from DEVELOPMENT_ROADMAP.md Day XX section
+     * If Day 41+: from DEVELOPMENT_ROADMAP_COMPREHENSIVE.md Day XX section
 3. Update docs/PROGRESS.md with progress made
 4. Update docs/CHANGELOG.md if there were significant changes
 5. Create ISSUE docs for any bugs/problems encountered
@@ -155,6 +163,11 @@ Please show me:
 3. If deciding: Use **DECISION PROMPT**
 4. Evening: Use **END OF DAY** prompt
 
+**Note:** 
+- Days 1-40 use `DEVELOPMENT_ROADMAP.md` (already completed)
+- Days 41+ use `DEVELOPMENT_ROADMAP_COMPREHENSIVE.md` (current roadmap)
+- See `ROADMAP_SUMMARY.md` for quick overview of comprehensive roadmap
+
 ### Weekly
 - Friday evening: Use **WEEKLY REVIEW** prompt
 
@@ -163,10 +176,21 @@ Please show me:
 ## 📝 Notes
 
 - Always use the exact prompts above (copy/paste)
-- Fill in Day XX with actual day number
+- Fill in Day XX with actual day number (zero-padded: DAY_01, DAY_02, etc.)
+- Days 1-40: Reference `DEVELOPMENT_ROADMAP.md` (completed)
+- Days 41+: Reference `DEVELOPMENT_ROADMAP_COMPREHENSIVE.md` (current)
 - Be specific in your descriptions
 - Include error messages when reporting issues
 - I'll handle all documentation updates automatically
+
+## 📚 Key Reference Documents
+
+- **Current Roadmap:** `DEVELOPMENT_ROADMAP_COMPREHENSIVE.md` (Days 41-110)
+- **Historical Roadmap:** `DEVELOPMENT_ROADMAP.md` (Days 1-40, completed)
+- **Quick Overview:** `ROADMAP_SUMMARY.md`
+- **Feature Specs:** `SOP/FEATURE_SPECIFICATIONS.md`
+- **UI/UX Guide:** `SOP/UI_UX_DESIGN_GUIDE.md`
+- **Progress:** `docs/PROGRESS.md`
 
 ---
 

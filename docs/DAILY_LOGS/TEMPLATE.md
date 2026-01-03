@@ -100,6 +100,10 @@
 - Learning 2: [Another learning]
 - Insight: [Any insights about the project]
 
+**UI/UX Notes:**
+- [ ] Verified UI components match [UI/UX Design Guide](../SOP/UI_UX_DESIGN_GUIDE.md)
+- [ ] Used correct colors, typography, spacing from design system
+
 ---
 
 ## 🔄 Next Steps
@@ -147,4 +151,5 @@
 - [ ] Documentation updated
 - [ ] Issues logged
 - [ ] Next steps clear
+- [ ] UI components verified against [UI/UX Design Guide](../SOP/UI_UX_DESIGN_GUIDE.md)
 

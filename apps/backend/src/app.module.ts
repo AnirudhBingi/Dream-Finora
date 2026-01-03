@@ -4,6 +4,20 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
+import { ProfileModule } from './profile/profile.module';
+import { TrustScoreModule } from './trust-score/trust-score.module';
+import { ExpenseModule } from './expense/expense.module';
+import { GroupModule } from './group/group.module';
+import { FinanceModule } from './finance/finance.module';
+import { ChoreModule } from './chore/chore.module';
+import { RideModule } from './ride/ride.module';
+import { ListingModule } from './listing/listing.module';
+import { MessagingModule } from './messaging/messaging.module';
+import { AnalyticsModule } from './analytics/analytics.module';
+import { ActivityModule } from './activity/activity.module';
+import { FriendModule } from './friend/friend.module';
+import { SharedModule } from './shared/shared.module';
+import { NotificationModule } from './notification/notification.module';
 
 @Module({
   imports: [
@@ -12,7 +26,21 @@ import { AuthModule } from './auth/auth.module';
       envFilePath: '.env',
     }),
     PrismaModule,
+    SharedModule,
     AuthModule,
+    ProfileModule,
+    TrustScoreModule,
+    ExpenseModule,
+    GroupModule,
+    FinanceModule,
+    ChoreModule,
+    RideModule,
+    ListingModule,
+    MessagingModule,
+    AnalyticsModule,
+    ActivityModule,
+    FriendModule,
+    NotificationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

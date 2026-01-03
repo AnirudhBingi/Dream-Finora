@@ -1,5 +1,26 @@
 # Quick Reference Guide
 
+## 🎨 UI/UX Design System
+
+**📚 ALWAYS Reference:** [UI/UX Design Guide](./UI_UX_DESIGN_GUIDE.md)
+
+**Before building any UI component:**
+1. Check color palette (#2563EB primary, etc.)
+2. Use typography scale (32px H1, 16px body, etc.)
+3. Follow spacing system (4px base unit)
+4. Match component specs (buttons, cards, forms)
+5. Apply design principles (trust, simplicity, clarity)
+
+**Quick Design Tokens:**
+- Primary Blue: `#2563EB`
+- Success Green: `#10B981`
+- Danger Red: `#EF4444`
+- Spacing: 4px base (xs:4, sm:8, md:16, lg:24, xl:32)
+- Button height: 44px minimum
+- Card radius: 12px
+
+---
+
 ## Common Commands
 
 ### Git Commands

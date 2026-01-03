@@ -47,9 +47,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed mobile IP detection using `expo-constants` package
   - Improved error handling and network error detection
   - All authentication features tested and working end-to-end
+- Day 7: User Profile implementation
+  - Backend: Profile endpoints (GET, PUT, POST avatar)
+  - Mobile: ProfileScreen and EditProfileScreen
+  - Avatar upload functionality
+- Day 8-10: Trust Score Foundation
+  - Backend: TrustScore and TrustScoreHistory models
+  - Basic calculation based on account age and verification
+  - Mobile: Trust score display on ProfileScreen
+- Day 11-13: Expense Splitting
+  - Backend: Expense and ExpenseSplit models
+  - Split calculation and balance tracking
+  - Mobile: ExpenseListScreen, CreateExpenseScreen
+- Day 14-16: Groups Management
+  - Backend: Group and GroupMember models
+  - Group expense integration
+  - Mobile: GroupListScreen, CreateGroupScreen, GroupDetailScreen
+- Day 17-19: Personal Finance
+  - Backend: FinanceAccount and FinanceTransaction models
+  - Support for income and expense tracking
+  - Mobile: FinanceScreen, AccountDetailScreen, AddTransactionScreen, CreateAccountScreen
+- Day 20-22: Chore Management
+  - Backend: Chore and ChoreCompletion models
+  - Points system and trust score integration
+  - Mobile: ChoreListScreen, CreateChoreScreen, ChoreDetailScreen
+- Day 23-25: Rideshare Tracking
+  - Backend: Ride and RideParticipant models
+  - Support for "giveRide" and "rideshare" types
+  - Automatic expense creation for rides
+  - Mobile: RideListScreen, CreateRideScreen, RideDetailScreen
+- Day 26-28: Receipt Upload
+  - Backend: Receipt image upload endpoint
+  - Mobile: Receipt image picker and preview in CreateExpenseScreen
+  - Receipt linking to expenses
+- Day 29-31: Listings System (Basic)
+  - Type-specific forms for roommate, accommodation, item, event, and ride listings
+  - Auto-categorization system for listings, expenses, and finance transactions
+  - Category field added to Expense model
+  - Shared CategorizationService for intelligent category suggestions
+  - Mobile: ListingListScreen, CreateListingScreen, ListingDetailScreen
+- Day 32-34: Messaging System (Basic)
+  - Backend: Chat, ChatParticipant, and Message models in Prisma schema
+  - Backend: MessagingService with conversation and message management
+  - Backend: MessagingController with endpoints for conversations and messages
+  - Mobile: ConversationListScreen with real-time polling (every 5 seconds)
+  - Mobile: MessageThreadScreen with real-time polling (every 3 seconds)
+  - Mobile: "Contact Creator" button integrated in ListingDetailScreen
+  - Mobile: Messages button added to HomeScreen
+  - Shared utility: `utils/avatar.ts` for avatar URL formatting
+  - **Note:** Messaging is complete but limited to listing contacts until user discovery features are added in later phases
 
 ### Changed
-- [Changes in existing functionality]
+- Enhanced CreateListingScreen with dynamic forms based on listing type
+- Enhanced CreateExpenseScreen and AddTransactionScreen with auto-categorization
+- Updated ListingDetailScreen to support starting conversations with listing creators
+- Enhanced HomeScreen with Messages navigation
 
 ### Deprecated
 - [Features that will be removed]

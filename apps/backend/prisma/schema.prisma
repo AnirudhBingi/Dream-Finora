@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,170 +7,523 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id                  String               @id @default(uuid())
-  email               String               @unique
-  password            String
-  createdAt           DateTime             @default(now())
-  profile             UserProfile?
-  trustScore          TrustScore?
-  expenses            Expense[]            @relation("ExpenseCreator")
-  expenseSplits       ExpenseSplit[]
-  settlementsSent     Settlement[]         @relation("SettlementPayer")
-  settlementsReceived Settlement[]         @relation("SettlementPayee")
-  groups              Group[]              @relation("GroupCreator")
-  groupMembers        GroupMember[]
-  financeAccounts     FinanceAccount[]
-  chores              Chore[]              @relation("ChoreCreator")
-  assignedChores      Chore[]              @relation("ChoreAssignee")
-  choreCompletions    ChoreCompletion[]
-  choreHistory        ChoreHistory[]       @relation("ChoreHistoryUser")
-  rides               Ride[]               @relation("RideDriver")
-  rideParticipants    RideParticipant[]
-  listings            Listing[]
-  sentMessages        Message[]            @relation("MessageSender")
-  chatParticipants    ChatParticipant[]
-  expenseHistory      ExpenseHistory[]     @relation("ExpenseHistoryUser")
-  expensesPaid        Expense[]            @relation("ExpensePaidBy")
-  friends             Friend[]             @relation("UserFriends")
-  friendOf            Friend[]             @relation("FriendOfUsers")
-  notifications       Notification[]
-  budgets             Budget[]
-  financialGoals      FinancialGoal[]
-  loans               Loan[]
-  financeTransactions FinanceTransaction[]
+model Budget {
+  id                 String               @id
+  userId             String
+  context            String
+  name               String
+  category           String?
+  amount             Float
+  period             String               @default("monthly")
+  startDate          DateTime
+  endDate            DateTime?
+  accountId          String?
+  warningThreshold   Float                @default(80)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime
+  FinanceAccount     FinanceAccount?      @relation(fields: [accountId], references: [id])
+  User               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  BudgetTracking     BudgetTracking[]
+  FinanceTransaction FinanceTransaction[]
+
+  @@index([userId, context])
+  @@index([userId, context, period])
 }
 
-model UserProfile {
-  id                 String   @id @default(uuid())
-  userId             String   @unique
-  displayName        String?
-  avatarUrl          String?
-  bio                String?
-  primaryCurrency    String?  @default("USD") // Currency for Billchop/expenses
-  homeCountryCurrency String?  @default("USD") // Currency for home country finances
-  createdAt          DateTime @default(now())
+model BudgetTracking {
+  id            String    @id
+  budgetId      String
+  period        String
+  spent         Float     @default(0)
+  budgeted      Float
+  status        String    @default("on_track")
+  lastWarningAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime
+  Budget        Budget    @relation(fields: [budgetId], references: [id], onDelete: Cascade)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([budgetId, period])
+  @@index([budgetId, period])
 }
 
-model TrustScore {
-  id        String   @id @default(uuid())
-  userId    String   @unique
-  score     Int      @default(0) // 0-100
-  verified  Boolean  @default(false)
-  updatedAt DateTime @default(now()) @updatedAt
-
-  user    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  history TrustScoreHistory[]
+model Chat {
+  id              String            @id
+  type            String            @default("direct")
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime
+  ChatParticipant ChatParticipant[]
+  Message         Message[]
 }
 
-model TrustScoreHistory {
-  id           String   @id @default(uuid())
-  trustScoreId String
-  score        Int
-  reason       String? // e.g., "Account age", "Verification", etc.
-  createdAt    DateTime @default(now())
+model ChatParticipant {
+  id         String    @id
+  chatId     String
+  userId     String
+  joinedAt   DateTime  @default(now())
+  lastReadAt DateTime?
+  Chat       Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  User       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  trustScore TrustScore @relation(fields: [trustScoreId], references: [id], onDelete: Cascade)
+  @@unique([chatId, userId])
 }
 
-enum SplitType {
-  EQUAL
-  CUSTOM
-  PERCENTAGE
+model Chore {
+  id                          String            @id
+  groupId                     String?
+  createdBy                   String
+  title                       String
+  description                 String?
+  points                      Int               @default(10)
+  status                      String            @default("pending")
+  assignedTo                  String?
+  dueDate                     DateTime?
+  createdAt                   DateTime          @default(now())
+  completedAt                 DateTime?
+  User_Chore_assignedToToUser User?             @relation("Chore_assignedToToUser", fields: [assignedTo], references: [id])
+  User_Chore_createdByToUser  User              @relation("Chore_createdByToUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  Group                       Group?            @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  ChoreCompletion             ChoreCompletion[]
+  ChoreHistory                ChoreHistory[]
+}
+
+model ChoreCompletion {
+  id           String   @id
+  choreId      String
+  userId       String
+  completedAt  DateTime @default(now())
+  pointsEarned Int
+  onTime       Boolean  @default(true)
+  Chore        Chore    @relation(fields: [choreId], references: [id], onDelete: Cascade)
+  User         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ChoreHistory {
+  id        String   @id
+  choreId   String?
+  action    String
+  userId    String
+  changes   Json?
+  notes     String?
+  createdAt DateTime @default(now())
+  Chore     Chore?   @relation(fields: [choreId], references: [id])
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([choreId, createdAt])
+  @@index([choreId])
 }
 
 model Expense {
-  id          String    @id @default(uuid())
-  createdBy   String
-  description String
-  amount      Float
-  currency    String    @default("USD")
-  category    String? // Auto-categorized expense category
-  date        DateTime  @default(now())
-  createdAt   DateTime  @default(now())
-  groupId     String?
-  receiptUrl  String?
-  paidBy      String? // User ID who initially paid for the expense
-  splitType   SplitType @default(EQUAL)
-
-  splits        ExpenseSplit[]
-  history       ExpenseHistory[]
-  createdByUser User             @relation("ExpenseCreator", fields: [createdBy], references: [id], onDelete: Cascade)
-  paidByUser    User?            @relation("ExpensePaidBy", fields: [paidBy], references: [id], onDelete: SetNull)
-  group         Group?           @relation(fields: [groupId], references: [id], onDelete: SetNull)
-}
-
-model ExpenseSplit {
-  id        String    @id @default(uuid())
-  expenseId String
-  userId    String
-  amount    Float
-  isPaid    Boolean   @default(false)
-  paidAt    DateTime?
-  createdAt DateTime  @default(now())
-
-  expense            Expense             @relation(fields: [expenseId], references: [id], onDelete: Cascade)
-  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  financeTransaction FinanceTransaction? // Link to finance transaction
-  settlementSplits   SettlementSplit[]
+  id                           String           @id
+  createdBy                    String
+  description                  String
+  amount                       Float
+  currency                     String           @default("USD")
+  date                         DateTime         @default(now())
+  createdAt                    DateTime         @default(now())
+  groupId                      String?
+  receiptUrl                   String?
+  category                     String?
+  paidBy                       String?
+  splitType                    SplitType        @default(EQUAL)
+  User_Expense_createdByToUser User             @relation("Expense_createdByToUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  Group                        Group?           @relation(fields: [groupId], references: [id])
+  User_Expense_paidByToUser    User?            @relation("Expense_paidByToUser", fields: [paidBy], references: [id])
+  ExpenseHistory               ExpenseHistory[]
+  ExpenseSplit                 ExpenseSplit[]
 }
 
 model ExpenseHistory {
-  id        String   @id @default(uuid())
+  id        String   @id
   expenseId String?
-  action    String // "created", "updated", "deleted", "settled"
-  userId    String // User who performed the action
-  changes   Json? // Store changed fields (before/after) for updates
-  notes     String? // Additional notes about the change
+  action    String
+  userId    String
+  changes   Json?
+  notes     String?
+  createdAt DateTime @default(now())
+  Expense   Expense? @relation(fields: [expenseId], references: [id])
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expenseId, createdAt])
+  @@index([expenseId])
+}
+
+model ExpenseSplit {
+  id              String           @id
+  expenseId       String
+  userId          String
+  amount          Float
+  isPaid          Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  paidAt          DateTime?
+  Expense         Expense          @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  User            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  SettlementSplit SettlementSplit?
+}
+
+model FinanceAccount {
+  id            String          @id
+  userId        String
+  name          String
+  currency      String          @default("USD")
+  balance       Float           @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @default(now())
+  context       String          @default("local")
+  accountType   String          @default("checking")
+  Budget        Budget[]
+  User          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  FinancialGoal FinancialGoal[]
+
+  @@index([userId, context])
+}
+
+model FinanceTransaction {
+  id               String            @id
+  accountId        String?
+  type             String
+  amount           Float
+  category         String?
+  description      String?
+  date             DateTime          @default(now())
+  createdAt        DateTime          @default(now())
+  userId           String
+  context          String            @default("local")
+  source           String?
+  expenseSplitId   String?
+  budgetId         String?
+  goalId           String?
+  loanId           String?
+  updatedAt        DateTime          @default(now())
+  Budget           Budget?           @relation(fields: [budgetId], references: [id])
+  FinancialGoal    FinancialGoal?    @relation(fields: [goalId], references: [id])
+  User             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  GoalContribution GoalContribution?
+
+  @@index([userId, context, date])
+  @@index([userId, context, type])
+  @@index([userId, date])
+}
+
+model FinancialGoal {
+  id                 String               @id
+  userId             String
+  context            String
+  name               String
+  targetAmount       Float
+  currentAmount      Float                @default(0)
+  targetDate         DateTime?
+  category           String               @default("savings")
+  priority           String               @default("medium")
+  status             String               @default("active")
+  accountId          String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime
+  completedAt        DateTime?
+  FinanceTransaction FinanceTransaction[]
+  FinanceAccount     FinanceAccount?      @relation(fields: [accountId], references: [id])
+  User               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  GoalContribution   GoalContribution[]
+
+  @@index([userId, context])
+  @@index([userId, status])
+}
+
+model Friend {
+  id                         String    @id
+  userId                     String
+  friendId                   String
+  status                     String    @default("pending")
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime
+  acceptedAt                 DateTime?
+  User_Friend_friendIdToUser User      @relation("Friend_friendIdToUser", fields: [friendId], references: [id], onDelete: Cascade)
+  User_Friend_userIdToUser   User      @relation("Friend_userIdToUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, friendId])
+  @@index([friendId])
+  @@index([status])
+  @@index([userId])
+}
+
+model GoalContribution {
+  id                 String              @id
+  goalId             String
+  amount             Float
+  transactionId      String?             @unique
+  date               DateTime            @default(now())
+  notes              String?
+  createdAt          DateTime            @default(now())
+  FinancialGoal      FinancialGoal       @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  FinanceTransaction FinanceTransaction? @relation(fields: [transactionId], references: [id])
+
+  @@index([goalId, date])
+}
+
+model Group {
+  id          String        @id
+  name        String
+  description String?
+  createdBy   String
+  createdAt   DateTime      @default(now())
+  Chore       Chore[]
+  Expense     Expense[]
+  User        User          @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  GroupMember GroupMember[]
+}
+
+model GroupMember {
+  id        String          @id
+  groupId   String
+  userId    String
+  createdAt DateTime        @default(now())
+  role      GroupMemberRole @default(MEMBER)
+  Group     Group           @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  User      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+}
+
+model Listing {
+  id          String   @id
+  userId      String
+  type        String
+  title       String
+  description String
+  location    String?
+  price       Float?
+  currency    String?  @default("USD")
+  status      String   @default("active")
+  images      String[]
+  views       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+  metadata    Json?
+  User        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ListingComment {
+  id        String   @id
+  listingId String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+
+  @@index([listingId, createdAt])
+  @@index([listingId])
+}
+
+model ListingFavorite {
+  id        String   @id
+  userId    String
+  listingId String
   createdAt DateTime @default(now())
 
-  expense Expense? @relation(fields: [expenseId], references: [id], onDelete: SetNull)
-  user    User     @relation("ExpenseHistoryUser", fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, listingId])
+  @@index([listingId])
+  @@index([userId])
+}
 
-  @@index([expenseId])
-  @@index([expenseId, createdAt])
+model Loan {
+  id               String    @id
+  userId           String
+  context          String
+  name             String
+  lender           String
+  principalAmount  Float
+  remainingAmount  Float
+  interestRate     Float
+  emi              Float
+  loanTerm         Int
+  remainingMonths  Int
+  startDate        DateTime
+  nextPaymentDate  DateTime
+  paymentFrequency String    @default("monthly")
+  accountId        String?
+  status           String    @default("active")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime
+  completedAt      DateTime?
+
+  @@index([userId, context])
+  @@index([userId, status])
+}
+
+model LoanPayment {
+  id            String   @id
+  loanId        String
+  amount        Float
+  principalPaid Float
+  interestPaid  Float
+  paymentDate   DateTime
+  transactionId String?  @unique
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  @@index([loanId, paymentDate])
+}
+
+model Message {
+  id        String    @id
+  chatId    String
+  senderId  String
+  content   String
+  sentAt    DateTime  @default(now())
+  readAt    DateTime?
+  deletedAt DateTime?
+  editedAt  DateTime?
+  Chat      Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  User      User      @relation(fields: [senderId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String    @id
+  userId    String
+  type      String
+  title     String
+  message   String
+  data      Json?
+  read      Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  User      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, read])
+}
+
+model Ride {
+  id              String            @id
+  driverId        String
+  type            String
+  origin          String
+  destination     String
+  distance        Float?
+  chargePerMile   Float?
+  chargePerRide   Float?
+  totalCost       Float
+  currency        String            @default("USD")
+  date            DateTime          @default(now())
+  createdAt       DateTime          @default(now())
+  expenseId       String?
+  User            User              @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  RideParticipant RideParticipant[]
+}
+
+model RideParticipant {
+  id        String   @id
+  rideId    String
+  userId    String
+  isDriver  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  Ride      Ride     @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([rideId, userId])
 }
 
 model Settlement {
-  id            String   @id @default(uuid())
-  payerId       String // User who paid
-  payeeId       String // User who received payment
-  amount        Float
-  currency      String   @default("USD")
-  paymentMethod String // Cash, Venmo, PayPal, Bank Transfer, Other
-  notes         String?
-  settledAt     DateTime @default(now())
-  createdAt     DateTime @default(now())
-
-  payer  User              @relation("SettlementPayer", fields: [payerId], references: [id], onDelete: Cascade)
-  payee  User              @relation("SettlementPayee", fields: [payeeId], references: [id], onDelete: Cascade)
-  splits SettlementSplit[]
+  id                            String            @id
+  payerId                       String
+  payeeId                       String
+  amount                        Float
+  currency                      String            @default("USD")
+  paymentMethod                 String
+  notes                         String?
+  settledAt                     DateTime          @default(now())
+  createdAt                     DateTime          @default(now())
+  User_Settlement_payeeIdToUser User              @relation("Settlement_payeeIdToUser", fields: [payeeId], references: [id], onDelete: Cascade)
+  User_Settlement_payerIdToUser User              @relation("Settlement_payerIdToUser", fields: [payerId], references: [id], onDelete: Cascade)
+  SettlementSplit               SettlementSplit[]
 }
 
 model SettlementSplit {
-  id           String @id @default(uuid())
+  id           String       @id
   settlementId String
-  splitId      String @unique // ExpenseSplit that was settled
-
-  settlement Settlement   @relation(fields: [settlementId], references: [id], onDelete: Cascade)
-  split      ExpenseSplit @relation(fields: [splitId], references: [id], onDelete: Cascade)
+  splitId      String       @unique
+  Settlement   Settlement   @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  ExpenseSplit ExpenseSplit @relation(fields: [splitId], references: [id], onDelete: Cascade)
 
   @@unique([settlementId, splitId])
 }
 
-model Group {
-  id          String   @id @default(uuid())
-  name        String
-  description String?
-  createdBy   String
-  createdAt   DateTime @default(now())
+model TrustScore {
+  id                String              @id
+  userId            String              @unique
+  score             Int                 @default(0)
+  verified          Boolean             @default(false)
+  updatedAt         DateTime            @default(now())
+  User              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  TrustScoreHistory TrustScoreHistory[]
+}
 
-  members       GroupMember[]
-  expenses      Expense[]
-  chores        Chore[]
-  createdByUser User          @relation("GroupCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+model TrustScoreHistory {
+  id           String     @id
+  trustScoreId String
+  score        Int
+  reason       String?
+  createdAt    DateTime   @default(now())
+  TrustScore   TrustScore @relation(fields: [trustScoreId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id                                  String               @id
+  email                               String               @unique
+  mobileNumber                        String?              @unique
+  password                            String
+  createdAt                           DateTime             @default(now())
+  passwordResetToken                  String?
+  passwordResetExpires                DateTime?
+  emailVerified                       Boolean              @default(false)
+  emailVerificationToken              String?
+  updatedAt                           DateTime
+  Budget                              Budget[]
+  ChatParticipant                     ChatParticipant[]
+  Chore_Chore_assignedToToUser        Chore[]              @relation("Chore_assignedToToUser")
+  Chore_Chore_createdByToUser         Chore[]              @relation("Chore_createdByToUser")
+  ChoreCompletion                     ChoreCompletion[]
+  ChoreHistory                        ChoreHistory[]
+  Expense_Expense_createdByToUser     Expense[]            @relation("Expense_createdByToUser")
+  Expense_Expense_paidByToUser        Expense[]            @relation("Expense_paidByToUser")
+  ExpenseHistory                      ExpenseHistory[]
+  ExpenseSplit                        ExpenseSplit[]
+  FinanceAccount                      FinanceAccount[]
+  FinanceTransaction                  FinanceTransaction[]
+  FinancialGoal                       FinancialGoal[]
+  Friend_Friend_friendIdToUser        Friend[]             @relation("Friend_friendIdToUser")
+  Friend_Friend_userIdToUser          Friend[]             @relation("Friend_userIdToUser")
+  Group                               Group[]
+  GroupMember                         GroupMember[]
+  Listing                             Listing[]
+  Message                             Message[]
+  Notification                        Notification[]
+  Ride                                Ride[]
+  RideParticipant                     RideParticipant[]
+  Settlement_Settlement_payeeIdToUser Settlement[]         @relation("Settlement_payeeIdToUser")
+  Settlement_Settlement_payerIdToUser Settlement[]         @relation("Settlement_payerIdToUser")
+  TrustScore                          TrustScore?
+  UserProfile                         UserProfile?
+}
+
+model UserProfile {
+  id                   String   @id
+  userId               String   @unique
+  displayName          String?
+  avatarUrl            String?
+  bio                  String?
+  createdAt            DateTime @default(now())
+  primaryCurrency      String?  @default("USD")
+  homeCountryCurrency  String?  @default("USD")
+  choreReminders       Boolean  @default(true)
+  emailNotifications   Boolean  @default(true)
+  expenseReminders     Boolean  @default(true)
+  listingNotifications Boolean  @default(true)
+  messageNotifications Boolean  @default(true)
+  notificationsEnabled Boolean  @default(true)
+  pushNotifications    Boolean  @default(true)
+  profileVisibility    String   @default("public")
+  trustScoreVisibility String   @default("public")
+  User                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum GroupMemberRole {
@@ -184,370 +531,8 @@ enum GroupMemberRole {
   MEMBER
 }
 
-model GroupMember {
-  id        String          @id @default(uuid())
-  groupId   String
-  userId    String
-  role      GroupMemberRole @default(MEMBER)
-  createdAt DateTime        @default(now())
-
-  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([groupId, userId])
-}
-
-model FinanceAccount {
-  id          String   @id @default(uuid())
-  userId      String
-  name        String
-  currency    String   @default("USD")
-  balance     Float    @default(0)
-  context     String   @default("local") // "local" or "home"
-  accountType String   @default("checking") // "checking", "savings", "cash", "investment", "other"
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @default(now()) @updatedAt
-
-  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions FinanceTransaction[]
-  budgets      Budget[]
-  goals        FinancialGoal[]
-  loans        Loan[]
-
-  @@index([userId, context])
-}
-
-model FinanceTransaction {
-  id             String   @id @default(uuid())
-  userId         String // Direct user reference (no account needed)
-  accountId      String? // Optional - for backward compatibility, will be phased out
-  type           String // "income" or "expense"
-  amount         Float
-  context        String   @default("local") // "local" or "home"
-  // Income fields
-  source         String? // For income: "Salary", "Freelance", "Gift", etc.
-  // Expense fields
-  category       String? // For expense: auto-populated from description, optional for income
-  description    String?
-  date           DateTime @default(now())
-  // Optional links
-  expenseSplitId String?  @unique // Link to Billchop expense split
-  budgetId       String? // Optional: linked budget
-  goalId         String? // Optional: linked goal contribution
-  loanId         String? // Optional: linked loan payment
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @default(now()) @updatedAt
-
-  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account          FinanceAccount?   @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  expenseSplit     ExpenseSplit?     @relation(fields: [expenseSplitId], references: [id], onDelete: SetNull)
-  budget           Budget?           @relation(fields: [budgetId], references: [id], onDelete: SetNull)
-  goal             FinancialGoal?    @relation(fields: [goalId], references: [id], onDelete: SetNull)
-  loan             Loan?             @relation(fields: [loanId], references: [id], onDelete: SetNull)
-  goalContribution GoalContribution?
-  loanPayment      LoanPayment?
-
-  @@index([userId, context, date])
-  @@index([userId, context, type])
-  @@index([userId, date])
-  @@index([budgetId])
-  @@index([goalId])
-  @@index([expenseSplitId])
-}
-
-model Budget {
-  id               String    @id @default(uuid())
-  userId           String
-  context          String // "local" or "home"
-  name             String // e.g., "Monthly Groceries", "Entertainment"
-  category         String? // Optional: specific category (e.g., "Food & Dining")
-  amount           Float // Budget amount
-  period           String    @default("monthly") // "weekly", "monthly", "yearly"
-  startDate        DateTime
-  endDate          DateTime?
-  accountId        String? // Optional: budget for specific account
-  warningThreshold Float     @default(80) // Percentage to trigger warning (default 80%)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-
-  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account      FinanceAccount?      @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  tracking     BudgetTracking[]
-  transactions FinanceTransaction[]
-
-  @@index([userId, context])
-  @@index([userId, context, period])
-}
-
-model BudgetTracking {
-  id            String    @id @default(uuid())
-  budgetId      String
-  period        String // "2024-01" for monthly, "2024-W01" for weekly, "2024" for yearly
-  spent         Float     @default(0)
-  budgeted      Float
-  status        String    @default("on_track") // "on_track", "warning", "exceeded"
-  lastWarningAt DateTime? // When last warning was sent
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  budget Budget @relation(fields: [budgetId], references: [id], onDelete: Cascade)
-
-  @@unique([budgetId, period])
-  @@index([budgetId, period])
-}
-
-model FinancialGoal {
-  id            String    @id @default(uuid())
-  userId        String
-  context       String // "local" or "home"
-  name          String // e.g., "Emergency Fund", "Vacation"
-  targetAmount  Float
-  currentAmount Float     @default(0)
-  targetDate    DateTime?
-  category      String    @default("savings") // "savings", "debt", "purchase", "investment"
-  priority      String    @default("medium") // "low", "medium", "high"
-  status        String    @default("active") // "active", "completed", "paused", "cancelled"
-  accountId     String? // Optional: linked account for goal
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  completedAt   DateTime?
-
-  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account       FinanceAccount?      @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  contributions GoalContribution[]
-  transactions  FinanceTransaction[]
-
-  @@index([userId, context])
-  @@index([userId, status])
-}
-
-model GoalContribution {
-  id            String   @id @default(uuid())
-  goalId        String
-  amount        Float
-  transactionId String?  @unique // Optional: link to transaction (one-to-one)
-  date          DateTime @default(now())
-  notes         String?
-  createdAt     DateTime @default(now())
-
-  goal        FinancialGoal       @relation(fields: [goalId], references: [id], onDelete: Cascade)
-  transaction FinanceTransaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
-
-  @@index([goalId, date])
-}
-
-model Loan {
-  id               String    @id @default(uuid())
-  userId           String
-  context          String // "local" or "home"
-  name             String // e.g., "Home Loan", "Car Loan"
-  lender           String // Bank or lender name
-  principalAmount  Float // Original loan amount
-  remainingAmount  Float // Current remaining balance
-  interestRate     Float // Annual interest rate (e.g., 5.5 for 5.5%)
-  emi              Float // Monthly EMI amount
-  loanTerm         Int // Total months
-  remainingMonths  Int // Remaining months
-  startDate        DateTime
-  nextPaymentDate  DateTime
-  paymentFrequency String    @default("monthly") // "monthly", "quarterly", "yearly"
-  accountId        String? // Account used for payments
-  status           String    @default("active") // "active", "completed", "paused"
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  completedAt      DateTime?
-
-  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account      FinanceAccount?      @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  payments     LoanPayment[]
-  transactions FinanceTransaction[]
-
-  @@index([userId, context])
-  @@index([userId, status])
-}
-
-model LoanPayment {
-  id            String   @id @default(uuid())
-  loanId        String
-  amount        Float
-  principalPaid Float // Principal portion of payment
-  interestPaid  Float // Interest portion of payment
-  paymentDate   DateTime
-  transactionId String?  @unique // Optional: link to transaction (one-to-one)
-  notes         String?
-  createdAt     DateTime @default(now())
-
-  loan        Loan                @relation(fields: [loanId], references: [id], onDelete: Cascade)
-  transaction FinanceTransaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
-
-  @@index([loanId, paymentDate])
-}
-
-model Chore {
-  id          String    @id @default(uuid())
-  groupId     String?
-  createdBy   String
-  title       String
-  description String?
-  points      Int       @default(10)
-  status      String    @default("pending") // pending, assigned, completed
-  assignedTo  String?
-  dueDate     DateTime?
-  createdAt   DateTime  @default(now())
-  completedAt DateTime?
-
-  group          Group?            @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  createdByUser  User              @relation("ChoreCreator", fields: [createdBy], references: [id], onDelete: Cascade)
-  assignedToUser User?             @relation("ChoreAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
-  completions    ChoreCompletion[]
-  history        ChoreHistory[]
-}
-
-model ChoreCompletion {
-  id           String   @id @default(uuid())
-  choreId      String
-  userId       String
-  completedAt  DateTime @default(now())
-  pointsEarned Int
-  onTime       Boolean  @default(true)
-
-  chore Chore @relation(fields: [choreId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model ChoreHistory {
-  id        String   @id @default(uuid())
-  choreId   String?
-  action    String // "created", "updated", "deleted", "assigned", "unassigned", "completed"
-  userId    String // User who performed the action
-  changes   Json? // Store changed fields (before/after) for updates
-  notes     String? // Additional notes about the change
-  createdAt DateTime @default(now())
-
-  chore Chore? @relation(fields: [choreId], references: [id], onDelete: SetNull)
-  user  User   @relation("ChoreHistoryUser", fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([choreId])
-  @@index([choreId, createdAt])
-}
-
-model Ride {
-  id            String   @id @default(uuid())
-  driverId      String
-  type          String // "giveRide" or "rideshare"
-  origin        String
-  destination   String
-  distance      Float?
-  chargePerMile Float?
-  chargePerRide Float?
-  totalCost     Float
-  currency      String   @default("USD")
-  date          DateTime @default(now())
-  createdAt     DateTime @default(now())
-  expenseId     String? // Link to auto-created expense
-
-  driver       User              @relation("RideDriver", fields: [driverId], references: [id], onDelete: Cascade)
-  participants RideParticipant[]
-}
-
-model RideParticipant {
-  id        String   @id @default(uuid())
-  rideId    String
-  userId    String
-  isDriver  Boolean  @default(false)
-  createdAt DateTime @default(now())
-
-  ride Ride @relation(fields: [rideId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([rideId, userId])
-}
-
-model Listing {
-  id          String   @id @default(uuid())
-  userId      String
-  type        String // "roommate", "accommodation", "item", "event", "ride"
-  title       String
-  description String
-  location    String?
-  price       Float?
-  currency    String?  @default("USD")
-  status      String   @default("active") // active, completed, closed
-  images      String[] // Array of image URLs
-  views       Int      @default(0)
-  metadata    Json? // Type-specific fields (e.g., moveInDate, bedrooms, condition, eventDate, etc.)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model Chat {
-  id        String   @id @default(uuid())
-  type      String   @default("direct") // "direct" or "group"
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  participants ChatParticipant[]
-  messages     Message[]
-}
-
-model ChatParticipant {
-  id         String    @id @default(uuid())
-  chatId     String
-  userId     String
-  joinedAt   DateTime  @default(now())
-  lastReadAt DateTime?
-
-  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([chatId, userId])
-}
-
-model Message {
-  id       String    @id @default(uuid())
-  chatId   String
-  senderId String
-  content  String
-  sentAt   DateTime  @default(now())
-  readAt   DateTime?
-
-  chat   Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  sender User @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
-}
-
-model Friend {
-  id         String    @id @default(uuid())
-  userId     String // The user who has this friend
-  friendId   String // The friend
-  status     String    @default("pending") // pending, accepted, blocked
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  acceptedAt DateTime?
-
-  user   User @relation("UserFriends", fields: [userId], references: [id], onDelete: Cascade)
-  friend User @relation("FriendOfUsers", fields: [friendId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, friendId])
-  @@index([userId])
-  @@index([friendId])
-  @@index([status])
-}
-
-model Notification {
-  id        String    @id @default(uuid())
-  userId    String
-  type      String // expense_added, expense_settled, expense_updated, expense_deleted, chore_assigned, etc.
-  title     String
-  message   String
-  data      Json? // Additional data (expenseId, groupId, etc.)
-  read      Boolean   @default(false)
-  readAt    DateTime?
-  createdAt DateTime  @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, read])
-  @@index([userId, createdAt])
+enum SplitType {
+  EQUAL
+  CUSTOM
+  PERCENTAGE
 }

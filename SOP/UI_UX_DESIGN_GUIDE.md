@@ -8,6 +8,46 @@ Dream Finora should feel like a reliable friend helping you manage your shared l
 
 ---
 
+## Navigation & Screen Patterns
+
+### List → Detail → Actions Pattern
+
+**Core Principle:** Keep lists clean, provide detail screens for full information and actions.
+
+**Pattern:**
+1. **List Screen:**
+   - Show items in cards/list format
+   - Make entire cards tappable (not just buttons)
+   - Minimal visual clutter
+   - Quick indicators (status, amount, etc.)
+   - Chevron icon (→) to indicate tappable
+
+2. **Detail Screen:**
+   - Full information display
+   - All action buttons (Edit, Delete, History, etc.)
+   - Better context for actions
+   - Proper spacing and hierarchy
+
+3. **Edit Screen:**
+   - Form to modify item
+   - Returns to detail screen after save (not list)
+   - Maintains context
+
+**Benefits:**
+- Cleaner list screens
+- Better UX (see full info before acting)
+- Consistent pattern across all features
+- Logical navigation flow
+
+**Apply to:**
+- Expenses: List → Detail → Edit/Delete/History
+- Chores: List → Detail → Edit/Delete/Complete
+- Groups: List → Detail → Edit/Delete/Manage
+- Listings: List → Detail → Edit/Delete/Interact
+- Messages: List → Thread → Edit/Delete
+
+---
+
 ## Core Design Principles
 
 ### 1. **Trust Through Transparency**

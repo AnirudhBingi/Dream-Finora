@@ -2,11 +2,12 @@ import { getApiBaseUrl } from './getApiBaseUrl';
 
 export interface RegisterDto {
   email: string;
+  mobileNumber?: string;
   password: string;
 }
 
 export interface LoginDto {
-  email: string;
+  identifier: string;
   password: string;
 }
 
@@ -14,6 +15,7 @@ export interface AuthResponse {
   user: {
     id: string;
     email: string;
+    mobileNumber?: string;
     createdAt: string;
   };
   token: string;

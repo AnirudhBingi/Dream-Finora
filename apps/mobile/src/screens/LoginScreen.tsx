@@ -17,23 +17,23 @@ interface LoginScreenProps {
 }
 
 export function LoginScreen({ onSwitchToRegister }: LoginScreenProps) {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
 
   async function handleLogin() {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please enter both email and password');
+    if (!identifier.trim() || !password.trim()) {
+      Alert.alert('Error', 'Please enter both email/mobile number and password');
       return;
     }
 
     setIsLoading(true);
     try {
-      await login(email.trim(), password);
+      await login(identifier.trim(), password);
       // Navigation will happen automatically via auth state change
     } catch (error) {
-      Alert.alert('Login Failed', error instanceof Error ? error.message : 'Invalid email or password');
+      Alert.alert('Login Failed', error instanceof Error ? error.message : 'Invalid email/mobile number or password');
     } finally {
       setIsLoading(false);
     }
@@ -51,13 +51,13 @@ export function LoginScreen({ onSwitchToRegister }: LoginScreenProps) {
         <View style={styles.form}>
           <TextInput
             style={styles.input}
-            placeholder="Email"
+            placeholder="Email or Mobile Number"
             placeholderTextColor="#9CA3AF"
-            value={email}
-            onChangeText={setEmail}
+            value={identifier}
+            onChangeText={setIdentifier}
             autoCapitalize="none"
-            keyboardType="email-address"
-            autoComplete="email"
+            keyboardType="default"
+            autoComplete="username"
             editable={!isLoading}
           />
 

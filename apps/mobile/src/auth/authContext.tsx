@@ -8,6 +8,7 @@ const AUTH_USER_KEY = '@dreamfinora:auth_user';
 interface User {
   id: string;
   email: string;
+  mobileNumber?: string;
   createdAt: string;
 }
 
@@ -16,8 +17,8 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<void>;
+  register: (email: string, password: string, mobileNumber?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -51,13 +52,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function login(email: string, password: string) {
-    const response: AuthResponse = await loginApi({ email, password });
+  async function login(identifier: string, password: string) {
+    const response: AuthResponse = await loginApi({ identifier, password });
     await saveAuthState(response);
   }
 
-  async function register(email: string, password: string) {
-    const response: AuthResponse = await registerApi({ email, password });
+  async function register(email: string, password: string, mobileNumber?: string) {
+    const response: AuthResponse = await registerApi({ email, password, mobileNumber });
     await saveAuthState(response);
   }
 
