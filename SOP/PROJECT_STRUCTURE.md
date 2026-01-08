@@ -123,11 +123,18 @@ dream-finora/
 - `app/(tabs)/` - Main tab navigation screens
 
 **Source Code:**
-- `components/` - Reusable UI components (buttons, cards, forms)
+- `components/` - Reusable UI components
+  - `Avatar.tsx` - Standardized user profile picture rendering
+  - `Header.tsx` - Consistent header component
+  - `ParticipantPicker.tsx` - Friend/group member selection
+  - `SkeletonLoader.tsx` - Loading state components
+  - Other reusable components (buttons, cards, forms, etc.)
 - `services/` - API clients (authService, expenseService, etc.)
 - `store/` - Zustand stores for state management
 - `hooks/` - Custom React hooks
 - `utils/` - Utility functions
+  - `avatar.ts` - Avatar URL processing utility (`getAvatarUrl`)
+  - Other utility functions
 - `constants/` - App-wide constants
 
 ### Website (`apps/website/`)
@@ -281,6 +288,29 @@ pnpm --filter backend dev
 - Mobile: Expo EAS Build
 - Web: Vercel or similar
 - Backend: Docker containers on AWS/GCP
+
+---
+
+## Component Library
+
+### Standardized Components
+
+**Avatar Component** (`apps/mobile/src/components/Avatar.tsx`)
+- Standardized user profile picture rendering
+- Used across all screens for consistent avatar display
+- Handles URL processing, image loading, and fallback to colored initials
+- See: `docs/AVATAR_RENDERING_PATTERN.md` for complete documentation
+
+**Key Components:**
+- `Avatar` - User profile pictures with fallback
+- `Header` - Consistent header with navigation
+- `ParticipantPicker` - Friend/group member selection
+- `SkeletonLoader` - Loading state components
+- `EmptyState` - Empty state displays
+- `ErrorState` - Error state displays
+
+**Utility Functions:**
+- `getAvatarUrl` (`apps/mobile/src/utils/avatar.ts`) - Centralized avatar URL processing
 
 ---
 

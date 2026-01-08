@@ -24,7 +24,13 @@ interface CreateSpaceVScreenProps {
   onSuccess: () => void;
 }
 
-export function CreateSpaceVScreen({ onBack, onSuccess }: CreateSpaceVScreenProps) {
+export function CreateSpaceVScreen({ 
+  onBack, 
+  onSuccess,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
+}: CreateSpaceVScreenProps) {
   const { token } = useAuth();
   const [type, setType] = useState<ListingType>(ListingType.ROOMMATE);
   const [title, setTitle] = useState('');
@@ -865,19 +871,15 @@ export function CreateSpaceVScreen({ onBack, onSuccess }: CreateSpaceVScreenProp
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title="List Item"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>List Item</Text>
-            <View style={styles.placeholder} />
-          </View>
 
           <View style={styles.form}>
             <View style={styles.inputGroup}>
@@ -1015,31 +1017,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 24,
-  },
-  backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    minHeight: 44,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#2563EB',
-    fontWeight: '500',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  placeholder: {
-    width: 60,
   },
   form: {
     marginTop: 8,

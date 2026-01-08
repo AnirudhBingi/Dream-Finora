@@ -33,6 +33,9 @@ export function CreateBudgetScreen({
   context,
   onBack,
   onSuccess,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: CreateBudgetScreenProps) {
   const { token } = useAuth();
   const [categories, setCategories] = useState<Categories | null>(null);
@@ -200,17 +203,6 @@ export function CreateBudgetScreen({
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.title}>New Budget</Text>
-            <View style={styles.placeholder} />
-          </View>
 
           <View style={styles.form}>
             <View style={styles.inputGroup}>
@@ -406,30 +398,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    minHeight: 44,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#2563EB',
-    fontWeight: '500',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  placeholder: {
-    width: 60,
   },
   loadingContainer: {
     flex: 1,

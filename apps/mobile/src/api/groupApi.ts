@@ -22,6 +22,9 @@ export interface Group {
   id: string;
   name: string;
   description: string | null;
+  icon?: string | null;
+  avatarUrl?: string | null;
+  allowMemberEditing?: boolean;
   createdBy: string;
   createdAt: string;
   members: GroupMember[];
@@ -35,6 +38,9 @@ export interface Group {
   };
   _count?: {
     expenses: number;
+    chores?: number;
+    rides?: number;
+    messages?: number;
   };
 }
 
@@ -66,6 +72,8 @@ export interface CreateGroupDto {
   name: string;
   description?: string;
   memberIds?: string[];
+  allowMemberEditing?: boolean;
+  icon?: string;
 }
 
 export interface BalanceInfo {
@@ -248,6 +256,39 @@ export async function removeGroupMember(
 export interface UpdateGroupDto {
   name?: string;
   description?: string;
+}
+
+export async function uploadGroupAvatar(
+  token: string,
+  groupId: string,
+  uri: string,
+  filename: string,
+  type: string,
+): Promise<Group> {
+  const formData = new FormData();
+  
+  // @ts-ignore - FormData.append accepts File, but React Native uses different format
+  formData.append('file', {
+    uri,
+    name: filename,
+    type,
+  } as any);
+
+  const response = await fetch(`${getApiBaseUrl()}/groups/${groupId}/avatar`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      // Don't set Content-Type - let fetch set it with boundary
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to upload group avatar' }));
+    throw new Error(error.message || `Failed to upload group avatar: ${response.status}`);
+  }
+
+  return response.json();
 }
 
 export async function updateGroup(

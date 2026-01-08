@@ -15,11 +15,15 @@ import { useAuth } from '../auth/authContext';
 import { CreateLoanDto, createLoan } from '../api/financeApi';
 import { getProfile, Profile } from '../api/profileApi';
 import { DatePicker } from '../components/DatePicker';
+import { Header } from '../components/Header';
 
 interface CreateLoanScreenProps {
   context: 'local' | 'home';
   onBack: () => void;
   onSuccess: () => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 type PaymentFrequency = 'monthly' | 'quarterly' | 'yearly';
@@ -28,6 +32,9 @@ export function CreateLoanScreen({
   context,
   onBack,
   onSuccess,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: CreateLoanScreenProps) {
   const { token } = useAuth();
   const [name, setName] = useState('');
@@ -50,9 +57,10 @@ export function CreateLoanScreen({
     if (!token) return;
     try {
       const profileData = await getProfile(token);
-      setProfile(profileData);
+      setProfile(profileData || null);
     } catch (err) {
       console.error('Failed to load profile:', err);
+      setProfile(null);
     }
   }
 
@@ -194,23 +202,19 @@ export function CreateLoanScreen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title={context === 'local' ? 'Create Local Loan' : 'Create Home Country Loan'}
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.title}>New Loan</Text>
-            <View style={styles.placeholder} />
-          </View>
 
           <View style={styles.form}>
             <View style={styles.inputGroup}>
@@ -370,30 +374,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    minHeight: 44,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#2563EB',
-    fontWeight: '500',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  placeholder: {
-    width: 60,
   },
   form: {
     gap: 20,

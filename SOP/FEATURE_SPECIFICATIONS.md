@@ -64,6 +64,84 @@ This document provides detailed specifications for all features in Dream Finora.
 
 ---
 
+## 0. Reusable UI Components
+
+### 0.1 Avatar Component
+
+**Description:** Standardized user profile picture rendering component used across the entire application. Ensures consistency, reliability, and professional appearance inspired by Facebook and Instagram patterns.
+
+**Location:** `apps/mobile/src/components/Avatar.tsx`
+
+**Features:**
+- Automatic URL processing (handles relative and absolute URLs)
+- Graceful fallback to colored initials circle when image unavailable
+- Consistent color generation per user (hash-based, same user = same color)
+- Configurable size, borders, and custom styling
+- Error handling with automatic fallback to initials
+- Image loading with onError fallback
+
+**Technical Requirements:**
+- Uses centralized `getAvatarUrl` utility (`apps/mobile/src/utils/avatar.ts`)
+- Handles null/undefined avatar URLs gracefully
+- Supports standard sizes: 32px (small/chips), 48px (default), 64px (large/profile)
+- Generates consistent background colors from display name hash
+- Extracts initials from display name (first letter of each word, max 2)
+
+**Component Props:**
+```typescript
+interface AvatarProps {
+  avatarUrl: string | null | undefined;
+  displayName: string;
+  size?: number; // default: 48
+  style?: ViewStyle;
+  textStyle?: TextStyle;
+  borderColor?: string; // default: 'transparent'
+  borderWidth?: number; // default: 0
+}
+```
+
+**Usage Pattern:**
+```tsx
+import { Avatar } from '../components/Avatar';
+
+<Avatar
+  avatarUrl={user?.profile?.avatarUrl}
+  displayName={user?.profile?.displayName || user?.email || 'Unknown'}
+  size={48}
+/>
+```
+
+**Best Practices:**
+1. Always use Avatar component for user profile pictures
+2. Never create custom avatar rendering logic
+3. Always provide displayName fallback (email if displayName missing)
+4. Use standard sizes for consistency
+5. Component handles null/undefined gracefully
+
+**Screens Using Avatar Component:**
+- FriendsListScreen
+- BalanceSummaryScreen
+- BillchopFriendsScreen
+- ParticipantPicker (friends and group members)
+- All future screens displaying user avatars
+
+**Utility Function:**
+- `getAvatarUrl` (`apps/mobile/src/utils/avatar.ts`) - Centralized URL processing
+  - Handles relative paths (prepends API base URL)
+  - Handles absolute URLs (returns as-is)
+  - Returns null for invalid/missing URLs
+
+**Design Considerations:**
+- Consistent appearance across all screens
+- Professional fallback (colored initials, not broken images)
+- Fast loading with proper error handling
+- Visual consistency (same styling everywhere)
+- Accessibility (proper sizing, clear visuals)
+
+**See:** `docs/AVATAR_RENDERING_PATTERN.md` for complete documentation
+
+---
+
 ## 1. User Profile & Account System
 
 ### 1.1 User Profile
@@ -96,6 +174,7 @@ This document provides detailed specifications for all features in Dream Finora.
 - Shared groups count
 - Real-time score updates
 - Navigation from all user name locations throughout app
+- **Avatar rendering:** Use standardized `Avatar` component (see Section 0.1)
 
 **Design Considerations:**
 - Score displayed prominently but not intimidating
@@ -586,16 +665,17 @@ finalChoreScore = rawChoreScore * 0.30  // 30% weight in total trust score
 
 ### 6.1 Multi-Currency Finance
 
-**Description:** Simplified finance tracking with direct transaction management in multiple currencies (local + home country). No account management required - users simply record income and expenses.
+**Description:** Finance tracking with direct transaction management in multiple currencies (local + home country). Accounts are optional - users can record transactions directly or organize them using accounts.
 
 **Features:**
 - Create transactions directly (income or expense) with context (local/home)
-- Edit transaction (amount, category, description, date, context)
+- Create accounts (optional) to organize transactions by account type
+- Edit transaction (amount, category, description, date, context, accountId)
 - Delete transaction (with confirmation)
+- Edit/Delete accounts (full account management)
 - Transactions track context (local or home country)
+- Transactions can be linked to accounts (optional) or standalone
 - Currency is determined by context (primaryCurrency for local, homeCountryCurrency for home)
-- Edit transaction (amount, category, description, date)
-- Delete transaction (with confirmation)
 - Total balance view (calculated from transactions, converted to primary currency for combined view)
 - Set primary currency and home country currency (in settings)
 - Currency conversion service (real-time rates)
@@ -615,10 +695,14 @@ finalChoreScore = rawChoreScore * 0.30  // 30% weight in total trust score
 **Technical Requirements:**
 - Currency conversion API (ExchangeRate-API or fixer.io)
 - Cache exchange rates (update hourly)
-- `FinanceTransaction` table (direct user reference, no accounts required)
+- `FinanceTransaction` table (direct user reference, accounts optional)
   - `userId` field (direct reference)
   - `context` field (local/home)
-  - `accountId` field (optional, for backward compatibility only)
+  - `accountId` field (optional - transactions can be linked to accounts or standalone)
+- `FinanceAccount` table (optional account management)
+  - Users can create accounts to organize transactions
+  - Accounts support context (local/home) and account types
+  - Full CRUD operations available (create, read, update, delete)
 - `UserProfile` table with `primaryCurrency` and `homeCountryCurrency` fields
 - Balance calculated from transactions (sum of income - sum of expenses per context)
 - Combined balance with currency conversion
@@ -632,7 +716,7 @@ finalChoreScore = rawChoreScore * 0.30  // 30% weight in total trust score
 - Currency picker in transaction creation (determined by context)
 - Currency indicators throughout UI
 
-**Note:** Accounts were removed in Day 57 simplification. Finance now uses a simple transaction-based model where users directly record income and expenses without managing accounts.
+**Note:** Accounts are optional but fully implemented. Users can record transactions directly (without accounts) or organize them using accounts. Both approaches are supported. Account management includes full CRUD operations (create, read, update, delete accounts).
 
 ---
 
@@ -1320,6 +1404,16 @@ finalChoreScore = rawChoreScore * 0.30  // 30% weight in total trust score
 - Budgets & Goals (budget tracking, savings goals)
 - Activity Feed (social feed, achievements showcase)
 - AI Financial Coach (personalized financial advice)
+
+---
+
+### UI Component Standardization (2025-01-28)
+- ✅ Avatar component created for consistent profile picture rendering
+- ✅ Centralized `getAvatarUrl` utility function
+- ✅ Removed duplicate avatar URL processing functions
+- ✅ Standardized avatar rendering across FriendsListScreen, BalanceSummaryScreen, BillchopFriendsScreen, ParticipantPicker
+- ✅ Removed unused avatar-related styles
+- ✅ Documentation created (`docs/AVATAR_RENDERING_PATTERN.md`)
 
 ---
 

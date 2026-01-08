@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -18,31 +19,41 @@ import {
   acceptFriendRequest,
   rejectFriendRequest,
   removeFriend,
-  getBlockedUsers,
-  unblockUser,
-  blockUser,
   Friend,
   FriendRequests,
 } from '../api/friendApi';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
 import { SkeletonFriendList } from '../components/SkeletonLoader';
+import { Header } from '../components/Header';
+import { Avatar } from '../components/Avatar';
 
 interface FriendsListScreenProps {
   onBack: () => void;
   onSearchFriends: () => void;
+  onAddNewFriends?: () => void; // New handler for add friends button
   onNavigateToUserProfile?: (userId: string) => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
-export function FriendsListScreen({ onBack, onSearchFriends, onNavigateToUserProfile }: FriendsListScreenProps) {
+export function FriendsListScreen({ 
+  onBack, 
+  onSearchFriends,
+  onAddNewFriends,
+  onNavigateToUserProfile,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
+}: FriendsListScreenProps) {
   const { token } = useAuth();
   const [friends, setFriends] = useState<Friend[]>([]);
   const [requests, setRequests] = useState<FriendRequests>({ incoming: [], outgoing: [] });
-  const [blockedUsers, setBlockedUsers] = useState<Friend[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'friends' | 'requests' | 'blocked'>('friends');
+  const [activeTab, setActiveTab] = useState<'friends' | 'requests'>('friends');
 
   useEffect(() => {
     loadData();
@@ -54,14 +65,12 @@ export function FriendsListScreen({ onBack, onSearchFriends, onNavigateToUserPro
     try {
       setLoading(true);
       setError(null);
-      const [friendsData, requestsData, blockedData] = await Promise.all([
+      const [friendsData, requestsData] = await Promise.all([
         getFriends(token),
         getPendingRequests(token),
-        getBlockedUsers(token),
       ]);
       setFriends(friendsData);
       setRequests(requestsData);
-      setBlockedUsers(blockedData);
     } catch (err) {
       setError(getUserFriendlyErrorMessage(err));
     } finally {
@@ -129,55 +138,6 @@ export function FriendsListScreen({ onBack, onSearchFriends, onNavigateToUserPro
     );
   }
 
-  async function handleBlockUser(friendId: string, userName: string) {
-    if (!token) return;
-
-    Alert.alert(
-      'Block User',
-      `Are you sure you want to block ${userName}? You won't be able to see their content or send them messages.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Block',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await blockUser(token, friendId);
-              Alert.alert('Success', `${userName} has been blocked`, [
-                { text: 'OK', onPress: () => loadData() },
-              ]);
-            } catch (err) {
-              Alert.alert('Error', err instanceof Error ? err.message : 'Failed to block user');
-            }
-          },
-        },
-      ],
-    );
-  }
-
-  async function handleUnblockUser(friendId: string, userName: string) {
-    if (!token) return;
-
-    Alert.alert(
-      'Unblock User',
-      `Are you sure you want to unblock ${userName}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Unblock',
-          style: 'default',
-          onPress: async () => {
-            try {
-              await unblockUser(token, friendId);
-              await loadData();
-            } catch (err) {
-              Alert.alert('Error', err instanceof Error ? err.message : 'Failed to unblock user');
-            }
-          },
-        },
-      ],
-    );
-  }
 
   function getUserDisplayName(friend: Friend): string {
     return friend?.friend?.profile?.displayName || friend?.friend?.email || 'Unknown';
@@ -198,17 +158,15 @@ export function FriendsListScreen({ onBack, onSearchFriends, onNavigateToUserPro
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Friends</Text>
-          <TouchableOpacity style={styles.searchButton} onPress={onSearchFriends} activeOpacity={0.7}>
-            <MaterialIcons name="person-add" size={24} color="#2563EB" />
-          </TouchableOpacity>
-        </View>
+        <Header
+          title="Friends"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
+          <ActivityIndicator size="large" color="#6366F1" />
           <Text style={styles.loadingText}>Loading friends...</Text>
         </View>
       </SafeAreaView>
@@ -218,15 +176,13 @@ export function FriendsListScreen({ onBack, onSearchFriends, onNavigateToUserPro
   if (error) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Friends</Text>
-          <TouchableOpacity style={styles.searchButton} onPress={onSearchFriends} activeOpacity={0.7}>
-            <MaterialIcons name="person-add" size={24} color="#2563EB" />
-          </TouchableOpacity>
-        </View>
+        <Header
+          title="Friends"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <ErrorState message={error} onRetry={loadData} />
       </SafeAreaView>
     );
@@ -238,15 +194,13 @@ export function FriendsListScreen({ onBack, onSearchFriends, onNavigateToUserPro
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-          <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Friends</Text>
-        <TouchableOpacity style={styles.searchButton} onPress={onSearchFriends} activeOpacity={0.7}>
-          <MaterialIcons name="person-add" size={24} color="#2563EB" />
-        </TouchableOpacity>
-      </View>
+      <Header
+        title="Friends"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
 
       {/* Tabs */}
       <View style={styles.tabs}>
@@ -275,15 +229,6 @@ export function FriendsListScreen({ onBack, onSearchFriends, onNavigateToUserPro
             )}
           </View>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'blocked' && styles.tabActive]}
-          onPress={() => setActiveTab('blocked')}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.tabText, activeTab === 'blocked' && styles.tabTextActive]}>
-            Blocked ({blockedUsers.length})
-          </Text>
-        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -293,13 +238,25 @@ export function FriendsListScreen({ onBack, onSearchFriends, onNavigateToUserPro
       >
         {activeTab === 'friends' ? (
           <>
+            {/* Add New Friends Button */}
+            {onAddNewFriends && (
+              <TouchableOpacity
+                style={styles.addNewFriendsButton}
+                onPress={onAddNewFriends}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="person-add" size={20} color="#FFFFFF" />
+                <Text style={styles.addNewFriendsButtonText}>Add New Friends</Text>
+              </TouchableOpacity>
+            )}
+            
             {friends.length === 0 ? (
               <EmptyState
                 icon="people-outline"
                 title="No friends yet"
                 message="Search for friends to add them to your network"
                 actionLabel="Add Friends"
-                onAction={onSearchFriends}
+                onAction={onAddNewFriends || onSearchFriends}
               />
             ) : (
               friends.map((friend) => (
@@ -314,36 +271,28 @@ export function FriendsListScreen({ onBack, onSearchFriends, onNavigateToUserPro
                   activeOpacity={0.7}
                 >
                   <View style={styles.friendInfo}>
-                    <View style={styles.avatar}>
-                      <MaterialIcons name="person" size={24} color="#6B7280" />
-                    </View>
+                    <Avatar
+                      avatarUrl={friend?.friend?.profile?.avatarUrl}
+                      displayName={getUserDisplayName(friend)}
+                      size={48}
+                    />
                     <View style={styles.friendDetails}>
                       <Text style={styles.friendName}>{getUserDisplayName(friend)}</Text>
-                      <Text style={styles.friendEmail}>{friend.friend.email}</Text>
+                      {!friend?.friend?.profile?.displayName && friend?.friend?.email && (
+                        <Text style={styles.friendEmail}>{friend.friend.email}</Text>
+                      )}
                     </View>
                   </View>
-                  <View style={styles.friendActions}>
-                    <TouchableOpacity
-                      style={styles.blockButton}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        handleBlockUser(friend.friendId, getUserDisplayName(friend));
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <MaterialIcons name="block" size={18} color="#6B7280" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.removeButton}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        handleRemoveFriend(friend.id, getUserDisplayName(friend));
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <MaterialIcons name="person-remove" size={20} color="#EF4444" />
-                    </TouchableOpacity>
-                  </View>
+                  <TouchableOpacity
+                    style={styles.removeButton}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleRemoveFriend(friend.id, getUserDisplayName(friend));
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialIcons name="person-remove" size={20} color="#EF4444" />
+                  </TouchableOpacity>
                 </TouchableOpacity>
               ))
             )}
@@ -360,11 +309,19 @@ export function FriendsListScreen({ onBack, onSearchFriends, onNavigateToUserPro
               <>
                 {hasIncomingRequests && (
                   <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Incoming Requests</Text>
+                    <View style={styles.sectionHeader}>
+                      <MaterialIcons name="inbox" size={20} color="#6366F1" />
+                      <Text style={styles.sectionTitle}>Incoming Requests</Text>
+                      {hasIncomingRequests && (
+                        <View style={styles.sectionBadge}>
+                          <Text style={styles.sectionBadgeText}>{requests.incoming.length}</Text>
+                        </View>
+                      )}
+                    </View>
                     {requests.incoming.map((request) => (
                       <TouchableOpacity
                         key={request.id}
-                        style={styles.requestCard}
+                        style={[styles.requestCard, styles.incomingRequestCard]}
                         onPress={() => {
                           if (onNavigateToUserProfile) {
                             onNavigateToUserProfile(request.friendId);
@@ -372,41 +329,52 @@ export function FriendsListScreen({ onBack, onSearchFriends, onNavigateToUserPro
                         }}
                         activeOpacity={0.7}
                       >
-                        <View style={styles.friendInfo}>
-                          <View style={styles.avatar}>
-                            <MaterialIcons name="person" size={24} color="#6B7280" />
+                        <View style={styles.requestCardContent}>
+                          <View style={styles.friendInfo}>
+                            <Avatar
+                              avatarUrl={request?.friend?.profile?.avatarUrl}
+                              displayName={getUserDisplayName(request)}
+                              size={48}
+                              borderColor="#6366F1"
+                              borderWidth={2}
+                            />
+                            <View style={styles.friendDetails}>
+                              <Text style={styles.friendName}>{getUserDisplayName(request)}</Text>
+                              {!request?.friend?.profile?.displayName && request?.friend?.email && (
+                                <Text style={styles.friendEmail}>{request.friend.email}</Text>
+                              )}
+                              <View style={styles.requestTimeContainer}>
+                                <MaterialIcons name="schedule" size={14} color="#9CA3AF" />
+                                <Text style={styles.requestTime}>
+                                  {formatDate(request.createdAt)}
+                                </Text>
+                              </View>
+                            </View>
                           </View>
-                          <View style={styles.friendDetails}>
-                            <Text style={styles.friendName}>{getUserDisplayName(request)}</Text>
-                            <Text style={styles.friendEmail}>{request.friend.email}</Text>
-                            <Text style={styles.requestTime}>
-                              {formatDate(request.createdAt)}
-                            </Text>
+                          <View style={styles.requestActions}>
+                            <TouchableOpacity
+                              style={[styles.actionButton, styles.acceptButton]}
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                handleAcceptRequest(request.id);
+                              }}
+                              activeOpacity={0.8}
+                            >
+                              <MaterialIcons name="check" size={18} color="#FFFFFF" />
+                              <Text style={styles.actionButtonText}>Accept</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[styles.actionButton, styles.rejectButton]}
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                handleRejectRequest(request.id);
+                              }}
+                              activeOpacity={0.8}
+                            >
+                              <MaterialIcons name="close" size={18} color="#FFFFFF" />
+                              <Text style={styles.actionButtonText}>Reject</Text>
+                            </TouchableOpacity>
                           </View>
-                        </View>
-                        <View style={styles.requestActions}>
-                          <TouchableOpacity
-                            style={[styles.actionButton, styles.acceptButton]}
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              handleAcceptRequest(request.id);
-                            }}
-                            activeOpacity={0.7}
-                          >
-                            <MaterialIcons name="check" size={20} color="#FFFFFF" />
-                            <Text style={styles.actionButtonText}>Accept</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[styles.actionButton, styles.rejectButton]}
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              handleRejectRequest(request.id);
-                            }}
-                            activeOpacity={0.7}
-                          >
-                            <MaterialIcons name="close" size={20} color="#FFFFFF" />
-                            <Text style={styles.actionButtonText}>Reject</Text>
-                          </TouchableOpacity>
                         </View>
                       </TouchableOpacity>
                     ))}
@@ -415,11 +383,14 @@ export function FriendsListScreen({ onBack, onSearchFriends, onNavigateToUserPro
 
                 {hasOutgoingRequests && (
                   <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Outgoing Requests</Text>
+                    <View style={styles.sectionHeader}>
+                      <MaterialIcons name="send" size={20} color="#6B7280" />
+                      <Text style={styles.sectionTitle}>Outgoing Requests</Text>
+                    </View>
                     {requests.outgoing.map((request) => (
                       <TouchableOpacity
                         key={request.id}
-                        style={styles.requestCard}
+                        style={[styles.requestCard, styles.outgoingRequestCard]}
                         onPress={() => {
                           if (onNavigateToUserProfile) {
                             onNavigateToUserProfile(request.friendId);
@@ -427,20 +398,32 @@ export function FriendsListScreen({ onBack, onSearchFriends, onNavigateToUserPro
                         }}
                         activeOpacity={0.7}
                       >
-                        <View style={styles.friendInfo}>
-                          <View style={styles.avatar}>
-                            <MaterialIcons name="person" size={24} color="#6B7280" />
+                        <View style={styles.requestCardContent}>
+                          <View style={styles.friendInfo}>
+                            <Avatar
+                              avatarUrl={request?.friend?.profile?.avatarUrl}
+                              displayName={getUserDisplayName(request)}
+                              size={48}
+                              borderColor="#F59E0B"
+                              borderWidth={2}
+                            />
+                            <View style={styles.friendDetails}>
+                              <Text style={styles.friendName}>{getUserDisplayName(request)}</Text>
+                              {!request?.friend?.profile?.displayName && request?.friend?.email && (
+                                <Text style={styles.friendEmail}>{request.friend.email}</Text>
+                              )}
+                              <View style={styles.requestTimeContainer}>
+                                <MaterialIcons name="schedule" size={14} color="#9CA3AF" />
+                                <Text style={styles.requestTime}>
+                                  Sent {formatDate(request.createdAt)}
+                                </Text>
+                              </View>
+                            </View>
                           </View>
-                          <View style={styles.friendDetails}>
-                            <Text style={styles.friendName}>{getUserDisplayName(request)}</Text>
-                            <Text style={styles.friendEmail}>{request.friend.email}</Text>
-                            <Text style={styles.requestTime}>
-                              Sent {formatDate(request.createdAt)}
-                            </Text>
+                          <View style={styles.pendingBadge}>
+                            <MaterialIcons name="hourglass-empty" size={16} color="#F59E0B" />
+                            <Text style={styles.pendingText}>Pending</Text>
                           </View>
-                        </View>
-                        <View style={styles.pendingBadge}>
-                          <Text style={styles.pendingText}>Pending</Text>
                         </View>
                       </TouchableOpacity>
                     ))}
@@ -449,51 +432,7 @@ export function FriendsListScreen({ onBack, onSearchFriends, onNavigateToUserPro
               </>
             )}
           </>
-        ) : (
-          <>
-            {blockedUsers.length === 0 ? (
-              <EmptyState
-                icon="block"
-                title="No blocked users"
-                message="You haven't blocked any users"
-              />
-            ) : (
-              blockedUsers.map((blocked) => (
-                <TouchableOpacity
-                  key={blocked.id}
-                  style={styles.friendCard}
-                  onPress={() => {
-                    if (onNavigateToUserProfile) {
-                      onNavigateToUserProfile(blocked.friendId);
-                    }
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.friendInfo}>
-                    <View style={styles.avatar}>
-                      <MaterialIcons name="person" size={24} color="#6B7280" />
-                    </View>
-                    <View style={styles.friendDetails}>
-                      <Text style={styles.friendName}>{getUserDisplayName(blocked)}</Text>
-                      <Text style={styles.friendEmail}>{blocked.friend.email}</Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.unblockButton}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      handleUnblockUser(blocked.friendId, getUserDisplayName(blocked));
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <MaterialIcons name="lock-open" size={20} color="#2563EB" />
-                    <Text style={styles.unblockButtonText}>Unblock</Text>
-                  </TouchableOpacity>
-                </TouchableOpacity>
-              ))
-            )}
-          </>
-        )}
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -504,34 +443,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9FAFB',
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  backButton: {
+  headerActionButton: {
     padding: 8,
-    minWidth: 40,
-    minHeight: 40,
+    minWidth: 44,
+    minHeight: 44,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  searchButton: {
-    padding: 8,
-    minWidth: 40,
-    minHeight: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
   tabs: {
     flexDirection: 'row',
@@ -547,7 +466,7 @@ const styles = StyleSheet.create({
     borderBottomColor: 'transparent',
   },
   tabActive: {
-    borderBottomColor: '#2563EB',
+    borderBottomColor: '#6366F1',
   },
   tabText: {
     fontSize: 16,
@@ -555,7 +474,7 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
   tabTextActive: {
-    color: '#2563EB',
+    color: '#6366F1',
     fontWeight: '600',
   },
   tabWithBadge: {
@@ -609,8 +528,8 @@ const styles = StyleSheet.create({
   },
   retryButton: {
     marginTop: 16,
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
+    backgroundColor: '#6366F1',
+    borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 24,
     minHeight: 44,
@@ -658,11 +577,31 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 24,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#111827',
-    marginBottom: 12,
+    flex: 1,
+  },
+  sectionBadge: {
+    backgroundColor: '#6366F1',
+    borderRadius: 12,
+    minWidth: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+  },
+  sectionBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
   friendCard: {
     flexDirection: 'row',
@@ -680,28 +619,37 @@ const styles = StyleSheet.create({
   },
   requestCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 16,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  incomingRequestCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#6366F1',
+  },
+  outgoingRequestCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#F59E0B',
+  },
+  requestCardContent: {
+    padding: 16,
   },
   friendInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
   },
   friendDetails: {
     flex: 1,
@@ -716,26 +664,29 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
   },
+  requestTimeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+  },
   requestTime: {
     fontSize: 12,
     color: '#9CA3AF',
-    marginTop: 4,
+    fontWeight: '500',
   },
   friendActions: {
     flexDirection: 'row',
     gap: 8,
     alignItems: 'center',
   },
-  blockButton: {
-    padding: 8,
-  },
   removeButton: {
     padding: 8,
   },
   requestActions: {
     flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
+    gap: 12,
+    marginTop: 16,
   },
   actionButton: {
     flex: 1,
@@ -743,10 +694,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    borderRadius: 8,
-    paddingVertical: 10,
+    borderRadius: 12,
+    paddingVertical: 12,
     paddingHorizontal: 16,
-    minHeight: 40,
+    minHeight: 44,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   acceptButton: {
     backgroundColor: '#10B981',
@@ -760,17 +722,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   pendingBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#F3F4F6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FEF3C7',
     borderRadius: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     paddingHorizontal: 12,
-    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
   },
   pendingText: {
-    color: '#6B7280',
-    fontSize: 12,
-    fontWeight: '500',
+    color: '#F59E0B',
+    fontSize: 13,
+    fontWeight: '600',
   },
   unblockButton: {
     flexDirection: 'row',
@@ -784,6 +749,33 @@ const styles = StyleSheet.create({
   unblockButtonText: {
     color: '#2563EB',
     fontSize: 14,
+    fontWeight: '600',
+  },
+  addNewFriendsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#6366F1',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    gap: 8,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#6366F1',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  addNewFriendsButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
     fontWeight: '600',
   },
 });

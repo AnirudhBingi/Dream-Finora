@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
 import { getActivityFeed, ActivityItem } from '../api/activityApi';
+import { Header } from '../components/Header';
 
 interface ActivityFeedScreenProps {
   onBack: () => void;
@@ -20,6 +21,9 @@ interface ActivityFeedScreenProps {
   onViewGroup?: (groupId: string) => void;
   onViewSpaceV?: (spacevId: string) => void;
   onViewRide?: (rideId: string) => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export function ActivityFeedScreen({
@@ -29,6 +33,9 @@ export function ActivityFeedScreen({
   onViewGroup,
   onViewSpaceV,
   onViewRide,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: ActivityFeedScreenProps) {
   const { token } = useAuth();
   const [activities, setActivities] = useState<ActivityItem[]>([]);
@@ -183,17 +190,13 @@ export function ActivityFeedScreen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={onBack}
-          activeOpacity={0.7}
-        >
-          <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Activity Feed</Text>
-        <View style={styles.placeholder} />
-      </View>
+      <Header
+        title="Activity Feed"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
 
       {/* Filter Chips */}
       <ScrollView
@@ -307,32 +310,6 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: '#6B7280',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  backButton: {
-    padding: 8,
-    minWidth: 40,
-    minHeight: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#111827',
-    flex: 1,
-    marginLeft: 8,
-  },
-  placeholder: {
-    width: 40,
   },
   filterContainer: {
     borderBottomWidth: 1,

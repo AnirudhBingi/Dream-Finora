@@ -31,14 +31,25 @@ import {
 import { DatePicker } from '../components/DatePicker';
 import { MaterialIcons } from '@expo/vector-icons';
 import { getApiBaseUrl } from '../api/getApiBaseUrl';
+import { Header } from '../components/Header';
 
 interface EditSpaceVScreenProps {
   spacevId: string;
   onBack: () => void;
   onSuccess: () => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
-export function EditSpaceVScreen({ spacevId, onBack, onSuccess }: EditSpaceVScreenProps) {
+export function EditSpaceVScreen({ 
+  spacevId, 
+  onBack, 
+  onSuccess,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
+}: EditSpaceVScreenProps) {
   const { token } = useAuth();
   const [loading, setLoading] = useState(true);
   const [listing, setListing] = useState<Listing | null>(null);
@@ -808,6 +819,13 @@ export function EditSpaceVScreen({ spacevId, onBack, onSuccess }: EditSpaceVScre
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <Header
+          title="Edit Listing"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2563EB" />
           <Text style={styles.loadingText}>Loading SpaceV listing...</Text>
@@ -819,11 +837,15 @@ export function EditSpaceVScreen({ spacevId, onBack, onSuccess }: EditSpaceVScre
   if (!listing) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <Header
+          title="Edit Listing"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>SpaceV listing not found</Text>
-          <TouchableOpacity style={styles.backButton} onPress={onBack}>
-            <Text style={styles.backButtonText}>← Back</Text>
-          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -831,6 +853,13 @@ export function EditSpaceVScreen({ spacevId, onBack, onSuccess }: EditSpaceVScre
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title="Edit Listing"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
           <View style={styles.header}>
@@ -841,7 +870,6 @@ export function EditSpaceVScreen({ spacevId, onBack, onSuccess }: EditSpaceVScre
             >
               <Text style={styles.backButtonText}>← Back</Text>
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Edit SpaceV</Text>
             <View style={styles.placeholder} />
           </View>
 
@@ -966,31 +994,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 24,
-  },
-  backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    minHeight: 44,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#2563EB',
-    fontWeight: '500',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  placeholder: {
-    width: 60,
   },
   loadingContainer: {
     flex: 1,

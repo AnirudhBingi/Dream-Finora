@@ -142,6 +142,15 @@ export class MessagingService {
             },
           },
         },
+        Group: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            avatarUrl: true,
+            createdBy: true,
+          },
+        },
         Message: {
           orderBy: { sentAt: 'desc' },
           take: 1, // Get last message for preview
@@ -152,10 +161,87 @@ export class MessagingService {
       },
     });
 
-    // For each chat, get the other participant (for direct chats)
+    // Get user's lastReadAt for each chat to calculate unread count
+    const chatIds = chats.map(chat => chat.id);
+    const participantRecords = await this.prisma.chatParticipant.findMany({
+      where: {
+        chatId: { in: chatIds },
+        userId,
+      },
+      select: {
+        chatId: true,
+        lastReadAt: true,
+      },
+    });
+
+    const lastReadMap = new Map<string, Date | null>();
+    participantRecords.forEach(p => {
+      lastReadMap.set(p.chatId, p.lastReadAt);
+    });
+
+    // Get unread message counts for each chat
+    const unreadCounts = await Promise.all(
+      chatIds.map(async (chatId) => {
+        const lastReadAt = lastReadMap.get(chatId);
+        if (!lastReadAt) {
+          // If never read, count all messages from others
+          const count = await this.prisma.message.count({
+            where: {
+              chatId,
+              senderId: { not: userId },
+              deletedAt: null,
+            },
+          });
+          return { chatId, count };
+        }
+        // Count messages after lastReadAt from others
+        const count = await this.prisma.message.count({
+          where: {
+            chatId,
+            senderId: { not: userId },
+            sentAt: { gt: lastReadAt },
+            deletedAt: null,
+          },
+        });
+        return { chatId, count };
+      })
+    );
+
+    const unreadCountMap = new Map<string, number>();
+    unreadCounts.forEach(({ chatId, count }) => {
+      unreadCountMap.set(chatId, count);
+    });
+
+    // For each chat, get the other participant (for direct chats) or group info
     return chats.map((chat) => {
+      const isGroupChat = chat.type === 'group' || chat.groupId !== null;
       const otherParticipant = chat.ChatParticipant.find((p) => p.userId !== userId);
       const lastMessage = chat.Message[0] || null;
+      const unreadCount = unreadCountMap.get(chat.id) || 0;
+
+      if (isGroupChat && chat.Group) {
+        return {
+          id: chat.id,
+          type: 'group',
+          group: {
+            id: chat.Group.id,
+            name: chat.Group.name,
+            description: chat.Group.description,
+            avatarUrl: chat.Group.avatarUrl,
+          },
+          otherParticipant: null,
+          lastMessage: lastMessage
+            ? {
+                id: lastMessage.id,
+                content: lastMessage.content,
+                sentAt: lastMessage.sentAt,
+                senderId: lastMessage.senderId,
+              }
+            : null,
+          unreadCount,
+          updatedAt: chat.updatedAt,
+        };
+      }
 
       return {
         id: chat.id,
@@ -169,7 +255,7 @@ export class MessagingService {
               senderId: lastMessage.senderId,
             }
           : null,
-        unreadCount: 0, // TODO: Calculate unread count
+        unreadCount,
         updatedAt: chat.updatedAt,
       };
     });
@@ -310,6 +396,23 @@ export class MessagingService {
     const senderName = message.User.UserProfile?.displayName || message.User.email || 'Someone';
     const messagePreview = content.trim();
     
+    // Get chat info to determine if it's a group chat
+    const chatInfo = await this.prisma.chat.findUnique({
+      where: { id: chatId },
+      select: {
+        type: true,
+        groupId: true,
+        Group: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+    
+    const isGroupChat = chatInfo?.type === 'group' || chatInfo?.groupId !== null;
+    
     for (const participant of participants) {
       await this.notificationService.notifyMessageReceived(
         participant.userId,
@@ -317,12 +420,116 @@ export class MessagingService {
         message.id,
         senderName,
         messagePreview,
+        isGroupChat ? chatInfo?.Group?.name : undefined,
+        chatInfo?.groupId || undefined,
       ).catch(err => {
         console.error(`Failed to create notification for participant ${participant.userId}:`, err);
       });
     }
 
     return message;
+  }
+
+  /**
+   * Create or get group chat for a group
+   */
+  async createOrGetGroupChat(userId: string, groupId: string) {
+    // Verify user is a member of the group
+    const groupMember = await this.prisma.groupMember.findFirst({
+      where: {
+        groupId,
+        userId,
+      },
+    });
+
+    if (!groupMember) {
+      throw new NotFoundException('You are not a member of this group');
+    }
+
+    // Check if group chat already exists
+    const existingChat = await this.prisma.chat.findFirst({
+      where: {
+        groupId,
+        type: 'group',
+      },
+      include: {
+        ChatParticipant: {
+          where: {
+            userId,
+          },
+        },
+      },
+    });
+
+    if (existingChat) {
+      // User is already a participant
+      if (existingChat.ChatParticipant.length > 0) {
+        return existingChat;
+      }
+      // Add user as participant if chat exists but user isn't in it
+      await this.prisma.chatParticipant.create({
+        data: {
+          id: randomUUID(),
+          chatId: existingChat.id,
+          userId,
+        },
+      });
+      return existingChat;
+    }
+
+    // Get all group members
+    const groupMembers = await this.prisma.groupMember.findMany({
+      where: {
+        groupId,
+      },
+      select: {
+        userId: true,
+      },
+    });
+
+    // Create new group chat
+    const chat = await this.prisma.chat.create({
+      data: {
+        id: randomUUID(),
+        type: 'group',
+        groupId,
+        updatedAt: new Date(),
+        ChatParticipant: {
+          create: groupMembers.map(member => ({
+            id: randomUUID(),
+            userId: member.userId,
+          })),
+        },
+      },
+      include: {
+        Group: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            avatarUrl: true,
+          },
+        },
+        ChatParticipant: {
+          include: {
+            User: {
+              select: {
+                id: true,
+                email: true,
+                UserProfile: {
+                  select: {
+                    displayName: true,
+                    avatarUrl: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return chat;
   }
 
   /**

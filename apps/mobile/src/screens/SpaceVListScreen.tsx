@@ -19,6 +19,7 @@ import { EmptyState } from '../components/EmptyState';
 import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
 import { SkeletonListingList } from '../components/SkeletonLoader';
 import { CollapsibleHeader } from '../components/CollapsibleHeader';
+import { useBottomNavPadding } from '../hooks/useBottomNavPadding';
 
 interface SpaceVListScreenProps {
   onCreateSpaceV: () => void;
@@ -48,6 +49,7 @@ export function SpaceVListScreen({
   const insets = useSafeAreaInsets();
   const HEADER_HEIGHT = 60; // Back button + padding
   const TOTAL_HEADER_HEIGHT = HEADER_HEIGHT + insets.top;
+  const bottomPadding = useBottomNavPadding(true);
   
   // Spacer interpolation constants - used inline in Animated.View style
   const SCROLL_THRESHOLD = 30;
@@ -233,7 +235,7 @@ export function SpaceVListScreen({
 
       <Animated.ScrollView
         style={styles.container}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
         scrollEventThrottle={16}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
@@ -420,7 +422,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   scrollContent: {
-    paddingBottom: 24,
+    // paddingBottom will be set dynamically via useBottomNavPadding
   },
   content: {
     paddingHorizontal: 24,

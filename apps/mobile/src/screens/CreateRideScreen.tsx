@@ -13,17 +13,24 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/authContext';
 import { createRide, CreateRideDto } from '../api/rideApi';
 import { getGroups, Group, getGroupById, GroupMember } from '../api/groupApi';
+import { Header } from '../components/Header';
 
 interface CreateRideScreenProps {
   onBack: () => void;
   onSuccess: () => void;
   groupId?: string;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export function CreateRideScreen({
   onBack,
   onSuccess,
   groupId: initialGroupId,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: CreateRideScreenProps) {
   const { token } = useAuth();
   const [type, setType] = useState<'giveRide' | 'rideshare'>('giveRide');
@@ -152,23 +159,19 @@ export function CreateRideScreen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title="Create Ride"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.title}>Create Ride</Text>
-            <View style={styles.placeholder} />
-          </View>
 
           <View style={styles.form}>
             <View style={styles.inputGroup}>

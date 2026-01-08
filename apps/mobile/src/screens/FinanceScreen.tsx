@@ -20,6 +20,7 @@ import {
 } from '../api/financeApi';
 import { getProfile } from '../api/profileApi';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Header } from '../components/Header';
 
 interface FinanceScreenProps {
   onAddIncome: (context: 'local' | 'home') => void;
@@ -31,6 +32,9 @@ interface FinanceScreenProps {
   onEditTransaction?: (transactionId: string) => void;
   onViewHistory?: (context?: 'local' | 'home') => void;
   onBack: () => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export function FinanceScreen({
@@ -43,6 +47,9 @@ export function FinanceScreen({
   onEditTransaction,
   onViewHistory,
   onBack,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: FinanceScreenProps) {
   const { token } = useAuth();
   const [context, setContext] = useState<'local' | 'home'>('local');
@@ -131,6 +138,13 @@ export function FinanceScreen({
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <Header
+          title="My Wallet"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2563EB" />
           <Text style={styles.loadingText}>Loading finances...</Text>
@@ -141,6 +155,13 @@ export function FinanceScreen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title="My Wallet"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
@@ -149,15 +170,6 @@ export function FinanceScreen({
         }
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-          </View>
 
           {error && (
             <View style={styles.errorContainer}>
@@ -460,22 +472,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    minHeight: 44,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#2563EB',
-    fontWeight: '500',
   },
   loadingContainer: {
     flex: 1,

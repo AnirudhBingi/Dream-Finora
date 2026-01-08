@@ -15,6 +15,7 @@ import { Header } from '../components/Header';
 import { SkeletonRideList } from '../components/SkeletonLoader';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
+import { useBottomNavPadding } from '../hooks/useBottomNavPadding';
 
 interface RideListScreenProps {
   onCreateRide: () => void;
@@ -40,6 +41,7 @@ export function RideListScreen({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const bottomPadding = useBottomNavPadding(true);
 
   useEffect(() => {
     loadRides();
@@ -87,7 +89,7 @@ export function RideListScreen({
           onNavigateToNotifications={onNavigateToNotifications}
           onNavigateToSettings={onNavigateToSettings}
         />
-        <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+        <ScrollView style={styles.container} contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}>
           <View style={styles.content}>
             <SkeletonRideList count={5} />
           </View>
@@ -107,7 +109,7 @@ export function RideListScreen({
 
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={loadRides} />
         }
@@ -212,7 +214,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   scrollContent: {
-    paddingBottom: 24, // lg: 24px
+    // paddingBottom will be set dynamically via useBottomNavPadding
   },
   content: {
     paddingHorizontal: 24, // lg: 24px

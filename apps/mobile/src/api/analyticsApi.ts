@@ -243,11 +243,7 @@ export interface CombinedAnalytics {
   context: 'combined';
   local: ContextAnalytics;
   home: ContextAnalytics;
-  combined: {
-    totalIncome: number;
-    totalExpenses: number;
-    net: number;
-  };
+  combined: ContextAnalytics;
 }
 
 export async function getLocalAnalytics(

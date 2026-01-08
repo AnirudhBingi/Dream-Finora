@@ -8,16 +8,26 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Image,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
+// Note: Icon component will fallback to MaterialIcons for icons not in navigationIconMap
 import { useAuth } from '../auth/authContext';
-import { createGroup, CreateGroupDto } from '../api/groupApi';
+import { createGroup, CreateGroupDto, inviteGroupMember, uploadGroupAvatar } from '../api/groupApi';
 import { getFriends, Friend } from '../api/friendApi';
+import { pickImage } from '../utils/imagePicker';
+import { Header } from '../components/Header';
+import { Avatar } from '../components/Avatar';
+import { Icon } from '../components/Icon';
 
 interface CreateGroupScreenProps {
   onBack: () => void;
-  onSuccess: () => void;
+  onSuccess: (groupId: string) => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 const GROUP_ICONS = [
@@ -35,10 +45,15 @@ const GROUP_ICONS = [
   { name: 'celebration', label: 'Celebration' },
 ];
 
-export function CreateGroupScreen({ onBack, onSuccess }: CreateGroupScreenProps) {
+export function CreateGroupScreen({ 
+  onBack, 
+  onSuccess,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
+}: CreateGroupScreenProps) {
   const { token } = useAuth();
   const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
   const [selectedIcon, setSelectedIcon] = useState<string>('group');
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [friends, setFriends] = useState<Friend[]>([]);
@@ -49,6 +64,10 @@ export function CreateGroupScreen({ onBack, onSuccess }: CreateGroupScreenProps)
   const [inviteMobile, setInviteMobile] = useState('');
   const [inviting, setInviting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [circleImageUri, setCircleImageUri] = useState<string | null>(null);
+  const [allowMemberEditing, setAllowMemberEditing] = useState<boolean>(false);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (token) {
@@ -61,28 +80,51 @@ export function CreateGroupScreen({ onBack, onSuccess }: CreateGroupScreenProps)
 
     try {
       setLoadingFriends(true);
+      console.log('[CreateGroupScreen] Loading friends...');
       const friendsData = await getFriends(token);
-      setFriends(friendsData);
+      console.log('[CreateGroupScreen] Raw friends response:', friendsData);
+      console.log('[CreateGroupScreen] Is array?', Array.isArray(friendsData));
+      console.log('[CreateGroupScreen] Type:', typeof friendsData);
+      
+      // Ensure friendsData is an array
+      const friendsArray = Array.isArray(friendsData) ? friendsData : [];
+      console.log('[CreateGroupScreen] Friends loaded:', friendsArray.length);
+      if (friendsArray.length > 0) {
+        console.log('[CreateGroupScreen] First friend:', JSON.stringify(friendsArray[0], null, 2));
+      }
+      setFriends(friendsArray);
     } catch (err) {
-      console.error('Failed to load friends:', err);
+      console.error('[CreateGroupScreen] Failed to load friends:', err);
+      Alert.alert('Error', 'Failed to load friends. Please try again.');
+      setFriends([]);
     } finally {
       setLoadingFriends(false);
     }
   }
 
   function toggleMember(friendId: string) {
+    console.log('[CreateGroupScreen] toggleMember called with friendId:', friendId);
     setSelectedMemberIds((prev) => {
-      if (prev.includes(friendId)) {
-        return prev.filter(id => id !== friendId);
-      } else {
-        return [...prev, friendId];
-      }
+      console.log('[CreateGroupScreen] Previous selectedMemberIds:', prev);
+      const newIds = prev.includes(friendId)
+        ? prev.filter(id => id !== friendId)
+        : [...prev, friendId];
+      console.log('[CreateGroupScreen] New selectedMemberIds:', newIds);
+      return newIds;
     });
   }
 
   function getUserDisplayName(friend: Friend): string {
     return friend?.friend?.profile?.displayName || friend?.friend?.email || 'Unknown';
   }
+
+  const filteredFriends = friends.filter((friend) => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    const displayName = getUserDisplayName(friend).toLowerCase();
+    const email = friend?.friend?.email?.toLowerCase() || '';
+    return displayName.includes(query) || email.includes(query);
+  });
 
   async function handleInviteToGroup() {
     // This function is called when user clicks "Send Invitation" in the invite form
@@ -108,24 +150,60 @@ export function CreateGroupScreen({ onBack, onSuccess }: CreateGroupScreenProps)
     );
   }
 
+  async function handlePickCircleImage() {
+    try {
+      const uri = await pickImage({ aspect: [1, 1] });
+      if (uri) {
+        setCircleImageUri(uri);
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  }
+
   async function handleSave() {
     if (!token) return;
 
-    if (!name.trim()) {
-      Alert.alert('Error', 'Please enter a circle name');
+    // Validate name
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setNameError('Circle name is required');
       return;
     }
+    if (trimmedName.length < 2) {
+      setNameError('Circle name must be at least 2 characters');
+      return;
+    }
+    setNameError(null);
 
     try {
       setSaving(true);
 
       const groupData: CreateGroupDto = {
         name: name.trim(),
-        description: description.trim() || undefined,
         memberIds: selectedMemberIds.length > 0 ? selectedMemberIds : undefined,
+        allowMemberEditing,
+        icon: selectedIcon,
       };
 
+      console.log('[CreateGroupScreen] Creating group with data:', groupData);
+      console.log('[CreateGroupScreen] Selected member IDs:', selectedMemberIds);
       const group = await createGroup(token, groupData);
+      console.log('[CreateGroupScreen] Group created:', group);
+
+      // Upload circle image if selected
+      if (circleImageUri && circleImageUri.startsWith('file://')) {
+        try {
+          const filename = circleImageUri.split('/').pop() || 'image.jpg';
+          const match = /\.(\w+)$/.exec(filename);
+          const type = match ? `image/${match[1]}` : 'image/jpeg';
+          await uploadGroupAvatar(token, group.id, circleImageUri, filename, type);
+          console.log('[CreateGroupScreen] Group avatar uploaded');
+        } catch (avatarErr) {
+          console.error('[CreateGroupScreen] Failed to upload avatar:', avatarErr);
+          // Don't block group creation if avatar upload fails
+        }
+      }
 
       // If there are pending invitations, send them now
       if (showInviteForm && (inviteEmail.trim() || inviteMobile.trim())) {
@@ -145,14 +223,14 @@ export function CreateGroupScreen({ onBack, onSuccess }: CreateGroupScreenProps)
           Alert.alert(
             'Circle Created',
             'Circle created successfully, but invitation could not be sent. You can invite from circle settings.',
-            [{ text: 'OK', onPress: onSuccess }]
+            [{ text: 'OK', onPress: () => onSuccess(group.id) }]
           );
           return;
         }
       }
 
       Alert.alert('Success', 'Circle created successfully!', [
-        { text: 'OK', onPress: onSuccess },
+        { text: 'OK', onPress: () => onSuccess(group.id) },
       ]);
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to create circle');
@@ -161,49 +239,76 @@ export function CreateGroupScreen({ onBack, onSuccess }: CreateGroupScreenProps)
     }
   }
 
+  console.log('[CreateGroupScreen] Render - friends.length:', friends.length);
+  console.log('[CreateGroupScreen] Render - loadingFriends:', loadingFriends);
+  console.log('[CreateGroupScreen] Render - showMemberPicker:', showMemberPicker);
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title="Create Circle"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>New Circle</Text>
-            <View style={styles.placeholder} />
-          </View>
 
           <View style={styles.form}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Circle Name</Text>
+            {/* Circle Picture - Centered */}
+            <View style={styles.imagePickerSection}>
+              <TouchableOpacity
+                style={styles.imagePickerContainer}
+                onPress={handlePickCircleImage}
+                activeOpacity={0.7}
+              >
+                {circleImageUri ? (
+                  <Image
+                    source={{ uri: circleImageUri }}
+                    style={styles.circleImagePreview}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.imagePickerPlaceholder}>
+                    <MaterialIcons name="add-photo-alternate" size={32} color="#9CA3AF" />
+                    <Text style={styles.imagePickerText}>Tap to add picture</Text>
+                  </View>
+                )}
+                {circleImageUri && (
+                  <TouchableOpacity
+                    style={styles.removeImageButton}
+                    onPress={() => setCircleImageUri(null)}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialIcons name="close" size={20} color="#FFFFFF" />
+                  </TouchableOpacity>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Circle Name Card */}
+            <View style={styles.card}>
+              <Text style={styles.cardLabel}>CIRCLE NAME</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, nameError && styles.inputError]}
                 placeholder="e.g., Roommates, Friends, Family"
                 value={name}
-                onChangeText={setName}
+                onChangeText={(text) => {
+                  setName(text);
+                  if (nameError) setNameError(null);
+                }}
                 autoCapitalize="words"
+                placeholderTextColor="#9CA3AF"
               />
+              {nameError && (
+                <Text style={styles.errorText}>{nameError}</Text>
+              )}
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Description (Optional)</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Add a description for this group"
-                value={description}
-                onChangeText={setDescription}
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Icon</Text>
+            {/* Icon Selection Card */}
+            <View style={styles.card}>
+              <Text style={styles.cardLabel}>ICON</Text>
               <ScrollView 
                 horizontal 
                 showsHorizontalScrollIndicator={false}
@@ -222,8 +327,8 @@ export function CreateGroupScreen({ onBack, onSuccess }: CreateGroupScreenProps)
                   >
                     <MaterialIcons
                       name={icon.name as any}
-                      size={32}
-                      color={selectedIcon === icon.name ? '#2563EB' : '#6B7280'}
+                      size={28}
+                      color={selectedIcon === icon.name ? '#6366F1' : '#6B7280'}
                     />
                     <Text
                       style={[
@@ -238,45 +343,127 @@ export function CreateGroupScreen({ onBack, onSuccess }: CreateGroupScreenProps)
               </ScrollView>
             </View>
 
-            <View style={styles.inputGroup}>
-              <View style={styles.memberSectionHeader}>
-                <View>
-                  <Text style={styles.label}>Add Members</Text>
-                  <Text style={styles.helperText}>
-                    Select friends to add to your circle. You can add more later.
-                  </Text>
-                </View>
-                <View style={styles.memberActions}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setShowInviteForm(!showInviteForm);
-                      if (showInviteForm) {
-                        setInviteEmail('');
-                        setInviteMobile('');
-                      }
-                    }}
-                    style={styles.inviteToggleButton}
-                  >
-                    <MaterialIcons name="person-add" size={18} color="#2563EB" />
-                    <Text style={styles.inviteToggleText}>
-                      {showInviteForm ? 'Hide' : 'Invite'}
+            {/* Editing Permissions Card */}
+            <View style={styles.card}>
+              <Text style={styles.cardLabel}>EDITING PERMISSIONS</Text>
+              <Text style={styles.helperText}>
+                Choose who can edit circle details (name, icon, picture)
+              </Text>
+              <View style={styles.permissionOptions}>
+                <TouchableOpacity
+                  style={[
+                    styles.permissionOption,
+                    !allowMemberEditing && styles.permissionOptionActive,
+                  ]}
+                  onPress={() => setAllowMemberEditing(false)}
+                  activeOpacity={0.7}
+                >
+                  <Icon
+                    name={!allowMemberEditing ? 'radio-button-checked' : 'radio-button-unchecked'}
+                    size={20}
+                    color={!allowMemberEditing ? '#6366F1' : '#9CA3AF'}
+                  />
+                  <View style={styles.permissionOptionContent}>
+                    <Text style={[
+                      styles.permissionOptionTitle,
+                      !allowMemberEditing && styles.permissionOptionTitleActive,
+                    ]}>
+                      Admin Only
                     </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => setShowMemberPicker(!showMemberPicker)}
-                    style={styles.toggleButton}
-                  >
-                    <Text style={styles.toggleButtonText}>
-                      {showMemberPicker ? 'Hide' : 'Select Friends'}
+                    <Text style={styles.permissionOptionDescription}>
+                      Only admins can edit circle details
                     </Text>
-                    <MaterialIcons
-                      name={showMemberPicker ? 'expand-less' : 'expand-more'}
-                      size={20}
-                      color="#2563EB"
-                    />
-                  </TouchableOpacity>
-                </View>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.permissionOption,
+                    allowMemberEditing && styles.permissionOptionActive,
+                  ]}
+                  onPress={() => setAllowMemberEditing(true)}
+                  activeOpacity={0.7}
+                >
+                  <Icon
+                    name={allowMemberEditing ? 'radio-button-checked' : 'radio-button-unchecked'}
+                    size={20}
+                    color={allowMemberEditing ? '#6366F1' : '#9CA3AF'}
+                  />
+                  <View style={styles.permissionOptionContent}>
+                    <Text style={[
+                      styles.permissionOptionTitle,
+                      allowMemberEditing && styles.permissionOptionTitleActive,
+                    ]}>
+                      All Members
+                    </Text>
+                    <Text style={styles.permissionOptionDescription}>
+                      Any member can edit circle details
+                    </Text>
+                  </View>
+                </TouchableOpacity>
               </View>
+            </View>
+
+            {/* Add Members Card */}
+            <View style={styles.card}>
+              <Text style={styles.cardLabel}>ADD MEMBERS</Text>
+              <Text style={styles.helperText}>
+                Select friends to add to your circle. You can add more later.
+              </Text>
+              
+              <View style={styles.memberActions}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowInviteForm(!showInviteForm);
+                    if (showInviteForm) {
+                      setShowMemberPicker(false);
+                      setInviteEmail('');
+                      setInviteMobile('');
+                    }
+                  }}
+                  style={[styles.actionButton, showInviteForm && styles.actionButtonActive]}
+                >
+                  <Icon name="person-add" size={18} color="#6366F1" />
+                  <Text style={styles.actionButtonText}>
+                    {showInviteForm ? 'Hide Invite' : 'Invite'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowMemberPicker(!showMemberPicker);
+                    if (showMemberPicker) {
+                      setShowInviteForm(false);
+                    }
+                  }}
+                  style={[styles.actionButton, showMemberPicker && styles.actionButtonActive]}
+                >
+                  <Icon name="people" size={18} color="#6366F1" />
+                  <Text style={styles.actionButtonText}>
+                    {showMemberPicker ? 'Hide Friends' : 'Select Friends'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Search Bar for Friends */}
+              {showMemberPicker && (
+                <View style={styles.searchContainer}>
+                  <Icon name="search" size={20} color="#9CA3AF" />
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search friends..."
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    placeholderTextColor="#9CA3AF"
+                  />
+                  {searchQuery.length > 0 && (
+                    <TouchableOpacity
+                      onPress={() => setSearchQuery('')}
+                      style={styles.clearSearchButton}
+                    >
+                      <Icon name="close" size={18} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
 
               {showInviteForm && (
                 <View style={styles.inviteForm}>
@@ -338,22 +525,27 @@ export function CreateGroupScreen({ onBack, onSuccess }: CreateGroupScreenProps)
               {showMemberPicker && (
                 <View style={styles.memberPickerContainer}>
                   {loadingFriends ? (
-                    <ActivityIndicator size="small" color="#2563EB" style={styles.loadingIndicator} />
-                  ) : friends.length === 0 ? (
+                    <ActivityIndicator size="small" color="#6366F1" style={styles.loadingIndicator} />
+                  ) : filteredFriends.length === 0 ? (
                     <View style={styles.emptyFriendsContainer}>
-                      <MaterialIcons name="people-outline" size={48} color="#9CA3AF" />
-                      <Text style={styles.emptyFriendsText}>No friends yet</Text>
+                      <Icon name={searchQuery ? "search-off" : "people-outline"} size={48} color="#9CA3AF" />
+                      <Text style={styles.emptyFriendsText}>
+                        {searchQuery ? 'No friends found' : 'No friends yet'}
+                      </Text>
                       <Text style={styles.emptyFriendsSubtext}>
-                        Add friends to invite them to your circle
+                        {searchQuery 
+                          ? 'Try a different search term'
+                          : 'Add friends to invite them to your circle'}
                       </Text>
                     </View>
                   ) : (
                     <View style={styles.friendsList}>
-                      {friends.map((friend) => {
+                      {filteredFriends.map((friend) => {
                         const isSelected = selectedMemberIds.includes(friend.friendId);
+                        const displayName = getUserDisplayName(friend);
                         return (
                           <TouchableOpacity
-                            key={friend.id}
+                            key={`friend-${friend.friendId}`}
                             style={[
                               styles.friendCard,
                               isSelected && styles.friendCardSelected,
@@ -362,18 +554,22 @@ export function CreateGroupScreen({ onBack, onSuccess }: CreateGroupScreenProps)
                             activeOpacity={0.7}
                           >
                             <View style={styles.friendInfo}>
-                              <View style={styles.friendAvatar}>
-                                <Text style={styles.friendAvatarText}>
-                                  {(getUserDisplayName(friend) || 'U').charAt(0).toUpperCase()}
-                                </Text>
-                              </View>
+                              <Avatar
+                                avatarUrl={friend?.friend?.profile?.avatarUrl}
+                                displayName={displayName}
+                                size={40}
+                                borderWidth={2}
+                                borderColor="#FFFFFF"
+                              />
                               <View style={styles.friendDetails}>
-                                <Text style={styles.friendName}>{getUserDisplayName(friend)}</Text>
-                                <Text style={styles.friendEmail}>{friend?.friend?.email || 'No email'}</Text>
+                                <Text style={styles.friendName}>{displayName}</Text>
+                                {!friend?.friend?.profile?.displayName && friend?.friend?.email && (
+                                  <Text style={styles.friendEmail}>{friend.friend.email}</Text>
+                                )}
                               </View>
                             </View>
                             {isSelected && (
-                              <MaterialIcons name="check-circle" size={24} color="#2563EB" />
+                              <Icon name="check-circle" size={24} color="#6366F1" />
                             )}
                           </TouchableOpacity>
                         );
@@ -385,26 +581,22 @@ export function CreateGroupScreen({ onBack, onSuccess }: CreateGroupScreenProps)
             </View>
 
             <View style={styles.infoBox}>
-              <MaterialIcons name="info-outline" size={20} color="#2563EB" style={styles.infoIcon} />
+              <Icon name="info-outline" size={20} color="#6366F1" />
               <Text style={styles.infoText}>
                 You'll be automatically added as a member. Add friends now or invite others by email/phone later from group settings.
               </Text>
             </View>
 
             <TouchableOpacity
-              style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+              style={[styles.saveButton, saving && styles.saveButtonDisabled, (!name.trim() || saving) && styles.saveButtonDisabled]}
               onPress={handleSave}
-              disabled={saving}
+              disabled={saving || !name.trim()}
             >
               {saving ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.saveButtonText}>Create Circle</Text>
               )}
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.cancelButton} onPress={onBack}>
-              <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -423,113 +615,133 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   scrollContent: {
-    paddingBottom: 24, // lg: 24px
+    paddingBottom: 24,
   },
   content: {
-    paddingHorizontal: 24, // lg: 24px
-    // No paddingTop - SafeAreaView handles top spacing
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24, // lg: 24px
-  },
-  backButton: {
-    paddingVertical: 8, // sm: 8px
-    paddingHorizontal: 4, // xs: 4px
-    minHeight: 44, // Touch target
-  },
-  backButtonText: {
-    fontSize: 16, // Body: 16px
-    color: '#2563EB', // Primary Blue
-    fontWeight: '500', // Medium
-  },
-  headerTitle: {
-    fontSize: 24, // H2: 24px
-    fontWeight: '600', // Semi-bold
-    color: '#111827', // Gray-900
-  },
-  placeholder: {
-    width: 60, // Match back button width
+    paddingHorizontal: 16,
   },
   form: {
-    marginTop: 8, // sm: 8px
+    marginTop: 8,
   },
-  inputGroup: {
-    marginBottom: 24, // lg: 24px
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.08,
+        shadowRadius: 3,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
-  label: {
-    fontSize: 12, // Labels: 12px
-    fontWeight: '500', // Medium
-    color: '#374151', // Gray-700
-    marginBottom: 4, // xs: 4px
-    textTransform: 'uppercase', // Labels: Uppercase
-    letterSpacing: 0.5, // Labels: Letter-spacing: 0.5px
+  cardLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#D1D5DB', // Gray-300
-    borderRadius: 8, // Input: 8px
-    padding: 12, // md: 12px (3 * 4px)
-    paddingHorizontal: 16, // md: 16px
-    fontSize: 16, // Input: 16px (prevents zoom on iOS)
-    color: '#111827', // Gray-900
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    padding: 14,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    color: '#111827',
+    backgroundColor: '#F9FAFB',
+    minHeight: 52,
+  },
+  inputError: {
+    borderColor: '#EF4444',
+    backgroundColor: '#FEF2F2',
+  },
+  errorText: {
+    fontSize: 12,
+    color: '#EF4444',
+    marginTop: 6,
+    fontWeight: '500',
   },
   textArea: {
     minHeight: 80,
-    paddingTop: 12, // md: 12px (3 * 4px)
+    paddingTop: 12,
   },
   infoBox: {
-    backgroundColor: '#F3F4F6', // Gray-100
-    borderRadius: 8, // Button: 8px
-    padding: 16, // md: 16px
-    marginBottom: 24, // lg: 24px
+    backgroundColor: '#EEF2FF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 12, // md: 12px
-  },
-  infoIcon: {
-    marginTop: 2,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#E0E7FF',
   },
   infoText: {
     flex: 1,
-    fontSize: 14, // Body: 14px
-    color: '#6B7280', // Gray-500
-    lineHeight: 21, // 1.5 line-height
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 21,
   },
   saveButton: {
-    backgroundColor: '#2563EB', // Primary Blue
-    borderRadius: 8, // Button: 8px
-    paddingVertical: 12, // Button: 12px vertical
-    paddingHorizontal: 24, // Button: 24px horizontal
-    minHeight: 44, // Button: 44px touch target
+    backgroundColor: '#6366F1',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    minHeight: 52,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12, // md: 12px (3 * 4px)
+    marginBottom: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#6366F1',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   saveButtonDisabled: {
     opacity: 0.5,
   },
   saveButtonText: {
     color: '#fff',
-    fontSize: 16, // Button: 16px
-    fontWeight: '500', // Medium
+    fontSize: 16,
+    fontWeight: '500',
   },
-  cancelButton: {
-    backgroundColor: 'transparent',
-    borderRadius: 8, // Button: 8px
-    paddingVertical: 12, // Button: 12px vertical
-    paddingHorizontal: 24, // Button: 24px horizontal
-    minHeight: 44, // Button: 44px touch target
+  searchContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 12,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#2563EB', // Primary Blue
+    borderColor: '#E5E7EB',
+    gap: 8,
   },
-  cancelButtonText: {
-    color: '#2563EB', // Primary Blue
-    fontSize: 16, // Button: 16px
-    fontWeight: '500', // Medium
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#111827',
+    paddingVertical: 0,
+  },
+  clearSearchButton: {
+    padding: 4,
   },
   iconPicker: {
     marginTop: 8,
@@ -550,8 +762,8 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   iconOptionSelected: {
-    borderColor: '#2563EB',
-    backgroundColor: '#EFF6FF',
+    borderColor: '#6366F1',
+    backgroundColor: '#EEF2FF',
   },
   iconLabel: {
     fontSize: 12,
@@ -560,13 +772,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   iconLabelSelected: {
-    color: '#2563EB',
-    fontWeight: '500',
+    color: '#6366F1',
+    fontWeight: '600',
   },
   memberSectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  memberSectionTitle: {
     marginBottom: 8,
   },
   helperText: {
@@ -574,36 +786,53 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 4,
   },
-  toggleButton: {
+  memberActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#FFFFFF',
+    flex: 1,
   },
-  toggleButtonText: {
+  actionButtonActive: {
+    borderColor: '#6366F1',
+    backgroundColor: '#EEF2FF',
+  },
+  actionButtonText: {
     fontSize: 14,
-    color: '#2563EB',
-    fontWeight: '500',
+    fontWeight: '600',
+    color: '#6366F1',
   },
   selectedMembersContainer: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: 8,
+    backgroundColor: '#EEF2FF',
+    borderRadius: 12,
     padding: 12,
     marginTop: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E0E7FF',
   },
   selectedMembersText: {
     fontSize: 14,
-    color: '#2563EB',
-    fontWeight: '500',
+    color: '#6366F1',
+    fontWeight: '600',
   },
   memberPickerContainer: {
     marginTop: 12,
     maxHeight: 300,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    borderRadius: 8,
-    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
   },
   loadingIndicator: {
     padding: 20,
@@ -635,32 +864,19 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 8,
     backgroundColor: '#FFFFFF',
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
   friendCardSelected: {
-    borderColor: '#2563EB',
-    backgroundColor: '#EFF6FF',
+    borderColor: '#6366F1',
+    backgroundColor: '#EEF2FF',
   },
   friendInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-  },
-  friendAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#2563EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  friendAvatarText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    gap: 12,
   },
   friendDetails: {
     flex: 1,
@@ -675,30 +891,11 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 2,
   },
-  memberActions: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-  },
-  inviteToggleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    backgroundColor: '#EFF6FF',
-  },
-  inviteToggleText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#2563EB',
-  },
   inviteForm: {
-    marginTop: 16,
+    marginTop: 12,
     padding: 16,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
@@ -713,21 +910,14 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginBottom: 16,
   },
+  inputGroup: {
+    marginBottom: 16,
+  },
   inputLabel: {
     fontSize: 14,
     fontWeight: '500',
     color: '#374151',
     marginBottom: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#111827',
-    backgroundColor: '#FFFFFF',
-    marginBottom: 16,
   },
   orText: {
     textAlign: 'center',
@@ -737,8 +927,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   inviteButton: {
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
+    backgroundColor: '#6366F1',
+    borderRadius: 12,
     padding: 16,
     alignItems: 'center',
     marginTop: 8,
@@ -751,5 +941,96 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  imagePickerContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  circleImagePreview: {
+    width: '100%',
+    height: '100%',
+  },
+  imagePickerSection: {
+    alignItems: 'center',
+    marginBottom: 32,
+    marginTop: 8,
+  },
+  imagePickerPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+    height: '100%',
+    gap: 8,
+  },
+  imagePickerText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 3,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  permissionOptions: {
+    marginTop: 12,
+    gap: 12,
+  },
+  permissionOption: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    gap: 12,
+  },
+  permissionOptionActive: {
+    borderColor: '#6366F1',
+    backgroundColor: '#EEF2FF',
+  },
+  permissionOptionContent: {
+    flex: 1,
+    gap: 4,
+  },
+  permissionOptionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  permissionOptionTitleActive: {
+    color: '#6366F1',
+  },
+  permissionOptionDescription: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    lineHeight: 20,
+  },
 });
-

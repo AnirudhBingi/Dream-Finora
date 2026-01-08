@@ -2,18 +2,21 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
-  Alert,
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
+  Alert,
 } from 'react-native';
 import { Linking } from 'expo-linking';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
 import { acceptUserInvitation } from '../api/friendApi';
+import { Button } from '../components/Button';
+import { InputField } from '../components/InputField';
+import { PasswordInput } from '../components/PasswordInput';
+import { PasswordStrengthIndicator, PasswordStrength } from '../components/PasswordStrengthIndicator';
+import { SocialSignInButton } from '../components/SocialSignInButton';
 
 interface RegisterScreenProps {
   onSwitchToLogin: () => void;
@@ -25,30 +28,31 @@ export function RegisterScreen({ onSwitchToLogin }: RegisterScreenProps) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const [mobileError, setMobileError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [confirmPasswordError, setConfirmPasswordError] = useState('');
+  const [passwordStrength, setPasswordStrength] = useState<PasswordStrength>('weak');
   const [invitationToken, setInvitationToken] = useState<string | null>(null);
   const [loadingInvitation, setLoadingInvitation] = useState(false);
   const { register, token, isAuthenticated } = useAuth();
 
   useEffect(() => {
-    // Check for invitation token in URL
     checkInvitationToken();
   }, []);
 
-  // Accept invitation after successful registration
   useEffect(() => {
     async function acceptInvitationIfNeeded() {
       if (invitationToken && token && isAuthenticated) {
         try {
           await acceptUserInvitation(token, invitationToken);
           Alert.alert('Success', 'You\'ve been added as a friend!');
-          setInvitationToken(null); // Clear token after acceptance
+          setInvitationToken(null);
         } catch (err) {
           console.error('Failed to accept invitation:', err);
-          // Don't show error to user - invitation might have expired or been used
         }
       }
     }
-
     acceptInvitationIfNeeded();
   }, [token, isAuthenticated, invitationToken]);
 
@@ -60,14 +64,12 @@ export function RegisterScreen({ onSwitchToLogin }: RegisterScreenProps) {
         const inviteToken = parsed.queryParams?.invite as string;
         if (inviteToken) {
           setInvitationToken(inviteToken);
-          await loadInvitationDetails(inviteToken);
         }
       }
     } catch (err) {
       console.log('No invitation token in URL');
     }
 
-    // Also listen for deep links while app is running
     const subscription = Linking.addEventListener('url', handleDeepLink);
     return () => subscription.remove();
   }
@@ -78,78 +80,115 @@ export function RegisterScreen({ onSwitchToLogin }: RegisterScreenProps) {
       const inviteToken = parsed.queryParams?.invite as string;
       if (inviteToken) {
         setInvitationToken(inviteToken);
-        await loadInvitationDetails(inviteToken);
       }
     } catch (err) {
       console.error('Error handling deep link:', err);
     }
   }
 
-  async function loadInvitationDetails(token: string) {
-    try {
-      setLoadingInvitation(true);
-      // Try to fetch invitation details (this endpoint might not require auth)
-      // If it fails, we'll just store the token and accept it after registration
-      try {
-        // Note: getUserInvitation might require auth, so we'll handle errors gracefully
-        // For now, we'll just store the token and accept it after registration
-      } catch (err) {
-        // It's okay if we can't fetch details now - we'll accept after registration
-        console.log('Could not fetch invitation details (will accept after registration)');
-      }
-    } catch (err) {
-      console.error('Failed to load invitation:', err);
-    } finally {
-      setLoadingInvitation(false);
-    }
-  }
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const validateMobile = (mobile: string): boolean => {
+    if (!mobile.trim()) return true; // Optional
+    const mobileRegex = /^\+?[1-9]\d{1,14}$/;
+    return mobileRegex.test(mobile.trim());
+  };
+
+  const handleEmailChange = (text: string) => {
+    setEmail(text);
+    setEmailError('');
+  };
+
+  const handleMobileChange = (text: string) => {
+    setMobileNumber(text);
+    setMobileError('');
+  };
+
+  const handlePasswordChange = (text: string) => {
+    setPassword(text);
+    setPasswordError('');
+  };
+
+  const handlePasswordStrengthChange = (strength: PasswordStrength) => {
+    setPasswordStrength(strength);
+  };
+
+  const handleConfirmPasswordChange = (text: string) => {
+    setConfirmPassword(text);
+    setConfirmPasswordError('');
+  };
 
   async function handleRegister() {
-    if (!email.trim() || !password.trim() || !confirmPassword.trim()) {
-      Alert.alert('Error', 'Please fill in all required fields');
+    // Reset errors
+    setEmailError('');
+    setMobileError('');
+    setPasswordError('');
+    setConfirmPasswordError('');
+
+    // Validation
+    if (!email.trim()) {
+      setEmailError('Email is required');
       return;
     }
 
-    if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+    if (!validateEmail(email.trim())) {
+      setEmailError('Please enter a valid email address');
+      return;
+    }
+
+    if (mobileNumber.trim() && !validateMobile(mobileNumber)) {
+      setMobileError('Please provide a valid mobile number (e.g., +1234567890)');
+      return;
+    }
+
+    if (!password.trim()) {
+      setPasswordError('Password is required');
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters long');
+      setPasswordError('Password must be at least 6 characters long');
       return;
     }
 
-    // Validate mobile number format if provided (E.164 format: +1234567890)
-    if (mobileNumber.trim() && !/^\+?[1-9]\d{1,14}$/.test(mobileNumber.trim())) {
-      Alert.alert('Error', 'Please provide a valid mobile number (e.g., +1234567890)');
+    if (!confirmPassword.trim()) {
+      setConfirmPasswordError('Please confirm your password');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setConfirmPasswordError('Passwords do not match');
       return;
     }
 
     setIsLoading(true);
     try {
-      console.log('Attempting registration for:', email.trim());
       await register(email.trim(), password, mobileNumber.trim() || undefined);
-      console.log('Registration successful');
-      
-      // If there's an invitation token, accept it after registration
-      // Note: We'll need to wait for auth state to update, so we'll handle this
-      // in a useEffect that watches for token changes, or we can do it here with a delay
-      if (invitationToken) {
-        // Store the invitation token to accept after auth state updates
-        // The acceptance will happen in a useEffect that watches for token changes
-        console.log('Invitation token will be accepted after auth state updates');
-      }
-      
-      // Navigation will happen automatically via auth state change
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Could not create account';
-      console.error('Registration error:', error);
-      console.error('Error message:', errorMessage);
       Alert.alert('Registration Failed', errorMessage);
     } finally {
       setIsLoading(false);
     }
+  }
+
+  function handleGoogleSignIn() {
+    Alert.alert(
+      'Coming Soon',
+      'Google sign-in will be available soon! Please use email and password for now.',
+      [{ text: 'OK' }]
+    );
+  }
+
+  function handleAppleSignIn() {
+    Alert.alert(
+      'Coming Soon',
+      'Apple sign-in will be available soon! Please use email and password for now.',
+      [{ text: 'OK' }]
+    );
   }
 
   return (
@@ -157,91 +196,134 @@ export function RegisterScreen({ onSwitchToLogin }: RegisterScreenProps) {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <View style={styles.content}>
-        <Text style={styles.title}>Dream Finora</Text>
-        <Text style={styles.subtitle}>Create Account</Text>
-
-        {invitationToken && (
-          <View style={styles.invitationBanner}>
-            <MaterialIcons name="mail" size={20} color="#2563EB" />
-            <Text style={styles.invitationText}>
-              You've been invited to join Dream Finora!
-            </Text>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.content}>
+          {/* Logo/Icon Placeholder */}
+          <View style={styles.logoContainer}>
+            <View style={styles.logoPlaceholder}>
+              <Text style={styles.logoText}>DF</Text>
+            </View>
           </View>
-        )}
 
-        <View style={styles.form}>
-          <TextInput
-            style={styles.input}
-            placeholder="Email *"
-            placeholderTextColor="#9CA3AF"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            autoComplete="email"
-            editable={!isLoading}
-          />
+          {/* Hero Section */}
+          <Text style={styles.title}>Dream Finora</Text>
+          <Text style={styles.subtitle}>Create your account</Text>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Mobile Number (optional, e.g., +1234567890)"
-            placeholderTextColor="#9CA3AF"
-            value={mobileNumber}
-            onChangeText={setMobileNumber}
-            autoCapitalize="none"
-            keyboardType="phone-pad"
-            autoComplete="tel"
-            editable={!isLoading}
-          />
+          {/* Invitation Banner */}
+          {invitationToken && (
+            <View style={styles.invitationBanner}>
+              <MaterialIcons name="mail" size={20} color="#6366F1" />
+              <Text style={styles.invitationText}>
+                You've been invited to join Dream Finora!
+              </Text>
+            </View>
+          )}
 
-          <TextInput
-            style={styles.input}
-            placeholder="Password (min 6 characters) *"
-            placeholderTextColor="#9CA3AF"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            autoComplete="password-new"
-            editable={!isLoading}
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Confirm Password"
-            placeholderTextColor="#9CA3AF"
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            autoComplete="password-new"
-            editable={!isLoading}
-          />
-
-          <TouchableOpacity
-            style={[styles.button, isLoading && styles.buttonDisabled]}
-            onPress={handleRegister}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Register</Text>
+          {/* Social Sign-In Buttons */}
+          <View style={styles.socialContainer}>
+            <SocialSignInButton
+              provider="google"
+              onPress={handleGoogleSignIn}
+              disabled={isLoading}
+            />
+            {Platform.OS === 'ios' && (
+              <SocialSignInButton
+                provider="apple"
+                onPress={handleAppleSignIn}
+                disabled={isLoading}
+                style={styles.appleButton}
+              />
             )}
-          </TouchableOpacity>
+          </View>
 
-          <TouchableOpacity
-            style={styles.switchButton}
-            onPress={onSwitchToLogin}
-            disabled={isLoading}
-          >
-            <Text style={styles.switchText}>
-              Already have an account? <Text style={styles.switchTextBold}>Login</Text>
-            </Text>
-          </TouchableOpacity>
+          {/* Divider */}
+          <View style={styles.dividerContainer}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          {/* Registration Form */}
+          <View style={styles.form}>
+            <InputField
+              label="Email *"
+              placeholder="Enter your email"
+              value={email}
+              onChangeText={handleEmailChange}
+              error={emailError}
+              leftIcon="email"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              autoComplete="email"
+              editable={!isLoading}
+            />
+
+            <InputField
+              label="Mobile Number (optional)"
+              placeholder="e.g., +1234567890"
+              value={mobileNumber}
+              onChangeText={handleMobileChange}
+              error={mobileError}
+              leftIcon="phone"
+              autoCapitalize="none"
+              keyboardType="phone-pad"
+              autoComplete="tel"
+              editable={!isLoading}
+            />
+
+            <PasswordInput
+              label="Password *"
+              placeholder="Create a password (min 6 characters)"
+              value={password}
+              onChangeText={handlePasswordChange}
+              error={passwordError}
+              leftIcon="lock"
+              showStrengthIndicator={true}
+              onStrengthChange={handlePasswordStrengthChange}
+              editable={!isLoading}
+            />
+
+            {password.length > 0 && (
+              <PasswordStrengthIndicator
+                strength={passwordStrength}
+                password={password}
+                showRequirements={true}
+              />
+            )}
+
+            <PasswordInput
+              label="Confirm Password *"
+              placeholder="Confirm your password"
+              value={confirmPassword}
+              onChangeText={handleConfirmPasswordChange}
+              error={confirmPasswordError}
+              leftIcon="lock"
+              editable={!isLoading}
+            />
+
+            <Button
+              title="Register"
+              onPress={handleRegister}
+              loading={isLoading}
+              disabled={isLoading}
+              style={styles.registerButton}
+            />
+
+            <View style={styles.switchContainer}>
+              <Text style={styles.switchText}>
+                Already have an account?{' '}
+                <Text style={styles.switchTextBold} onPress={onSwitchToLogin}>
+                  Login
+                </Text>
+              </Text>
+            </View>
+          </View>
         </View>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -249,65 +331,102 @@ export function RegisterScreen({ onSwitchToLogin }: RegisterScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   content: {
     flex: 1,
     justifyContent: 'center',
-    padding: 24,
+    paddingHorizontal: 24,
+    paddingTop: 48,
+    paddingBottom: 32,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  logoPlaceholder: {
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    backgroundColor: '#6366F1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoText: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#2563EB',
+    color: '#6366F1', // Indigo
     textAlign: 'center',
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 18,
-    color: '#6B7280',
+    fontWeight: '500',
+    color: '#374151',
     textAlign: 'center',
-    marginBottom: 48,
+    marginBottom: 24,
+  },
+  invitationBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EEF2FF',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 24,
+    gap: 8,
+  },
+  invitationText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#6366F1',
+    fontWeight: '500',
+  },
+  socialContainer: {
+    gap: 12,
+    marginBottom: 24,
+  },
+  appleButton: {
+    marginTop: 0,
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E5E7EB',
+  },
+  dividerText: {
+    marginHorizontal: 16,
+    fontSize: 14,
+    color: '#6B7280',
   },
   form: {
     width: '100%',
   },
-  input: {
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 8,
-    padding: 16,
-    fontSize: 16,
-    marginBottom: 16,
-    color: '#111827',
-  },
-  button: {
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    padding: 16,
-    alignItems: 'center',
+  registerButton: {
     marginTop: 8,
   },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  switchButton: {
+  switchContainer: {
     marginTop: 24,
     alignItems: 'center',
   },
   switchText: {
-    color: '#6B7280',
     fontSize: 14,
+    color: '#6B7280',
   },
   switchTextBold: {
-    color: '#2563EB',
+    color: '#6366F1',
     fontWeight: '600',
   },
 });
-

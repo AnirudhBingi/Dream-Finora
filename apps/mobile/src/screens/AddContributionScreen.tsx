@@ -16,6 +16,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { DatePicker } from '../components/DatePicker';
 import { getProfile, Profile } from '../api/profileApi';
 import { getCurrencySymbol } from '../utils/currency';
+import { Header } from '../components/Header';
 
 interface AddContributionScreenProps {
   goalId?: string; // Optional - if provided, pre-fills the goal
@@ -23,6 +24,9 @@ interface AddContributionScreenProps {
   context?: 'local' | 'home'; // Optional - will be derived from goal if not provided
   onBack: () => void;
   onSuccess: () => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export function AddContributionScreen({
@@ -31,6 +35,9 @@ export function AddContributionScreen({
   context,
   onBack,
   onSuccess,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: AddContributionScreenProps) {
   const { token } = useAuth();
   const [goal, setGoal] = useState<FinancialGoal | null>(null);
@@ -52,9 +59,10 @@ export function AddContributionScreen({
     if (!token) return;
     try {
       const profileData = await getProfile(token);
-      setProfile(profileData);
+      setProfile(profileData || null);
     } catch (err) {
       console.error('Failed to load profile:', err);
+      setProfile(null);
     }
   }
 
@@ -138,14 +146,14 @@ export function AddContributionScreen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title="Add Contribution"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
-          </TouchableOpacity>
-          <Text style={styles.title}>Add Contribution</Text>
-          <View style={styles.headerSpacer} />
-        </View>
 
         {goal && (
           <View style={styles.goalInfo}>
@@ -258,27 +266,6 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: '#6B7280',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 24,
-  },
-  backButton: {
-    padding: 8,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#111827',
-    flex: 1,
-    textAlign: 'center',
-  },
-  headerSpacer: {
-    width: 40,
   },
   goalInfo: {
     backgroundColor: '#F9FAFB',

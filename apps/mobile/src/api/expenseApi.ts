@@ -53,6 +53,7 @@ export interface Expense {
     id: string;
     name: string;
     description: string | null;
+    avatarUrl?: string | null;
   } | null;
 }
 
@@ -89,6 +90,15 @@ export interface BalanceInfo {
     originalAmount?: number;
     originalCurrency?: string;
     splits: ExpenseSplit[];
+    breakdown?: {
+      byGroup?: Array<{
+        groupId: string;
+        groupName: string;
+        amount: number;
+      }>;
+      rideshare?: number;
+      individual?: number;
+    };
   }>;
   owedToUser: Array<{
     user: {
@@ -103,6 +113,15 @@ export interface BalanceInfo {
     originalAmount?: number;
     originalCurrency?: string;
     splits: ExpenseSplit[];
+    breakdown?: {
+      byGroup?: Array<{
+        groupId: string;
+        groupName: string;
+        amount: number;
+      }>;
+      rideshare?: number;
+      individual?: number;
+    };
   }>;
 }
 
@@ -295,11 +314,13 @@ export interface SimplifiedDebtsResponse {
 
 export interface CreateSettlementDto {
   payeeId: string;
+  payerId?: string; // Optional: if not provided, defaults to current user
   amount: number;
   currency?: string;
   paymentMethod: string;
   notes?: string;
   splitIds?: string[];
+  groupId?: string; // Optional: filter splits to only those within this group (for group-specific settlements)
 }
 
 export interface Settlement {

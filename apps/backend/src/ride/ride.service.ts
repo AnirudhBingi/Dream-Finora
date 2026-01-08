@@ -146,10 +146,12 @@ export class RideService {
           }));
 
       // Create expense directly in transaction
+      // For rides, the driver is the one who "paid" (provided the ride)
       const expense = await tx.expense.create({
         data: {
           id: randomUUID(),
           createdBy: userId,
+          paidBy: userId, // Driver paid for the ride (provided the ride)
           description: expenseDescription,
           amount: totalCost,
           currency: 'USD',
@@ -200,6 +202,47 @@ export class RideService {
     return this.getRideById(userId, ride.id);
   }
 
+  private transformRide(ride: any) {
+    const { User, RideParticipant, ...rideBase } = ride;
+    
+    return {
+      ...rideBase,
+      date: ride.date.toISOString(),
+      createdAt: ride.createdAt.toISOString(),
+      driver: User
+        ? {
+            id: User.id,
+            email: User.email,
+            profile: User.UserProfile
+              ? {
+                  displayName: User.UserProfile.displayName,
+                  avatarUrl: User.UserProfile.avatarUrl,
+                }
+              : null,
+          }
+        : null,
+      participants: (RideParticipant || []).map((participant: any) => ({
+        id: participant.id,
+        rideId: participant.rideId,
+        userId: participant.userId,
+        isDriver: participant.isDriver,
+        createdAt: participant.createdAt.toISOString(),
+        user: participant.User
+          ? {
+              id: participant.User.id,
+              email: participant.User.email,
+              profile: participant.User.UserProfile
+                ? {
+                    displayName: participant.User.UserProfile.displayName,
+                    avatarUrl: participant.User.UserProfile.avatarUrl,
+                  }
+                : null,
+            }
+          : null,
+      })),
+    };
+  }
+
   async getRides(userId: string, groupId?: string) {
     const where: any = {
       OR: [
@@ -213,10 +256,6 @@ export class RideService {
         },
       ],
     };
-
-    if (groupId) {
-      where.groupId = groupId;
-    }
 
     const rides = await this.prisma.ride.findMany({
       where,
@@ -253,7 +292,20 @@ export class RideService {
       orderBy: { date: 'desc' },
     });
 
-    return rides;
+    // Filter by groupId through the expense relationship if provided
+    // Rides are linked to groups via their associated expense (expenseId -> Expense.groupId)
+    let filteredRides = rides;
+    if (groupId) {
+      const expenseIds = await this.prisma.expense.findMany({
+        where: { groupId },
+        select: { id: true },
+      });
+      const expenseIdSet = new Set(expenseIds.map(e => e.id));
+      filteredRides = rides.filter(ride => ride.expenseId && expenseIdSet.has(ride.expenseId));
+    }
+
+    // Transform rides to match frontend interface
+    return filteredRides.map(ride => this.transformRide(ride));
   }
 
   async getRideById(userId: string, rideId: string) {
@@ -307,7 +359,26 @@ export class RideService {
       throw new NotFoundException('Ride not found');
     }
 
-    return ride;
+    // Check if linked expense still exists (it might have been deleted)
+    if (ride.expenseId) {
+      const expense = await this.prisma.expense.findUnique({
+        where: { id: ride.expenseId },
+      });
+      
+      if (!expense) {
+        // Expense was deleted, unlink it from the ride
+        await this.prisma.ride.update({
+          where: { id: rideId },
+          data: { expenseId: null },
+        }).catch(err => {
+          console.error(`[RideService] Failed to unlink deleted expense from ride ${rideId}:`, err);
+        });
+        // Set expenseId to null in the ride object
+        ride.expenseId = null;
+      }
+    }
+
+    return this.transformRide(ride);
   }
 
   async joinRide(userId: string, rideId: string) {
@@ -544,12 +615,13 @@ export class RideService {
             });
           }
 
-          // Update expense amount
+          // Update expense amount and ensure paidBy is set (driver paid for the ride)
           await tx.expense.update({
             where: { id: ride.expenseId },
             data: {
               amount: totalCost,
               description: `Ride: ${updated.origin} → ${updated.destination}`,
+              paidBy: userId, // Driver paid for the ride (provided the ride)
             },
           });
         }
@@ -585,12 +657,13 @@ export class RideService {
           });
         }
 
-        // Update expense amount
+        // Update expense amount and ensure paidBy is set (driver paid for the ride)
         await tx.expense.update({
           where: { id: ride.expenseId },
           data: {
             amount: totalCost,
             description: `Ride: ${updated.origin} → ${updated.destination}`,
+            paidBy: userId, // Driver paid for the ride (provided the ride)
           },
         });
       }

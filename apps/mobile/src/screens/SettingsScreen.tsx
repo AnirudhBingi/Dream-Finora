@@ -18,14 +18,17 @@ import { getProfile, updateProfile } from '../api/profileApi';
 import { exportExpensesCSV, exportTransactionsCSV, exportAllDataJSON, saveAndShareCSV, saveAndShareJSON } from '../api/exportApi';
 import { inviteUserToApp } from '../api/friendApi';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Header } from '../components/Header';
 
 interface SettingsScreenProps {
   onBack: () => void;
   onNavigateToAccount?: () => void;
   onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
-export function SettingsScreen({ onBack, onNavigateToAccount, onNavigateToProfile }: SettingsScreenProps) {
+export function SettingsScreen({ onBack, onNavigateToAccount, onNavigateToProfile, onNavigateToNotifications, onNavigateToSettings }: SettingsScreenProps) {
   const { token, user, logout } = useAuth();
   const [primaryCurrency, setPrimaryCurrency] = useState<string>('USD');
   const [homeCountryCurrency, setHomeCountryCurrency] = useState<string>('USD');
@@ -200,22 +203,19 @@ export function SettingsScreen({ onBack, onNavigateToAccount, onNavigateToProfil
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title="Settings"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+        showSettings={false}
+      />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.title}>Settings</Text>
-            <View style={styles.placeholder} />
-          </View>
 
           {/* Account & Profile Navigation */}
           <View style={styles.section}>
@@ -650,31 +650,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-    marginTop: 8,
-  },
-  backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    minHeight: 44,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#2563EB',
-    fontWeight: '500',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  placeholder: {
-    width: 60,
   },
   section: {
     marginBottom: 32,

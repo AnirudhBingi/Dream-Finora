@@ -10,7 +10,15 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { join } from 'path';
+import { existsSync, mkdirSync } from 'fs';
+import { extname } from 'path';
 import { GroupService } from './group.service';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
@@ -174,6 +182,53 @@ export class GroupController {
     @Param('id') id: string,
   ) {
     return this.groupService.getGroupHistory(user.userId, id);
+  }
+
+  @Post(':id/avatar')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (req, file, cb) => {
+          const uploadPath = join(process.cwd(), 'uploads', 'groups');
+          // Create directory if it doesn't exist
+          if (!existsSync(uploadPath)) {
+            mkdirSync(uploadPath, { recursive: true });
+          }
+          cb(null, uploadPath);
+        },
+        filename: (req, file, cb) => {
+          const randomName = Array(32)
+            .fill(null)
+            .map(() => Math.round(Math.random() * 16).toString(16))
+            .join('');
+          cb(null, `${randomName}${extname(file.originalname)}`);
+        },
+      }),
+      limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB
+      },
+      fileFilter: (req, file, cb) => {
+        if (!file.mimetype.match(/\/(jpg|jpeg|png|gif)$/)) {
+          return cb(new Error('Only image files are allowed!'), false);
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  async uploadGroupAvatar(
+    @CurrentUser() user: { userId: string },
+    @Param('id') groupId: string,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+
+    // For local development, return relative path
+    // In production, this would be uploaded to S3/Supabase Storage and return full URL
+    const avatarUrl = `/uploads/groups/${file.filename}`;
+
+    return this.groupService.updateGroupAvatar(user.userId, groupId, avatarUrl);
   }
 }
 

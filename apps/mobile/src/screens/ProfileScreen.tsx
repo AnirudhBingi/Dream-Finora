@@ -13,19 +13,31 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon } from '../components/Icon';
 import { useAuth } from '../auth/authContext';
 import { getProfile, Profile } from '../api/profileApi';
-import { getApiBaseUrl } from '../api/getApiBaseUrl';
+import { getAvatarUrl } from '../utils/avatar';
 import { getTrustScoreBreakdown, TrustScoreWithBreakdown } from '../api/trustScoreApi';
 import { SkeletonDetailScreen } from '../components/SkeletonLoader';
 import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
+import { Header } from '../components/Header';
 
 interface ProfileScreenProps {
   onEdit: () => void;
   onBack: () => void;
   onSettings?: () => void;
   onViewTrustScoreInsights?: () => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
-export function ProfileScreen({ onEdit, onBack, onSettings, onViewTrustScoreInsights }: ProfileScreenProps) {
+export function ProfileScreen({ 
+  onEdit, 
+  onBack, 
+  onSettings, 
+  onViewTrustScoreInsights,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
+}: ProfileScreenProps) {
   const { token, user } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [trustScoreBreakdown, setTrustScoreBreakdown] = useState<TrustScoreWithBreakdown | null>(null);
@@ -57,15 +69,6 @@ export function ProfileScreen({ onEdit, onBack, onSettings, onViewTrustScoreInsi
     }
   }
 
-  function getAvatarUrl(avatarUrl: string | null): string | null {
-    if (!avatarUrl) return null;
-    if (avatarUrl.startsWith('http')) return avatarUrl;
-    // Ensure we have a proper URL
-    const baseUrl = getApiBaseUrl();
-    const cleanPath = avatarUrl.startsWith('/') ? avatarUrl : `/${avatarUrl}`;
-    return `${baseUrl}${cleanPath}`;
-  }
-
   function getTrustScoreColor(score: number): string {
     // Trust Score Colors from design guide:
     // Excellent (90-100): #10B981 (Green)
@@ -78,19 +81,63 @@ export function ProfileScreen({ onEdit, onBack, onSettings, onViewTrustScoreInsi
     return '#EF4444'; // Red
   }
 
+  // Prepare right actions for header
+  const rightActions = (
+    <>
+      {onEdit && (
+        <TouchableOpacity
+          style={styles.headerActionButton}
+          onPress={onEdit}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Edit profile"
+        >
+          <Icon name="edit" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      )}
+      {onSettings && (
+        <TouchableOpacity
+          style={styles.headerActionButton}
+          onPress={onSettings}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Settings"
+        >
+          <Icon name="settings" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      )}
+    </>
+  );
+
   if (loading) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <Header
+          title="Profile"
+          onBack={onBack}
+          rightActions={rightActions}
+          showProfile={false}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <SkeletonDetailScreen />
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <Header
+          title="Profile"
+          onBack={onBack}
+          rightActions={rightActions}
+          showProfile={false}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <ErrorState message={error} onRetry={loadProfile} />
-      </View>
+      </SafeAreaView>
     );
   }
 
@@ -98,18 +145,16 @@ export function ProfileScreen({ onEdit, onBack, onSettings, onViewTrustScoreInsi
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title="Profile"
+        onBack={onBack}
+        rightActions={rightActions}
+        showProfile={false}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity 
-              style={styles.backButton} 
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-          </View>
-
         <View style={styles.avatarContainer}>
           {avatarUrl ? (
             <Image 
@@ -260,17 +305,17 @@ export function ProfileScreen({ onEdit, onBack, onSettings, onViewTrustScoreInsi
           </View>
         )}
 
-          <View style={styles.actionsContainer}>
-            <TouchableOpacity style={styles.editButton} onPress={onEdit}>
-              <Text style={styles.editButtonText}>Edit My Space</Text>
+        <View style={styles.actionsContainer}>
+          <TouchableOpacity style={styles.editButton} onPress={onEdit}>
+            <Text style={styles.editButtonText}>Edit My Space</Text>
+          </TouchableOpacity>
+          {onSettings && (
+            <TouchableOpacity style={styles.settingsButton} onPress={onSettings}>
+              <Icon name="settings" size={20} color="#2563EB" />
+              <Text style={styles.settingsButtonText}>Settings</Text>
             </TouchableOpacity>
-            {onSettings && (
-              <TouchableOpacity style={styles.settingsButton} onPress={onSettings}>
-                <Icon name="settings" size={20} color="#2563EB" />
-                <Text style={styles.settingsButtonText}>Settings</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          )}
+        </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -289,27 +334,14 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 24, // lg: 24px
   },
-  header: {
-    paddingHorizontal: 0,
-    paddingTop: 0,
-    paddingBottom: 0,
-    marginBottom: 16, // md: 16px
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    width: '100%',
-  },
-  backButton: {
-    paddingVertical: 8, // sm: 8px
-    paddingHorizontal: 4, // xs: 4px
-    minWidth: 60,
-    minHeight: 44, // Touch target: 44px
+  headerActionButton: {
+    padding: 8,
+    minWidth: 44,
+    minHeight: 44,
     justifyContent: 'center',
-  },
-  backButtonText: {
-    fontSize: 16, // Body: 16px
-    color: '#2563EB', // Primary Blue
-    fontWeight: '500', // Medium (Text Button)
+    alignItems: 'center',
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
   loadingContainer: {
     flex: 1,

@@ -11,6 +11,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
 import { getFriends, Friend, searchUsers, SearchUser } from '../api/friendApi';
 import { getGroups, Group, getGroupById, GroupMember } from '../api/groupApi';
+import { Avatar } from './Avatar';
 
 export interface SelectedParticipant {
   userId: string;
@@ -24,6 +25,10 @@ interface ParticipantPickerProps {
   onSelectionChange: (participants: SelectedParticipant[]) => void;
   allowMultiple?: boolean;
   showGroups?: boolean;
+  showFriends?: boolean;
+  groupId?: string;
+  initialGroupId?: string | null;
+  onGroupChange?: (groupId: string | null) => void;
 }
 
 export function ParticipantPicker({
@@ -31,15 +36,27 @@ export function ParticipantPicker({
   onSelectionChange,
   allowMultiple = true,
   showGroups = true,
+  showFriends = false,
+  groupId,
+  initialGroupId,
+  onGroupChange,
 }: ParticipantPickerProps) {
   const { token, user } = useAuth();
   const [friends, setFriends] = useState<Friend[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(initialGroupId || null);
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
   const [loadingFriends, setLoadingFriends] = useState(true);
   const [loadingGroups, setLoadingGroups] = useState(true);
   const [loadingMembers, setLoadingMembers] = useState(false);
+
+  // Sync selectedGroupId with initialGroupId or groupId prop
+  useEffect(() => {
+    const groupIdToUse = groupId || initialGroupId;
+    if (groupIdToUse !== undefined) {
+      setSelectedGroupId(groupIdToUse);
+    }
+  }, [groupId, initialGroupId]);
 
   useEffect(() => {
     if (token) {
@@ -144,7 +161,8 @@ export function ParticipantPicker({
 
   return (
     <View style={styles.container}>
-      {/* Friends Section */}
+      {/* Friends Section - Only show if showFriends is true or no group is selected */}
+      {(showFriends || !selectedGroupId) && (
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <MaterialIcons name="people" size={20} color="#2563EB" />
@@ -167,6 +185,49 @@ export function ParticipantPicker({
           </View>
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.scrollView}>
+            {/* Add current user as "You" in friends list */}
+            {user && (
+              <TouchableOpacity
+                key={user.id}
+                style={[
+                  styles.participantChip,
+                  isParticipantSelected(user.id, 'friend') && styles.participantChipSelected,
+                ]}
+                onPress={() =>
+                  toggleParticipant({
+                    userId: user.id,
+                    type: 'friend',
+                    name: 'You',
+                    email: user.email || '',
+                  })
+                }
+                activeOpacity={0.7}
+              >
+                <View style={styles.chipContent}>
+                  <View style={isParticipantSelected(user.id, 'friend') && styles.avatarSelected}>
+                    <Avatar
+                      avatarUrl={user.profile?.avatarUrl}
+                      displayName="You"
+                      size={32}
+                      borderColor={isParticipantSelected(user.id, 'friend') ? '#FFFFFF' : 'transparent'}
+                      borderWidth={isParticipantSelected(user.id, 'friend') ? 2 : 0}
+                    />
+                  </View>
+                  <Text
+                    style={[
+                      styles.chipText,
+                      isParticipantSelected(user.id, 'friend') && styles.chipTextSelected,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    You
+                  </Text>
+                  {isParticipantSelected(user.id, 'friend') && (
+                    <MaterialIcons name="check-circle" size={16} color="#FFFFFF" />
+                  )}
+                </View>
+              </TouchableOpacity>
+            )}
             {friends.map((friend) => {
               const isSelected = isParticipantSelected(friend.friendId, 'friend');
               return (
@@ -184,11 +245,13 @@ export function ParticipantPicker({
                   activeOpacity={0.7}
                 >
                   <View style={styles.chipContent}>
-                    <View style={[styles.avatar, isSelected && styles.avatarSelected]}>
-                      <MaterialIcons
-                        name="person"
-                        size={16}
-                        color={isSelected ? '#FFFFFF' : '#6B7280'}
+                    <View style={isSelected && styles.avatarSelected}>
+                      <Avatar
+                        avatarUrl={friend?.friend?.profile?.avatarUrl}
+                        displayName={getUserDisplayName(friend)}
+                        size={32}
+                        borderColor={isSelected ? '#FFFFFF' : 'transparent'}
+                        borderWidth={isSelected ? 2 : 0}
                       />
                     </View>
                     <Text
@@ -210,6 +273,7 @@ export function ParticipantPicker({
           </ScrollView>
         )}
       </View>
+      )}
 
       {/* Groups Section */}
       {showGroups && (
@@ -246,7 +310,11 @@ export function ParticipantPicker({
                     <TouchableOpacity
                       key={group.id}
                       style={[styles.groupChip, isSelected && styles.groupChipSelected]}
-                      onPress={() => setSelectedGroupId(isSelected ? null : group.id)}
+                      onPress={() => {
+                        const newGroupId = isSelected ? null : group.id;
+                        setSelectedGroupId(newGroupId);
+                        onGroupChange?.(newGroupId);
+                      }}
                       activeOpacity={0.7}
                     >
                       <View style={styles.chipContent}>
@@ -283,9 +351,9 @@ export function ParticipantPicker({
                       showsHorizontalScrollIndicator={false}
                       style={styles.scrollView}
                     >
-                      {groupMembers
-                        .filter((member) => member.userId !== user?.id) // Exclude self
-                        .map((member) => {
+                      {groupMembers.map((member) => {
+                          const isCurrentUser = member.userId === user?.id;
+                          const displayName = isCurrentUser ? 'You' : getMemberDisplayName(member);
                           const isSelected = isParticipantSelected(member.userId, 'group-member');
                           return (
                             <TouchableOpacity
@@ -298,20 +366,20 @@ export function ParticipantPicker({
                                 toggleParticipant({
                                   userId: member.userId,
                                   type: 'group-member',
-                                  name: getMemberDisplayName(member),
+                                  name: displayName,
                                   email: member.user.email,
                                 })
                               }
                               activeOpacity={0.7}
                             >
                               <View style={styles.chipContent}>
-                                <View
-                                  style={[styles.avatar, isSelected && styles.avatarSelected]}
-                                >
-                                  <MaterialIcons
-                                    name="person"
-                                    size={16}
-                                    color={isSelected ? '#FFFFFF' : '#6B7280'}
+                                <View style={isSelected && styles.avatarSelected}>
+                                  <Avatar
+                                    avatarUrl={member?.user?.profile?.avatarUrl}
+                                    displayName={displayName}
+                                    size={32}
+                                    borderColor={isSelected ? '#FFFFFF' : 'transparent'}
+                                    borderWidth={isSelected ? 2 : 0}
                                   />
                                 </View>
                                 <Text
@@ -321,7 +389,7 @@ export function ParticipantPicker({
                                   ]}
                                   numberOfLines={1}
                                 >
-                                  {getMemberDisplayName(member)}
+                                  {displayName}
                                 </Text>
                                 {isSelected && (
                                   <MaterialIcons name="check-circle" size={16} color="#FFFFFF" />
@@ -438,16 +506,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  avatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#E5E7EB',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   avatarSelected: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    // This style is used for the Avatar component wrapper when selected
+    // The Avatar component handles its own styling
   },
   chipText: {
     fontSize: 14,

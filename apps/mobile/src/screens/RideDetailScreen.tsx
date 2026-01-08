@@ -11,15 +11,19 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
-import { getRideById, joinRide, deleteRide, getRideHistory, Ride, RideHistoryEntry } from '../api/rideApi';
+import { getRideById, joinRide, deleteRide, getRideHistory, Ride, RideParticipant, RideHistoryEntry } from '../api/rideApi';
 import { SkeletonDetailScreen } from '../components/SkeletonLoader';
 import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
+import { Header, HeaderOption } from '../components/Header';
 
 interface RideDetailScreenProps {
   rideId: string;
   onBack: () => void;
   onRefresh: () => void;
   onNavigateToEdit?: (rideId: string) => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export function RideDetailScreen({
@@ -27,6 +31,9 @@ export function RideDetailScreen({
   onBack,
   onRefresh,
   onNavigateToEdit,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: RideDetailScreenProps) {
   const { token, user } = useAuth();
   const [ride, setRide] = useState<Ride | null>(null);
@@ -144,8 +151,9 @@ export function RideDetailScreen({
     );
   }
 
-  function getUserDisplayName(user: Ride['driver']): string {
-    return user.profile?.displayName || user.email;
+  function getUserDisplayName(user: Ride['driver'] | RideParticipant['user'] | undefined | null): string {
+    if (!user) return 'Unknown';
+    return user.profile?.displayName || user.email || 'Unknown';
   }
 
   function formatDate(dateString: string): string {
@@ -167,13 +175,13 @@ export function RideDetailScreen({
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Ride Details</Text>
-          <View style={styles.placeholder} />
-        </View>
+        <Header
+          title="Ride Details"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <SkeletonDetailScreen />
       </SafeAreaView>
     );
@@ -182,13 +190,13 @@ export function RideDetailScreen({
   if (!ride) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Ride Details</Text>
-          <View style={styles.placeholder} />
-        </View>
+        <Header
+          title="Ride Details"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <ErrorState message="Ride not found" onRetry={loadRide} />
       </SafeAreaView>
     );
@@ -199,50 +207,52 @@ export function RideDetailScreen({
   const canJoin = !isDriver && !isParticipant;
   const passengers = (ride.participants || []).filter((p) => !p.isDriver);
 
+  // Prepare header options menu
+  const headerOptions: HeaderOption[] = [];
+  if (isDriver) {
+    if (onNavigateToEdit) {
+      headerOptions.push({
+        label: 'Edit',
+        icon: 'edit',
+        onPress: () => onNavigateToEdit(ride.id),
+      });
+    }
+    headerOptions.push({
+      label: 'Delete',
+      icon: 'delete',
+      onPress: handleDelete,
+      danger: true,
+    });
+  }
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title="Ride Details"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+        useOptionsMenu={true}
+        options={headerOptions}
+      />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.content}>
-          <View style={styles.header}>
+          {isDriver && (
             <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
+              style={styles.historyToggleButton}
+              onPress={() => setShowHistory(!showHistory)}
               activeOpacity={0.7}
             >
-              <Text style={styles.backButtonText}>← Back</Text>
+              <MaterialIcons name="history" size={20} color="#2563EB" />
+              <Text style={styles.historyToggleText}>
+                {showHistory ? 'Hide History' : 'Show History'}
+              </Text>
             </TouchableOpacity>
-            {isDriver && (
-              <View style={styles.headerActions}>
-                <TouchableOpacity
-                  style={styles.headerButton}
-                  onPress={() => setShowHistory(!showHistory)}
-                  activeOpacity={0.7}
-                >
-                  <MaterialIcons name="history" size={24} color="#2563EB" />
-                </TouchableOpacity>
-                {onNavigateToEdit && (
-                  <TouchableOpacity
-                    style={styles.headerButton}
-                    onPress={handleEdit}
-                    activeOpacity={0.7}
-                  >
-                    <MaterialIcons name="edit" size={24} color="#2563EB" />
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  style={styles.headerButton}
-                  onPress={handleDelete}
-                  disabled={actionLoading}
-                  activeOpacity={0.7}
-                >
-                  <MaterialIcons name="delete-outline" size={24} color="#EF4444" />
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
+          )}
 
           <View style={styles.rideCard}>
             <View style={styles.rideHeader}>
@@ -414,45 +424,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24, // lg: 24px
     // No paddingTop - SafeAreaView handles top spacing
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  placeholder: {
-    width: 24,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'center',
-  },
-  headerButton: {
+  headerActionButton: {
     padding: 8,
-    minHeight: 44,
     minWidth: 44,
+    minHeight: 44,
     justifyContent: 'center',
     alignItems: 'center',
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
-  backButton: {
-    paddingVertical: 8, // sm: 8px
-    paddingHorizontal: 4, // xs: 4px
-    minHeight: 44, // Touch target
+  historyToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
+    marginBottom: 16,
   },
-  backButtonText: {
-    fontSize: 16, // Body: 16px
-    color: '#2563EB', // Primary Blue
-    fontWeight: '500', // Medium
+  historyToggleText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#2563EB',
   },
   loadingContainer: {
     flex: 1,

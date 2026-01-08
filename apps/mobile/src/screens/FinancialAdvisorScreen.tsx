@@ -18,6 +18,7 @@ import {
 } from '../api/financeApi';
 import { getProfile, Profile } from '../api/profileApi';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Header } from '../components/Header';
 
 interface FinancialAdvisorScreenProps {
   context: 'local' | 'home';
@@ -29,6 +30,9 @@ interface FinancialAdvisorScreenProps {
   onCreateGoal?: (context: 'local' | 'home', prefill?: { name: string; targetAmount: number; category: 'savings' | 'debt' | 'purchase' | 'investment' }) => void;
   onAddContribution?: (goalId?: string, suggestedAmount?: number) => void;
   onRecordLoanPayment?: (loanId?: string, suggestedAmount?: number) => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export function FinancialAdvisorScreen({ 
@@ -41,6 +45,9 @@ export function FinancialAdvisorScreen({
   onCreateGoal,
   onAddContribution,
   onRecordLoanPayment,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: FinancialAdvisorScreenProps) {
   const { token } = useAuth();
   const [recommendations, setRecommendations] = useState<FinancialRecommendation[]>([]);
@@ -59,9 +66,10 @@ export function FinancialAdvisorScreen({
     if (!token) return;
     try {
       const profileData = await getProfile(token);
-      setProfile(profileData);
+      setProfile(profileData || null);
     } catch (err) {
       console.error('Failed to load profile:', err);
+      setProfile(null);
     }
   }
 
@@ -240,6 +248,13 @@ export function FinancialAdvisorScreen({
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <Header
+          title="AI Financial Advisor"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2563EB" />
           <Text style={styles.loadingText}>Loading financial insights...</Text>
@@ -250,20 +265,19 @@ export function FinancialAdvisorScreen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title="AI Financial Advisor"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} />}
       >
         <View style={styles.content}>
-          {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.title}>AI Financial Advisor</Text>
-            <View style={styles.headerSpacer} />
-          </View>
 
           {error && (
             <View style={styles.errorContainer}>

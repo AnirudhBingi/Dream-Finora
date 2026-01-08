@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Platform,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -18,14 +20,28 @@ import {
   inviteUserToApp,
   SearchUser,
 } from '../api/friendApi';
+import { Header } from '../components/Header';
+import { EmptyState } from '../components/EmptyState';
+import { getAvatarUrl } from '../utils/avatar';
+import { TrustScoreBadge } from '../components/TrustScoreDisplay';
 
 interface FriendSearchScreenProps {
   onBack: () => void;
   onRequestSent?: () => void;
   onViewProfile?: (userId: string) => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
-export function FriendSearchScreen({ onBack, onRequestSent, onViewProfile }: FriendSearchScreenProps) {
+export function FriendSearchScreen({ 
+  onBack, 
+  onRequestSent, 
+  onViewProfile,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
+}: FriendSearchScreenProps) {
   const { token } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchUser[]>([]);
@@ -35,6 +51,7 @@ export function FriendSearchScreen({ onBack, onRequestSent, onViewProfile }: Fri
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteMobile, setInviteMobile] = useState('');
+  const searchInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     // Debounce search
@@ -191,18 +208,19 @@ export function FriendSearchScreen({ onBack, onRequestSent, onViewProfile }: Fri
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-          <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Add Friends</Text>
-        <View style={styles.placeholder} />
-      </View>
+      <Header
+        title="Add Friends"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
 
       <View style={styles.searchContainer}>
         <View style={styles.searchInputContainer}>
-          <MaterialIcons name="search" size={20} color="#6B7280" style={styles.searchIcon} />
+          <MaterialIcons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
           <TextInput
+            ref={searchInputRef}
             style={styles.searchInput}
             placeholder="Search by email or name..."
             placeholderTextColor="#9CA3AF"
@@ -210,7 +228,8 @@ export function FriendSearchScreen({ onBack, onRequestSent, onViewProfile }: Fri
             onChangeText={setSearchQuery}
             autoCapitalize="none"
             autoCorrect={false}
-            keyboardType="email-address"
+            keyboardType="default"
+            returnKeyType="search"
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity
@@ -218,30 +237,33 @@ export function FriendSearchScreen({ onBack, onRequestSent, onViewProfile }: Fri
               onPress={() => {
                 setSearchQuery('');
                 setSearchResults([]);
+                searchInputRef.current?.blur();
               }}
               activeOpacity={0.7}
             >
-              <MaterialIcons name="close" size={20} color="#6B7280" />
+              <MaterialIcons name="close" size={18} color="#6B7280" />
             </TouchableOpacity>
           )}
         </View>
         {searching && (
           <View style={styles.searchingIndicator}>
-            <ActivityIndicator size="small" color="#2563EB" />
+            <ActivityIndicator size="small" color="#6366F1" />
             <Text style={styles.searchingText}>Searching...</Text>
           </View>
         )}
       </View>
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+      <ScrollView 
+        style={styles.container} 
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
         {searchQuery.length < 2 ? (
-          <View style={styles.emptyContainer}>
-            <MaterialIcons name="search" size={64} color="#9CA3AF" />
-            <Text style={styles.emptyText}>Search for friends</Text>
-            <Text style={styles.emptySubtext}>
-              Enter at least 2 characters to search by email or display name
-            </Text>
-          </View>
+          <EmptyState
+            icon="search"
+            title="Search for friends"
+            message="Enter at least 2 characters to search by email or display name"
+          />
         ) : showInviteForm ? (
           <View style={styles.inviteForm}>
             <Text style={styles.inviteFormTitle}>Invite to Dream Finora</Text>
@@ -251,30 +273,38 @@ export function FriendSearchScreen({ onBack, onRequestSent, onViewProfile }: Fri
             
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Email</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="email@example.com"
-                value={inviteEmail}
-                onChangeText={setInviteEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
+              <View style={styles.inputWrapper}>
+                <MaterialIcons name="email" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="email@example.com"
+                  placeholderTextColor="#9CA3AF"
+                  value={inviteEmail}
+                  onChangeText={setInviteEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
             </View>
 
             <Text style={styles.orText}>OR</Text>
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Mobile Number</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="+1234567890"
-                value={inviteMobile}
-                onChangeText={setInviteMobile}
-                keyboardType="phone-pad"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
+              <View style={styles.inputWrapper}>
+                <MaterialIcons name="phone" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="+1234567890"
+                  placeholderTextColor="#9CA3AF"
+                  value={inviteMobile}
+                  onChangeText={setInviteMobile}
+                  keyboardType="phone-pad"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
             </View>
 
             <View style={styles.inviteFormActions}>
@@ -302,20 +332,13 @@ export function FriendSearchScreen({ onBack, onRequestSent, onViewProfile }: Fri
             </View>
           </View>
         ) : searchResults.length === 0 && !searching ? (
-          <View style={styles.emptyContainer}>
-            <MaterialIcons name="person-off" size={64} color="#9CA3AF" />
-            <Text style={styles.emptyText}>No users found</Text>
-            <Text style={styles.emptySubtext}>
-              Try searching with a different email or name
-            </Text>
-            <TouchableOpacity
-              style={styles.inviteButton}
-              onPress={() => setShowInviteForm(true)}
-            >
-              <MaterialIcons name="person-add" size={18} color="#FFFFFF" />
-              <Text style={styles.inviteButtonText}>Invite by Email/Phone</Text>
-            </TouchableOpacity>
-          </View>
+          <EmptyState
+            icon="person-off"
+            title="No users found"
+            message="Try searching with a different email or name"
+            actionLabel="Invite by Email/Phone"
+            onAction={() => setShowInviteForm(true)}
+          />
         ) : (
           searchResults.map((user) => {
             const userIdentifier = user.email; // Use email as identifier (backend supports email or mobile)
@@ -334,14 +357,45 @@ export function FriendSearchScreen({ onBack, onRequestSent, onViewProfile }: Fri
                 activeOpacity={0.7}
               >
                 <View style={styles.userInfo}>
-                  <View style={styles.avatar}>
-                    <MaterialIcons name="person" size={24} color="#6B7280" />
-                  </View>
+                  {(() => {
+                    const avatarUrl = user.profile?.avatarUrl 
+                      ? getAvatarUrl(user.profile.avatarUrl)
+                      : null;
+                    const displayName = getUserDisplayName(user);
+                    const initials = displayName.charAt(0).toUpperCase();
+
+                    return (
+                      <View style={styles.avatar}>
+                        {avatarUrl ? (
+                          <Image
+                            source={{ uri: avatarUrl }}
+                            style={styles.avatarImage}
+                          />
+                        ) : (
+                          <Text style={styles.avatarText}>{initials}</Text>
+                        )}
+                      </View>
+                    );
+                  })()}
                   <View style={styles.userDetails}>
-                    <Text style={styles.userName}>{getUserDisplayName(user)}</Text>
-                    <Text style={styles.userEmail}>{user.email}</Text>
+                    <View style={styles.userNameRow}>
+                      <Text style={styles.userName} numberOfLines={1}>
+                        {getUserDisplayName(user)}
+                      </Text>
+                      {/* Show trust score if available (backend already handles visibility) */}
+                      {user.trustScore && (
+                        <TrustScoreBadge score={user.trustScore.score} size="small" />
+                      )}
+                    </View>
+                    {!user.profile?.displayName && user.email && (
+                      <Text style={styles.userEmail} numberOfLines={1}>
+                        {user.email}
+                      </Text>
+                    )}
                     {user.mobileNumber && (
-                      <Text style={styles.userMobile}>{user.mobileNumber}</Text>
+                      <Text style={styles.userMobile} numberOfLines={1}>
+                        {user.mobileNumber}
+                      </Text>
                     )}
                   </View>
                 </View>
@@ -355,7 +409,7 @@ export function FriendSearchScreen({ onBack, onRequestSent, onViewProfile }: Fri
                         handleSendRequest(userIdentifier);
                       }}
                       disabled={isSending}
-                      activeOpacity={0.7}
+                      activeOpacity={0.8}
                     >
                       {isSending ? (
                         <ActivityIndicator size="small" color="#FFFFFF" />
@@ -380,74 +434,59 @@ export function FriendSearchScreen({ onBack, onRequestSent, onViewProfile }: Fri
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  backButton: {
-    padding: 8,
-    minWidth: 40,
-    minHeight: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  placeholder: {
-    width: 40,
   },
   searchContainer: {
     backgroundColor: '#FFFFFF',
-    padding: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: '#F3F4F6',
   },
   searchInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#F9FAFB',
     borderRadius: 12,
-    paddingHorizontal: 12,
-    minHeight: 48,
+    paddingHorizontal: 16,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    minHeight: 52,
   },
   searchIcon: {
-    marginRight: 8,
+    marginRight: 12,
   },
   searchInput: {
     flex: 1,
     fontSize: 16,
     color: '#111827',
-    paddingVertical: 12,
+    paddingVertical: 14,
+    fontFamily: Platform.select({
+      ios: 'System',
+      android: 'Roboto',
+    }),
   },
   clearButton: {
     padding: 4,
+    marginLeft: 8,
   },
   searchingIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginTop: 8,
+    marginTop: 12,
   },
   searchingText: {
     fontSize: 14,
     color: '#6B7280',
+    fontWeight: '500',
   },
   container: {
     flex: 1,
+    backgroundColor: '#FFFFFF',
   },
   scrollContent: {
-    padding: 16,
+    padding: 24,
     paddingBottom: 32,
   },
   emptyContainer: {
@@ -474,46 +513,75 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   userInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+    marginRight: 12,
+    minWidth: 0,
   },
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#F3F4F6',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#6366F1',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   userDetails: {
     flex: 1,
+    minWidth: 0,
+  },
+  userNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
   },
   userName: {
     fontSize: 16,
     fontWeight: '600',
     color: '#111827',
-    marginBottom: 4,
+    flex: 1,
   },
   userEmail: {
     fontSize: 14,
     color: '#6B7280',
+    fontWeight: '400',
     marginTop: 2,
   },
   userMobile: {
     fontSize: 14,
     color: '#6B7280',
+    fontWeight: '400',
   },
   userActions: {
     flexDirection: 'row',
@@ -550,11 +618,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    paddingVertical: 8,
+    backgroundColor: '#6366F1',
+    borderRadius: 12,
+    paddingVertical: 10,
     paddingHorizontal: 16,
-    minHeight: 36,
+    minHeight: 40,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#6366F1',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   addButtonText: {
     color: '#FFFFFF',
@@ -563,23 +642,37 @@ const styles = StyleSheet.create({
   },
   inviteForm: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 24,
-    marginTop: 16,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   inviteFormTitle: {
     fontSize: 20,
     fontWeight: '600',
     color: '#111827',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   inviteFormSubtitle: {
     fontSize: 14,
     color: '#6B7280',
     marginBottom: 24,
+    lineHeight: 20,
   },
   inputGroup: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   inputLabel: {
     fontSize: 14,
@@ -587,20 +680,34 @@ const styles = StyleSheet.create({
     color: '#374151',
     marginBottom: 8,
   },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    backgroundColor: '#F9FAFB',
+    minHeight: 52,
+  },
+  inputIcon: {
+    marginLeft: 16,
+    marginRight: 12,
+  },
   input: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    padding: 12,
+    flex: 1,
+    paddingVertical: 14,
     fontSize: 16,
     color: '#111827',
-    backgroundColor: '#FFFFFF',
+    fontFamily: Platform.select({
+      ios: 'System',
+      android: 'Roboto',
+    }),
   },
   orText: {
     textAlign: 'center',
     fontSize: 14,
-    color: '#6B7280',
-    marginVertical: 16,
+    color: '#9CA3AF',
+    marginVertical: 20,
     fontWeight: '500',
   },
   inviteFormActions: {
@@ -611,9 +718,11 @@ const styles = StyleSheet.create({
   cancelButton: {
     flex: 1,
     backgroundColor: '#F3F4F6',
-    borderRadius: 8,
-    padding: 16,
+    borderRadius: 12,
+    paddingVertical: 16,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
   },
   cancelButtonText: {
     color: '#374151',
@@ -625,10 +734,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    padding: 16,
+    backgroundColor: '#6366F1',
+    borderRadius: 12,
+    paddingVertical: 16,
     gap: 8,
+    minHeight: 48,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#6366F1',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
   inviteButtonDisabled: {
     opacity: 0.6,

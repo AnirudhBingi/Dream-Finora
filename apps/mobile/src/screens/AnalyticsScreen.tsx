@@ -10,7 +10,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { PieChart, LineChart } from 'react-native-chart-kit';
+import { PieChart, BarChart, LineChart } from 'react-native-chart-kit';
 import { useAuth } from '../auth/authContext';
 import {
   getLocalAnalytics,
@@ -20,16 +20,25 @@ import {
   CombinedAnalytics,
 } from '../api/analyticsApi';
 import { getProfile, Profile } from '../api/profileApi';
+import { Header } from '../components/Header';
 
 interface AnalyticsScreenProps {
   onBack: () => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 const screenWidth = Dimensions.get('window').width;
 
 type AnalyticsContext = 'local' | 'home' | 'combined';
 
-export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
+export function AnalyticsScreen({ 
+  onBack,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
+}: AnalyticsScreenProps) {
   const { token } = useAuth();
   const [context, setContext] = useState<AnalyticsContext>('local');
   const [analytics, setAnalytics] = useState<ContextAnalytics | CombinedAnalytics | null>(null);
@@ -47,10 +56,11 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
     if (!token) return;
     try {
       const profileData = await getProfile(token);
-      setProfile(profileData);
+      setProfile(profileData || null);
     } catch (err) {
       // Silently fail - currency will default to USD
       console.error('Failed to load profile:', err);
+      setProfile(null);
     }
   }
 
@@ -82,11 +92,28 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
   // Get current analytics data based on context
   function getCurrentAnalytics(): ContextAnalytics | null {
     if (!analytics) return null;
-    if (context === 'combined' && 'local' in analytics) {
-      // For combined view, show local by default (can be enhanced to show both)
-      return analytics.local;
+    if (context === 'combined' && 'combined' in analytics) {
+      // For combined view, show the combined analytics
+      const combined = analytics.combined;
+      // Ensure all array properties exist
+      if (combined) {
+        return {
+          ...combined,
+          spendingByCategory: combined.spendingByCategory || [],
+          monthlyTrends: combined.monthlyTrends || [],
+          balanceOverTime: combined.balanceOverTime || [],
+        };
+      }
+      return null;
     }
-    return analytics as ContextAnalytics;
+    const current = analytics as ContextAnalytics;
+    // Ensure all array properties exist
+    return {
+      ...current,
+      spendingByCategory: current.spendingByCategory || [],
+      monthlyTrends: current.monthlyTrends || [],
+      balanceOverTime: current.balanceOverTime || [],
+    };
   }
 
   function getCurrencyForContext(): string {
@@ -140,6 +167,13 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <Header
+          title="Insights"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2563EB" />
           <Text style={styles.loadingText}>Loading analytics...</Text>
@@ -169,19 +203,19 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title="Insights"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} />}
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.title}>Insights</Text>
-            <View style={styles.headerSpacer} />
-          </View>
 
           {/* Context Tabs */}
           <View style={styles.tabsContainer}>
@@ -313,7 +347,7 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
               {/* Spending by Category - Pie Chart */}
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Spending by Category</Text>
-                {currentAnalytics.spendingByCategory.length === 0 ? (
+                {!currentAnalytics.spendingByCategory || currentAnalytics.spendingByCategory.length === 0 ? (
               <View style={styles.emptyChartContainer}>
                 <Text style={styles.emptyChartText}>No spending data available</Text>
                 <Text style={styles.emptyChartSubtext}>
@@ -363,10 +397,10 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
             )}
           </View>
 
-          {/* Monthly Trends - Line Chart */}
+          {/* Monthly Trends - Bar Chart */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Monthly Trends (Last 6 Months)</Text>
-            {currentAnalytics.monthlyTrends.length === 0 ? (
+            {!currentAnalytics.monthlyTrends || currentAnalytics.monthlyTrends.length === 0 ? (
               <View style={styles.emptyChartContainer}>
                 <Text style={styles.emptyChartText}>No trend data available</Text>
                 <Text style={styles.emptyChartSubtext}>
@@ -381,7 +415,9 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
                     <Text style={styles.trendSummaryLabel}>Avg Income</Text>
                     <Text style={styles.trendSummaryValue}>
                       {formatCurrency(
-                        currentAnalytics.monthlyTrends.reduce((sum, t) => sum + t.income, 0) / currentAnalytics.monthlyTrends.length
+                        currentAnalytics.monthlyTrends.length > 0
+                          ? currentAnalytics.monthlyTrends.reduce((sum, t) => sum + t.income, 0) / currentAnalytics.monthlyTrends.length
+                          : 0
                       )}
                     </Text>
                   </View>
@@ -389,7 +425,9 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
                     <Text style={styles.trendSummaryLabel}>Avg Expense</Text>
                     <Text style={[styles.trendSummaryValue, styles.trendSummaryValueNegative]}>
                       {formatCurrency(
-                        currentAnalytics.monthlyTrends.reduce((sum, t) => sum + t.expense, 0) / currentAnalytics.monthlyTrends.length
+                        currentAnalytics.monthlyTrends.length > 0
+                          ? currentAnalytics.monthlyTrends.reduce((sum, t) => sum + t.expense, 0) / currentAnalytics.monthlyTrends.length
+                          : 0
                       )}
                     </Text>
                   </View>
@@ -398,19 +436,22 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
                     <Text
                       style={[
                         styles.trendSummaryValue,
+                        currentAnalytics.monthlyTrends.length > 0 &&
                         currentAnalytics.monthlyTrends.reduce((sum, t) => sum + t.net, 0) / currentAnalytics.monthlyTrends.length >= 0
                           ? styles.trendSummaryValuePositive
                           : styles.trendSummaryValueNegative,
                       ]}
                     >
                       {formatCurrency(
-                        currentAnalytics.monthlyTrends.reduce((sum, t) => sum + t.net, 0) / currentAnalytics.monthlyTrends.length
+                        currentAnalytics.monthlyTrends.length > 0
+                          ? currentAnalytics.monthlyTrends.reduce((sum, t) => sum + t.net, 0) / currentAnalytics.monthlyTrends.length
+                          : 0
                       )}
                     </Text>
                   </View>
                 </View>
-                {/* Net balance chart */}
-                <LineChart
+                {/* Net balance bar chart */}
+                <BarChart
                   data={{
                     labels: currentAnalytics.monthlyTrends.map((t) => formatMonth(t.month)),
                     datasets: [
@@ -425,17 +466,18 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
                     ...chartConfig,
                     color: (opacity = 1) => {
                       // Use green for positive, red for negative
-                      const avgNet = currentAnalytics.monthlyTrends.reduce((sum, t) => sum + t.net, 0) / currentAnalytics.monthlyTrends.length;
+                      const avgNet = currentAnalytics.monthlyTrends.length > 0
+                        ? currentAnalytics.monthlyTrends.reduce((sum, t) => sum + t.net, 0) / currentAnalytics.monthlyTrends.length
+                        : 0;
                       if (avgNet >= 0) {
                         return `rgba(16, 185, 129, ${opacity})`; // Green
                       }
                       return `rgba(239, 68, 68, ${opacity})`; // Red
                     },
                   }}
-                  bezier
                   style={styles.chart}
-                  withDots
-                  withShadow={false}
+                  showValuesOnTopOfBars
+                  fromZero
                   formatYLabel={(value) => {
                     const num = parseFloat(value);
                     if (num >= 1000) {
@@ -452,7 +494,7 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
           {/* Balance Over Time - Line Chart */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Balance Over Time (Last 30 Days)</Text>
-            {currentAnalytics.balanceOverTime.length === 0 ? (
+            {!currentAnalytics.balanceOverTime || currentAnalytics.balanceOverTime.length === 0 ? (
               <View style={styles.emptyChartContainer}>
                 <Text style={styles.emptyChartText}>No balance data available</Text>
                 <Text style={styles.emptyChartSubtext}>
@@ -514,33 +556,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-    marginTop: 8,
-  },
-  backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    minHeight: 44,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#2563EB',
-    fontWeight: '500',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#111827',
-    flex: 1,
-    textAlign: 'center',
-  },
-  headerSpacer: {
-    width: 60, // Match back button width
   },
   loadingContainer: {
     flex: 1,

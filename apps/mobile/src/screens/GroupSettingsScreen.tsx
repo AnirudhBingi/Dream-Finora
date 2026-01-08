@@ -8,6 +8,8 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Image,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -20,9 +22,35 @@ import {
   transferOwnership,
   leaveGroup,
   removeGroupMember,
+  uploadGroupAvatar,
   GroupWithExpenses,
   GroupMemberRole,
 } from '../api/groupApi';
+import { Header } from '../components/Header';
+import { getAvatarUrl } from '../utils/avatar';
+import { pickImage } from '../utils/imagePicker';
+import { Avatar } from '../components/Avatar';
+import { getApiBaseUrl } from '../api/getApiBaseUrl';
+
+const GROUP_ICONS = [
+  { name: 'group', label: 'Group' },
+  { name: 'home', label: 'Home' },
+  { name: 'people', label: 'People' },
+  { name: 'family-restroom', label: 'Family' },
+  { name: 'work', label: 'Work' },
+  { name: 'school', label: 'School' },
+  { name: 'sports-soccer', label: 'Sports' },
+  { name: 'restaurant', label: 'Dining' },
+  { name: 'flight', label: 'Travel' },
+  { name: 'favorite', label: 'Favorites' },
+  { name: 'star', label: 'Star' },
+  { name: 'celebration', label: 'Celebration' },
+];
+
+function getUserDisplayName(user: any): string {
+  if (!user) return 'Unknown';
+  return user.profile?.displayName || user.email || 'Unknown';
+}
 
 interface GroupSettingsScreenProps {
   groupId: string;
@@ -30,6 +58,9 @@ interface GroupSettingsScreenProps {
   onGroupUpdated?: () => void;
   onAddMember?: (groupId: string) => void;
   onNavigateToUserProfile?: (userId: string) => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export function GroupSettingsScreen({
@@ -38,13 +69,17 @@ export function GroupSettingsScreen({
   onGroupUpdated,
   onAddMember,
   onNavigateToUserProfile,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: GroupSettingsScreenProps) {
   const { token, user } = useAuth();
   const [group, setGroup] = useState<GroupWithExpenses | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
+  const [selectedIcon, setSelectedIcon] = useState<string>('group');
+  const [circleImageUri, setCircleImageUri] = useState<string | null>(null);
 
   useEffect(() => {
     loadGroup();
@@ -58,12 +93,25 @@ export function GroupSettingsScreen({
       const groupData = await getGroupById(token, groupId);
       setGroup(groupData);
       setName(groupData.name);
-      setDescription(groupData.description || '');
+      // TODO: Load group icon and image when backend supports it
+      // setSelectedIcon(groupData.icon || 'group');
+      // setCircleImageUri(groupData.imageUrl || null);
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to load group');
       onBack();
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handlePickCircleImage() {
+    try {
+      const uri = await pickImage({ aspect: [1, 1] });
+      if (uri) {
+        setCircleImageUri(uri);
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Failed to pick image');
     }
   }
 
@@ -77,9 +125,23 @@ export function GroupSettingsScreen({
 
     try {
       setSaving(true);
+      
+      // Upload avatar if a new image was selected
+      if (circleImageUri && circleImageUri.startsWith('file://')) {
+        try {
+          const filename = circleImageUri.split('/').pop() || 'image.jpg';
+          const match = /\.(\w+)$/.exec(filename);
+          const type = match ? `image/${match[1]}` : 'image/jpeg';
+          await uploadGroupAvatar(token, groupId, circleImageUri, filename, type);
+          console.log('[GroupSettingsScreen] Group avatar uploaded');
+        } catch (avatarErr) {
+          console.error('[GroupSettingsScreen] Failed to upload avatar:', avatarErr);
+          // Continue with group update even if avatar upload fails
+        }
+      }
+      
       await updateGroup(token, groupId, {
         name: name.trim(),
-        description: description.trim() || undefined,
       });
       Alert.alert('Success', 'Group updated successfully', [
         { text: 'OK', onPress: () => {
@@ -209,10 +271,6 @@ export function GroupSettingsScreen({
     );
   }
 
-  function getUserDisplayName(member: GroupWithExpenses['members'][0]): string {
-    if (!member?.user) return 'Unknown';
-    return member.user.profile?.displayName || member.user.email || 'Unknown';
-  }
 
   function isUserAdmin(): boolean {
     if (!group || !user) return false;
@@ -224,8 +282,26 @@ export function GroupSettingsScreen({
     return member?.role === 'ADMIN';
   }
 
+  function canUserEdit(): boolean {
+    if (!group || !user) return false;
+    // If allowMemberEditing is true, any member can edit
+    if (group.allowMemberEditing) {
+      // Check if user is a member
+      if (!group.members || !Array.isArray(group.members)) return false;
+      const member = group.members.find(m => m.userId === user.id);
+      return !!member; // Any member can edit if allowMemberEditing is true
+    }
+    // Otherwise, only admins can edit
+    return isUserAdmin();
+  }
+
   function isUserCreator(): boolean {
     return group?.createdBy === user?.id;
+  }
+
+  function getUserDisplayName(user: any): string {
+    if (!user) return 'Unknown';
+    return user.profile?.displayName || user.email || 'Unknown';
   }
 
   if (loading) {
@@ -242,11 +318,15 @@ export function GroupSettingsScreen({
   if (!group) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <Header
+          title="Circle Settings"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>Circle not found</Text>
-          <TouchableOpacity style={styles.backButton} onPress={onBack}>
-            <Text style={styles.backButtonText}>← Back</Text>
-          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -254,29 +334,92 @@ export function GroupSettingsScreen({
 
   const isAdmin = isUserAdmin();
   const isCreator = isUserCreator();
+  const canEdit = canUserEdit();
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title="Circle Settings"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Circle Settings</Text>
-            <View style={styles.placeholder} />
+
+          {/* Circle Information Section - Always visible */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Circle Information</Text>
+            
+            {/* Circle Picture/Icon */}
+            <View style={styles.circleInfoCard}>
+              <View style={styles.circleInfoHeader}>
+                {group.avatarUrl ? (
+                  <Image
+                    source={{
+                      uri: group.avatarUrl.startsWith('http')
+                        ? group.avatarUrl
+                        : `${getApiBaseUrl()}${group.avatarUrl}`,
+                    }}
+                    style={styles.circleInfoImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={[styles.circleInfoIcon, { backgroundColor: '#EEF2FF' }]}>
+                    <Text style={[styles.circleInfoIconText, { color: '#6366F1' }]}>
+                      {group.name.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.circleInfoDetails}>
+                  <Text style={styles.circleInfoName}>{group.name}</Text>
+                  {group.description && group.description.trim() && group.description.trim() !== 'Check' && (
+                    <Text style={styles.circleInfoDescription} numberOfLines={2}>
+                      {group.description}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            </View>
           </View>
 
-          {/* Edit Group Info Section */}
-          {isAdmin && (
+          {/* Edit Group Info Section - Only if user can edit */}
+          {canEdit && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Circle Information</Text>
+              {/* Circle Picture - Centered */}
+              <View style={styles.imagePickerSection}>
+                <TouchableOpacity
+                  style={styles.imagePickerContainer}
+                  onPress={handlePickCircleImage}
+                  activeOpacity={0.7}
+                >
+                  {circleImageUri ? (
+                    <Image
+                      source={{ uri: circleImageUri }}
+                      style={styles.circleImagePreview}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.imagePickerPlaceholder}>
+                      <MaterialIcons name="add-photo-alternate" size={32} color="#9CA3AF" />
+                      <Text style={styles.imagePickerText}>Tap to add picture</Text>
+                    </View>
+                  )}
+                  {circleImageUri && (
+                    <TouchableOpacity
+                      style={styles.removeImageButton}
+                      onPress={() => setCircleImageUri(null)}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialIcons name="close" size={20} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  )}
+                </TouchableOpacity>
+              </View>
+
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Name</Text>
+                <Text style={styles.label}>Circle Name</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="Circle name"
@@ -285,18 +428,44 @@ export function GroupSettingsScreen({
                   autoCapitalize="words"
                 />
               </View>
+
+              {/* Icon Picker */}
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Description</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  placeholder="Circle description (optional)"
-                  value={description}
-                  onChangeText={setDescription}
-                  multiline
-                  numberOfLines={3}
-                  textAlignVertical="top"
-                />
+                <Text style={styles.label}>Icon</Text>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.iconPicker}
+                  contentContainerStyle={styles.iconPickerContent}
+                >
+                  {GROUP_ICONS.map((icon) => (
+                    <TouchableOpacity
+                      key={icon.name}
+                      style={[
+                        styles.iconOption,
+                        selectedIcon === icon.name && styles.iconOptionSelected,
+                      ]}
+                      onPress={() => setSelectedIcon(icon.name)}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialIcons
+                        name={icon.name as any}
+                        size={32}
+                        color={selectedIcon === icon.name ? '#2563EB' : '#6B7280'}
+                      />
+                      <Text
+                        style={[
+                          styles.iconLabel,
+                          selectedIcon === icon.name && styles.iconLabelSelected,
+                        ]}
+                      >
+                        {icon.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
               </View>
+
               <TouchableOpacity
                 style={[styles.saveButton, saving && styles.saveButtonDisabled]}
                 onPress={handleSave}
@@ -305,10 +474,7 @@ export function GroupSettingsScreen({
                 {saving ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <>
-                    <MaterialIcons name="save" size={20} color="#FFFFFF" />
-                    <Text style={styles.saveButtonText}>Save Changes</Text>
-                  </>
+                  <Text style={styles.saveButtonText}>Save Changes</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -317,15 +483,20 @@ export function GroupSettingsScreen({
           {/* Members Section */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Members</Text>
+              <View style={styles.sectionHeaderLeft}>
+                <Text style={styles.sectionTitle}>Members</Text>
+                <Text style={styles.sectionSubtitle}>
+                  {(group.members || []).length} member{(group.members || []).length !== 1 ? 's' : ''}
+                </Text>
+              </View>
               {isAdmin && onAddMember && (
                 <TouchableOpacity
                   style={styles.addButton}
                   onPress={() => onAddMember(groupId)}
                   activeOpacity={0.7}
                 >
-                  <MaterialIcons name="person-add" size={20} color="#2563EB" />
-                  <Text style={styles.addButtonText}>Add Member</Text>
+                  <MaterialIcons name="person-add" size={18} color="#6366F1" />
+                  <Text style={styles.addButtonText}>Add</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -344,66 +515,70 @@ export function GroupSettingsScreen({
                   disabled={isCurrentUser}
                 >
                 <View style={styles.memberInfo}>
-                  <View style={styles.memberAvatar}>
-                    <Text style={styles.memberAvatarText}>
-                        {(getUserDisplayName(member) || 'U').charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
+                  <Avatar
+                    avatarUrl={member.user?.profile?.avatarUrl}
+                    displayName={getUserDisplayName(member.user) || 'Unknown'}
+                    size={44}
+                    borderWidth={2}
+                    borderColor="#FFFFFF"
+                  />
                   <View style={styles.memberDetails}>
-                    <Text style={styles.memberName}>
-                        {isCurrentUser ? 'You' : getUserDisplayName(member)}
-                    </Text>
-                      <Text style={styles.memberEmail}>{member.user?.email || 'No email'}</Text>
-                  </View>
-                </View>
-                <View style={styles.memberActions}>
-                  <View style={styles.memberBadges}>
-                    {member.userId === group.createdBy && (
-                      <View style={[styles.badge, styles.creatorBadge]}>
-                        <MaterialIcons name="star" size={12} color="#F59E0B" />
-                        <Text style={styles.badgeText}>Creator</Text>
+                    <View style={styles.memberNameRow}>
+                      <Text style={styles.memberName}>
+                        {isCurrentUser ? 'You' : getUserDisplayName(member.user)}
+                      </Text>
+                      <View style={styles.memberBadges}>
+                        {member.userId === group.createdBy && (
+                          <View style={[styles.badge, styles.creatorBadge]}>
+                            <MaterialIcons name="star" size={12} color="#F59E0B" />
+                            <Text style={styles.badgeText}>Creator</Text>
+                          </View>
+                        )}
+                        {member.role === 'ADMIN' && member.userId !== group.createdBy && (
+                          <View style={[styles.badge, styles.adminBadge]}>
+                            <MaterialIcons name="admin-panel-settings" size={12} color="#2563EB" />
+                            <Text style={styles.badgeText}>Admin</Text>
+                          </View>
+                        )}
                       </View>
-                    )}
-                    {member.role === 'ADMIN' && member.userId !== group.createdBy && (
-                      <View style={[styles.badge, styles.adminBadge]}>
-                        <MaterialIcons name="admin-panel-settings" size={12} color="#2563EB" />
-                        <Text style={styles.badgeText}>Admin</Text>
-                      </View>
-                    )}
-                  </View>
-                  {isAdmin && member.userId !== user?.id && (
-                    <View style={styles.actionButtons}>
-                      {member.userId !== group.createdBy && (
-                        <>
-                          <TouchableOpacity
-                            style={styles.actionButton}
-                            onPress={() => handleChangeRole(member.id, member.role)}
-                            activeOpacity={0.7}
-                          >
-                            <MaterialIcons
-                              name={member.role === 'ADMIN' ? 'person' : 'admin-panel-settings'}
-                              size={18}
-                              color="#2563EB"
-                            />
-                            <Text style={styles.actionButtonText}>
-                              {member.role === 'ADMIN' ? 'Make Member' : 'Make Admin'}
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[styles.actionButton, styles.removeButton]}
-                            onPress={() => handleRemoveMember(member.id, getUserDisplayName(member))}
-                            activeOpacity={0.7}
-                          >
-                            <MaterialIcons name="person-remove" size={18} color="#EF4444" />
-                            <Text style={[styles.actionButtonText, styles.removeButtonText]}>
-                              Remove
-                            </Text>
-                          </TouchableOpacity>
-                        </>
-                      )}
                     </View>
-                  )}
+                    {!member.user?.profile?.displayName && member.user?.email && (
+                      <Text style={styles.memberEmail}>{member.user.email}</Text>
+                    )}
+                  </View>
                 </View>
+                {isAdmin && member.userId !== user?.id && (
+                  <View style={styles.actionButtons}>
+                    {member.userId !== group.createdBy && (
+                      <>
+                        <TouchableOpacity
+                          style={styles.actionButton}
+                          onPress={() => handleChangeRole(member.id, member.role)}
+                          activeOpacity={0.7}
+                        >
+                          <MaterialIcons
+                            name={member.role === 'ADMIN' ? 'person' : 'admin-panel-settings'}
+                            size={16}
+                            color="#2563EB"
+                          />
+                          <Text style={styles.actionButtonText}>
+                            {member.role === 'ADMIN' ? 'Make Member' : 'Make Admin'}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.actionButton, styles.removeButton]}
+                          onPress={() => handleRemoveMember(member.id, getUserDisplayName(member.user))}
+                          activeOpacity={0.7}
+                        >
+                          <MaterialIcons name="person-remove" size={16} color="#EF4444" />
+                          <Text style={[styles.actionButtonText, styles.removeButtonText]}>
+                            Remove
+                          </Text>
+                        </TouchableOpacity>
+                      </>
+                    )}
+                  </View>
+                )}
                 </TouchableOpacity>
               );
             })}
@@ -426,14 +601,18 @@ export function GroupSettingsScreen({
                     activeOpacity={0.7}
                   >
                     <View style={styles.memberInfo}>
-                      <View style={styles.memberAvatar}>
-                        <Text style={styles.memberAvatarText}>
-                          {(getUserDisplayName(member) || 'U').charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
+                      <Avatar
+                        avatarUrl={member.user?.profile?.avatarUrl}
+                        displayName={getUserDisplayName(member.user) || 'Unknown'}
+                        size={44}
+                        borderWidth={2}
+                        borderColor="#FFFFFF"
+                      />
                       <View style={styles.memberDetails}>
-                        <Text style={styles.memberName}>{getUserDisplayName(member)}</Text>
-                        <Text style={styles.memberEmail}>{member.user?.email || 'No email'}</Text>
+                        <Text style={styles.memberName}>{getUserDisplayName(member.user)}</Text>
+                        {!member.user?.profile?.displayName && member.user?.email && (
+                          <Text style={styles.memberEmail}>{member.user.email}</Text>
+                        )}
                       </View>
                     </View>
                     <MaterialIcons name="arrow-forward" size={20} color="#2563EB" />
@@ -485,7 +664,8 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   content: {
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
+    paddingTop: 16,
   },
   loadingContainer: {
     flex: 1,
@@ -510,28 +690,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: 'center',
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 24,
-  },
-  backButton: {
-    padding: 8,
-    minWidth: 40,
-    minHeight: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  placeholder: {
-    width: 40,
-  },
   section: {
     marginBottom: 32,
   },
@@ -542,10 +700,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '700',
     color: '#111827',
     marginBottom: 16,
+    letterSpacing: -0.3,
   },
   sectionDescription: {
     fontSize: 14,
@@ -565,13 +724,15 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    padding: 12,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    padding: 14,
     paddingHorizontal: 16,
     fontSize: 16,
     color: '#111827',
+    backgroundColor: '#F9FAFB',
+    minHeight: 52,
   },
   textArea: {
     minHeight: 80,
@@ -597,65 +758,128 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
+  circleInfoCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  circleInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  circleInfoIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  circleInfoIconText: {
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: -0.5,
+  },
+  circleInfoImage: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+  },
+  circleInfoDetails: {
+    flex: 1,
+    gap: 4,
+  },
+  circleInfoName: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    letterSpacing: -0.3,
+  },
+  circleInfoDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20,
+  },
   addButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: '#EEF2FF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#6366F1',
   },
   addButtonText: {
-    color: '#2563EB',
+    color: '#6366F1',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   memberCard: {
-    backgroundColor: '#F9FAFB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    padding: 14,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: '#E5E7EB',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
   },
   memberInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  memberAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#2563EB',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  memberAvatarText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    flex: 1,
+    gap: 12,
   },
   memberDetails: {
     flex: 1,
   },
+  memberNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
   memberName: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '600',
     color: '#111827',
-    marginBottom: 2,
+    letterSpacing: -0.2,
   },
   memberEmail: {
     fontSize: 14,
     color: '#6B7280',
   },
-  memberActions: {
-    gap: 8,
-  },
   memberBadges: {
     flexDirection: 'row',
     gap: 6,
-    marginBottom: 8,
   },
   badge: {
     flexDirection: 'row',
@@ -680,20 +904,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     flexWrap: 'wrap',
+    flexShrink: 0,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#2563EB',
     backgroundColor: '#FFFFFF',
   },
   actionButtonText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
     color: '#2563EB',
   },
@@ -707,12 +932,101 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    padding: 12,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: '#E5E7EB',
+  },
+  imagePickerSection: {
+    alignItems: 'center',
+    marginBottom: 32,
+    marginTop: 8,
+  },
+  imagePickerContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  circleImagePreview: {
+    width: '100%',
+    height: '100%',
+  },
+  imagePickerPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+    height: '100%',
+    gap: 8,
+  },
+  imagePickerText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 3,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  iconPicker: {
+    marginTop: 8,
+  },
+  iconPickerContent: {
+    gap: 12,
+    paddingVertical: 4,
+  },
+  iconOption: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    minWidth: 80,
+    marginRight: 8,
+  },
+  iconOptionSelected: {
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
+  },
+  iconLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  iconLabelSelected: {
+    color: '#2563EB',
+    fontWeight: '500',
   },
   dangerSectionTitle: {
     fontSize: 20,

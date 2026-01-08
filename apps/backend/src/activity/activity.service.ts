@@ -77,6 +77,111 @@ export class ActivityService {
           data: { expenseId: expense.id, amount: expense.amount, currency: expense.currency },
         });
       }
+
+      // Get settlements user is involved in (as payer or payee)
+      const settlements = await this.prisma.settlement.findMany({
+        where: {
+          OR: [
+            { payerId: userId },
+            { payeeId: userId },
+          ],
+        },
+        include: {
+          User_Settlement_payerIdToUser: {
+            select: {
+              id: true,
+              email: true,
+              UserProfile: {
+                select: {
+                  displayName: true,
+                  avatarUrl: true,
+                },
+              },
+            },
+          },
+          User_Settlement_payeeIdToUser: {
+            select: {
+              id: true,
+              email: true,
+              UserProfile: {
+                select: {
+                  displayName: true,
+                  avatarUrl: true,
+                },
+              },
+            },
+          },
+          SettlementSplit: {
+            include: {
+              ExpenseSplit: {
+                include: {
+                  Expense: {
+                    select: {
+                      id: true,
+                      description: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: filter === 'expenses' ? limit : Math.floor(limit / 4),
+        skip: filter === 'expenses' ? offset : 0,
+      });
+
+      for (const settlement of settlements) {
+        const payerName = settlement.User_Settlement_payerIdToUser.UserProfile?.displayName || 
+                          settlement.User_Settlement_payerIdToUser.email;
+        const payeeName = settlement.User_Settlement_payeeIdToUser.UserProfile?.displayName || 
+                          settlement.User_Settlement_payeeIdToUser.email;
+        const isUserPayer = settlement.payerId === userId;
+        const otherUser = isUserPayer ? settlement.User_Settlement_payeeIdToUser : settlement.User_Settlement_payerIdToUser;
+        
+        // Check if settlement is linked to a single expense or multiple expenses
+        const linkedExpenses = settlement.SettlementSplit
+          .map(ss => ss.ExpenseSplit?.Expense)
+          .filter(e => e !== null && e !== undefined);
+        
+        // If settlement covers multiple expenses or no specific expense, show as overall settlement
+        const isOverallSettlement = linkedExpenses.length !== 1;
+        const expense = linkedExpenses.length === 1 ? linkedExpenses[0] : null;
+        
+        // Build description
+        let description: string;
+        if (isOverallSettlement) {
+          // Overall settlement - don't link to specific expense
+          description = isUserPayer 
+            ? `You paid ${payeeName} ${settlement.amount} ${settlement.currency}`
+            : `${payerName} paid you ${settlement.amount} ${settlement.currency}`;
+        } else {
+          // Settlement for specific expense
+          description = isUserPayer 
+            ? `You paid ${payeeName} ${settlement.amount} ${settlement.currency} for "${expense?.description || 'expense'}"`
+            : `${payerName} paid you ${settlement.amount} ${settlement.currency} for "${expense?.description || 'expense'}"`;
+        }
+        
+        activities.push({
+          id: `settlement-${settlement.id}`,
+          type: 'settlement_created',
+          timestamp: settlement.createdAt,
+          description,
+          user: otherUser ? {
+            id: otherUser.id,
+            email: otherUser.email,
+            profile: otherUser.UserProfile,
+          } : null,
+          data: { 
+            settlementId: settlement.id,
+            expenseId: isOverallSettlement ? null : expense?.id, // Only link if single expense
+            amount: settlement.amount,
+            currency: settlement.currency,
+            paymentMethod: settlement.paymentMethod,
+            isOverallSettlement,
+          },
+        });
+      }
     }
 
     // Get chores user is involved in

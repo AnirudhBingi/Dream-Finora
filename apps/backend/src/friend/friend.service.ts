@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ConflictException }
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationService } from '../notification/notification.service';
 import { EmailService } from '../shared/email.service';
+import { TrustScoreService } from '../trust-score/trust-score.service';
 import { SendFriendRequestDto } from './dto/send-friend-request.dto';
 import { FriendResponseDto } from './dto/friend-response.dto';
 import { randomUUID } from 'crypto';
@@ -13,6 +14,7 @@ export class FriendService {
     private prisma: PrismaService,
     private notificationService: NotificationService,
     private emailService: EmailService,
+    private trustScoreService: TrustScoreService,
   ) {}
 
   async sendFriendRequest(userId: string, dto: SendFriendRequestDto): Promise<FriendResponseDto> {
@@ -480,6 +482,10 @@ export class FriendService {
       avatarUrl: string | null;
     } | null;
     friendStatus?: 'none' | 'pending' | 'accepted' | 'blocked';
+    trustScore?: {
+      score: number;
+    } | null;
+    trustScoreVisibility?: 'public' | 'friends' | 'private';
   }>> {
     // Get all existing friendships for this user
     const friendships = await this.prisma.friend.findMany({
@@ -513,29 +519,69 @@ export class FriendService {
       },
       include: {
         UserProfile: true,
+        TrustScore: true,
       },
       take: 20,
     });
 
-    return users.map((user) => ({
-      id: user.id,
-      email: user.email,
-      mobileNumber: user.mobileNumber,
-      profile: user.UserProfile,
-      friendStatus: friendStatusMap.get(user.id) || 'none',
-    }));
+    return users.map((user) => {
+      const friendStatus = friendStatusMap.get(user.id) || 'none';
+      const isFriend = friendStatus === 'accepted';
+      
+      // Get profile with default values
+      const profile = user.UserProfile || {
+        id: null,
+        userId: user.id,
+        displayName: null,
+        avatarUrl: null,
+        bio: null,
+        primaryCurrency: 'USD',
+        homeCountryCurrency: 'USD',
+        profileVisibility: 'public',
+        trustScoreVisibility: 'public',
+        createdAt: user.createdAt,
+      };
+
+      const trustScoreVisibility = (profile.trustScoreVisibility || 'public') as 'public' | 'friends' | 'private';
+      
+      // Apply privacy rules for trust score visibility
+      const canSeeTrustScore = trustScoreVisibility === 'public' || (trustScoreVisibility === 'friends' && isFriend);
+      
+      // Get trust score if visible
+      let trustScore: { score: number } | null = null;
+      if (canSeeTrustScore && user.TrustScore) {
+        trustScore = {
+          score: user.TrustScore.score,
+        };
+      }
+
+      return {
+        id: user.id,
+        email: user.email,
+        mobileNumber: user.mobileNumber,
+        profile: {
+          displayName: profile.displayName,
+          avatarUrl: profile.avatarUrl,
+        },
+        friendStatus,
+        trustScore,
+        trustScoreVisibility,
+      };
+    });
   }
 
   private mapToFriendResponse(friendship: any): FriendResponseDto {
     const friend = friendship.friend || friendship.User_Friend_friendIdToUser || friendship.User_Friend_userIdToUser;
+    // friendId should always be the friend's user ID (not the database field value)
+    const friendId = friend.id;
     return {
       id: friendship.id,
       userId: friendship.userId,
-      friendId: friendship.friendId,
+      friendId: friendId,
       status: friendship.status as 'pending' | 'accepted' | 'blocked',
-      createdAt: friendship.createdAt,
-      updatedAt: friendship.updatedAt,
-      acceptedAt: friendship.acceptedAt,
+      createdAt: friendship.createdAt instanceof Date ? friendship.createdAt : new Date(friendship.createdAt),
+      updatedAt: friendship.updatedAt instanceof Date ? friendship.updatedAt : new Date(friendship.updatedAt),
+      acceptedAt: friendship.acceptedAt ? (friendship.acceptedAt instanceof Date ? friendship.acceptedAt : new Date(friendship.acceptedAt)) : null,
       friend: {
         id: friend.id,
         email: friend.email,

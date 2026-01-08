@@ -31,6 +31,9 @@ export function CreateGoalScreen({
   prefill,
   onBack,
   onSuccess,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: CreateGoalScreenProps) {
   const { token } = useAuth();
   const [name, setName] = useState(prefill?.name || '');
@@ -122,17 +125,6 @@ export function CreateGoalScreen({
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.title}>New Goal</Text>
-            <View style={styles.placeholder} />
-          </View>
 
           <View style={styles.form}>
             <View style={styles.inputGroup}>
@@ -285,22 +277,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    minHeight: 44,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#2563EB',
-    fontWeight: '500',
   },
   title: {
     fontSize: 24,

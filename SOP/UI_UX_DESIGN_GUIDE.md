@@ -80,6 +80,12 @@ Dream Finora should feel like a reliable friend helping you manage your shared l
 - Familiar components reused throughout
 - Consistent spacing, colors, typography
 
+### 6. **Component Standardization**
+- Reusable components for common UI patterns
+- Avatar component for consistent profile picture rendering
+- Centralized utilities for common operations
+- Single source of truth for shared functionality
+
 ---
 
 ## Color Palette

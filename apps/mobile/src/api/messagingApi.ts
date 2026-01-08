@@ -30,6 +30,12 @@ export interface Conversation {
       avatarUrl: string | null;
     } | null;
   } | null;
+  group?: {
+    id: string;
+    name: string;
+    description: string | null;
+    avatarUrl: string | null;
+  } | null;
   lastMessage: {
     id: string;
     content: string;
@@ -59,6 +65,41 @@ export async function getConversations(token: string): Promise<Conversation[]> {
   }
 
   return response.json();
+}
+
+export async function createGroupChat(
+  token: string,
+  groupId: string,
+): Promise<Conversation> {
+  const response = await fetch(`${getApiBaseUrl()}/messaging/conversations/group/${groupId}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to create group chat' }));
+    throw new Error(error.message || `Failed to create group chat: ${response.status}`);
+  }
+
+  const chat = await response.json();
+  // Transform to Conversation format
+  return {
+    id: chat.id,
+    type: 'group',
+    otherParticipant: null,
+    group: chat.Group ? {
+      id: chat.Group.id,
+      name: chat.Group.name,
+      description: chat.Group.description,
+      avatarUrl: chat.Group.avatarUrl,
+    } : null,
+    lastMessage: null,
+    unreadCount: 0,
+    updatedAt: chat.updatedAt || new Date().toISOString(),
+  };
 }
 
 export async function getMessages(token: string, chatId: string): Promise<Message[]> {
@@ -108,13 +149,19 @@ export async function startConversation(
   const url = new URL(`${getApiBaseUrl()}/messaging/conversations/start`);
   url.searchParams.append('userId', otherUserId);
 
+  // If no initial message, send empty object to avoid validation errors
+  // The backend will create the conversation without sending a message
+  const body = initialMessage 
+    ? JSON.stringify({ content: initialMessage })
+    : JSON.stringify({});
+
   const response = await fetch(url.toString(), {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: initialMessage ? JSON.stringify({ content: initialMessage }) : undefined,
+    body: body,
   });
 
   if (!response.ok) {
@@ -189,4 +236,3 @@ export async function markMessageAsRead(
 
   return response.json();
 }
-

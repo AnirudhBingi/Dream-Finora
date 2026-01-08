@@ -21,12 +21,16 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { SkeletonDetailScreen } from '../components/SkeletonLoader';
 import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
+import { Header, HeaderOption } from '../components/Header';
 
 interface GoalDetailScreenProps {
   goalId: string;
   onEdit: () => void;
   onAddContribution: () => void;
   onBack: () => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export function GoalDetailScreen({
@@ -34,6 +38,9 @@ export function GoalDetailScreen({
   onEdit,
   onAddContribution,
   onBack,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: GoalDetailScreenProps) {
   const { token } = useAuth();
   const [goal, setGoal] = useState<FinancialGoal | null>(null);
@@ -177,16 +184,34 @@ export function GoalDetailScreen({
     return Math.ceil(diff / (1000 * 60 * 60 * 24));
   }
 
+  // Prepare header options menu
+  const headerOptions: HeaderOption[] = [];
+  if (goal) {
+    headerOptions.push({
+      label: 'Edit',
+      icon: 'edit',
+      onPress: onEdit,
+    });
+    headerOptions.push({
+      label: 'Delete',
+      icon: 'delete',
+      onPress: handleDelete,
+      danger: true,
+    });
+  }
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Goal Details</Text>
-          <View style={styles.placeholder} />
-        </View>
+        <Header
+          title="Goal Details"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+          useOptionsMenu={true}
+          options={headerOptions}
+        />
         <SkeletonDetailScreen />
       </SafeAreaView>
     );
@@ -195,27 +220,16 @@ export function GoalDetailScreen({
   if (error || !goal) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Goal Details</Text>
-          <View style={styles.placeholder} />
-        </View>
+        <Header
+          title="Goal Details"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+          useOptionsMenu={true}
+          options={headerOptions}
+        />
         <ErrorState message={error || 'Goal not found'} onRetry={loadGoal} />
-      </SafeAreaView>
-    );
-  }
-
-  if (!goal) {
-    return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Goal not found</Text>
-          <TouchableOpacity style={styles.backButton} onPress={onBack}>
-            <Text style={styles.backButtonText}>← Back</Text>
-          </TouchableOpacity>
-        </View>
       </SafeAreaView>
     );
   }
@@ -227,6 +241,15 @@ export function GoalDetailScreen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title="Goal Details"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+        useOptionsMenu={true}
+        options={headerOptions}
+      />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
@@ -235,31 +258,6 @@ export function GoalDetailScreen({
         }
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-            <View style={styles.headerActions}>
-              <TouchableOpacity
-                style={styles.editButton}
-                onPress={onEdit}
-                activeOpacity={0.7}
-              >
-                <MaterialIcons name="edit" size={20} color="#2563EB" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.deleteButton}
-                onPress={handleDelete}
-                activeOpacity={0.7}
-              >
-                <MaterialIcons name="delete" size={20} color="#EF4444" />
-              </TouchableOpacity>
-            </View>
-          </View>
 
           {error && (
             <View style={styles.errorContainer}>
@@ -441,39 +439,14 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 24,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    minHeight: 44,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#2563EB',
-    fontWeight: '500',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  editButton: {
+  headerActionButton: {
     padding: 8,
-    minHeight: 44,
     minWidth: 44,
+    minHeight: 44,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  deleteButton: {
-    padding: 8,
-    minHeight: 44,
-    minWidth: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
   loadingContainer: {
     flex: 1,

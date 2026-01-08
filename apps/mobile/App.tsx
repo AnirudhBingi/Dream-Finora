@@ -7,6 +7,7 @@ import { RootScreenRenderer } from './src/components/RootScreenRenderer';
 import { AuthProvider, useAuth } from './src/auth/authContext';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { RegisterScreen } from './src/screens/RegisterScreen';
+import { ForgotPasswordScreen } from './src/screens/ForgotPasswordScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { UserProfileScreen } from './src/screens/UserProfileScreen';
@@ -16,6 +17,7 @@ import { ExpenseListScreen } from './src/screens/ExpenseListScreen';
 import { CreateExpenseScreen } from './src/screens/CreateExpenseScreen';
 import { EditExpenseScreen } from './src/screens/EditExpenseScreen';
 import { ExpenseDetailScreen } from './src/screens/ExpenseDetailScreen';
+import { ExpenseHistoryScreen } from './src/screens/ExpenseHistoryScreen';
 import { ActivityScreen } from './src/screens/ActivityScreen';
 import { ActivityFeedScreen } from './src/screens/ActivityFeedScreen';
 import { BalanceSummaryScreen } from './src/screens/BalanceSummaryScreen';
@@ -46,6 +48,7 @@ import { SpaceVDetailScreen } from './src/screens/SpaceVDetailScreen';
 import { EditSpaceVScreen } from './src/screens/EditSpaceVScreen';
 import ConversationListScreen from './src/screens/ConversationListScreen';
 import MessageThreadScreen from './src/screens/MessageThreadScreen';
+import { NewConversationScreen } from './src/screens/NewConversationScreen';
 import { AnalyticsScreen } from './src/screens/AnalyticsScreen';
 import { BillchopAnalyticsScreen } from './src/screens/BillchopAnalyticsScreen';
 import { BottomNavigation } from './src/components/BottomNavigation';
@@ -84,7 +87,9 @@ import { getUnreadCount } from './src/api/notificationApi';
 function AppContent() {
   const navHistory = useNavigationHistory();
   const { isAuthenticated, isLoading, token } = useAuth();
+  const authContext = useAuth();
   const [showRegister, setShowRegister] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
   
   // Sync navigation history with currentScreen state
   const [currentScreen, setCurrentScreen] = useState<
@@ -95,6 +100,7 @@ function AppContent() {
     | 'createExpense'
     | 'editExpense'
     | 'expenseDetail'
+    | 'expenseHistory'
     | 'activity'
     | 'balanceSummary'
     | 'settleUp'
@@ -136,6 +142,7 @@ function AppContent() {
     | 'spacevDetail'
     | 'editSpaceV'
     | 'conversations'
+    | 'newConversation'
     | 'messageThread'
     | 'analytics'
     | 'billchopAnalytics'
@@ -156,9 +163,11 @@ function AppContent() {
   const [selectedSpaceVId, setSelectedSpaceVId] = useState<string | null>(null);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [selectedOtherUser, setSelectedOtherUser] = useState<any | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<any | null>(null);
   const [selectedPayeeId, setSelectedPayeeId] = useState<string | null>(null);
   const [selectedPayeeName, setSelectedPayeeName] = useState<string>('');
   const [selectedSettlementAmount, setSelectedSettlementAmount] = useState<number>(0);
+  const [selectedSettlementGroupId, setSelectedSettlementGroupId] = useState<string | null>(null);
   const [goalPrefill, setGoalPrefill] = useState<{ name: string; targetAmount: number; category: 'savings' | 'debt' | 'purchase' | 'investment' } | undefined>(undefined);
   const [contributionAmount, setContributionAmount] = useState<number | undefined>(undefined);
   const [loanPaymentAmount, setLoanPaymentAmount] = useState<number | undefined>(undefined);
@@ -233,6 +242,7 @@ function AppContent() {
           navigate('messageThread', {
             selectedChatId: data.chatId,
             selectedOtherUser: data.otherUser,
+            selectedGroup: data.groupId ? { id: data.groupId, name: data.groupName } : undefined,
           });
         } else {
           // Default: navigate to notifications screen
@@ -278,6 +288,7 @@ function AppContent() {
       selectedPayeeId,
       selectedPayeeName,
       selectedSettlementAmount,
+      selectedSettlementGroupId,
       selectedExpenseId,
       selectedFriendId,
       selectedFriendName,
@@ -302,9 +313,14 @@ function AppContent() {
       loanRefreshKey,
     };
     
-    // Push current screen to history before navigating
-    // This ensures the previous screen is tracked correctly
-    navHistory.push(currentScreen, currentState);
+    // Push current screen to history before navigating (if it's not already the last entry)
+    const lastHistoryEntry = navHistory.history[navHistory.history.length - 1];
+    if (!lastHistoryEntry || lastHistoryEntry.screen !== currentScreen) {
+      navHistory.push(currentScreen, currentState);
+    }
+    
+    // Push the new screen to history
+    navHistory.push(screen, params || {});
     
     // Update to new screen
     setCurrentScreen(screen);
@@ -313,15 +329,20 @@ function AppContent() {
     if (params) {
       if (params.selectedContext !== undefined) setSelectedContext(params.selectedContext);
       if (params.selectedTransactionType !== undefined) setSelectedTransactionType(params.selectedTransactionType);
-      if (params.selectedGroupId !== undefined) setSelectedGroupId(params.selectedGroupId);
+      if (params.selectedGroupId !== undefined) {
+        // If explicitly set to null, clear it; otherwise set it
+        setSelectedGroupId(params.selectedGroupId === null ? null : params.selectedGroupId);
+      }
       if (params.selectedChoreId !== undefined) setSelectedChoreId(params.selectedChoreId);
       if (params.selectedRideId !== undefined) setSelectedRideId(params.selectedRideId);
       if (params.selectedSpaceVId !== undefined) setSelectedSpaceVId(params.selectedSpaceVId);
       if (params.selectedChatId !== undefined) setSelectedChatId(params.selectedChatId);
       if (params.selectedOtherUser !== undefined) setSelectedOtherUser(params.selectedOtherUser);
+      if (params.selectedGroup !== undefined) setSelectedGroup(params.selectedGroup);
       if (params.selectedPayeeId !== undefined) setSelectedPayeeId(params.selectedPayeeId);
       if (params.selectedPayeeName !== undefined) setSelectedPayeeName(params.selectedPayeeName);
       if (params.selectedSettlementAmount !== undefined) setSelectedSettlementAmount(params.selectedSettlementAmount);
+      if (params.selectedSettlementGroupId !== undefined) setSelectedSettlementGroupId(params.selectedSettlementGroupId);
       if (params.selectedExpenseId !== undefined) setSelectedExpenseId(params.selectedExpenseId);
       if (params.selectedFriendId !== undefined) setSelectedFriendId(params.selectedFriendId);
       if (params.selectedFriendName !== undefined) setSelectedFriendName(params.selectedFriendName);
@@ -343,7 +364,7 @@ function AppContent() {
     const prev = navHistory.getPreviousScreen();
     
     if (!prev) {
-      // No previous screen, can't go back
+      // No previous screen, can't go back - do nothing
       return;
     }
     
@@ -358,15 +379,20 @@ function AppContent() {
       const params = prev.params;
       if (params.selectedContext !== undefined) setSelectedContext(params.selectedContext);
       if (params.selectedTransactionType !== undefined) setSelectedTransactionType(params.selectedTransactionType);
-      if (params.selectedGroupId !== undefined) setSelectedGroupId(params.selectedGroupId);
+      if (params.selectedGroupId !== undefined) {
+        // If explicitly set to null, clear it; otherwise set it
+        setSelectedGroupId(params.selectedGroupId === null ? null : params.selectedGroupId);
+      }
       if (params.selectedChoreId !== undefined) setSelectedChoreId(params.selectedChoreId);
       if (params.selectedRideId !== undefined) setSelectedRideId(params.selectedRideId);
       if (params.selectedSpaceVId !== undefined) setSelectedSpaceVId(params.selectedSpaceVId);
       if (params.selectedChatId !== undefined) setSelectedChatId(params.selectedChatId);
       if (params.selectedOtherUser !== undefined) setSelectedOtherUser(params.selectedOtherUser);
+      if (params.selectedGroup !== undefined) setSelectedGroup(params.selectedGroup);
       if (params.selectedPayeeId !== undefined) setSelectedPayeeId(params.selectedPayeeId);
       if (params.selectedPayeeName !== undefined) setSelectedPayeeName(params.selectedPayeeName);
       if (params.selectedSettlementAmount !== undefined) setSelectedSettlementAmount(params.selectedSettlementAmount);
+      if (params.selectedSettlementGroupId !== undefined) setSelectedSettlementGroupId(params.selectedSettlementGroupId);
       if (params.selectedExpenseId !== undefined) setSelectedExpenseId(params.selectedExpenseId);
       if (params.selectedFriendId !== undefined) setSelectedFriendId(params.selectedFriendId);
       if (params.selectedFriendName !== undefined) setSelectedFriendName(params.selectedFriendName);
@@ -407,10 +433,11 @@ function AppContent() {
         selectedSpaceVId,
         selectedChatId,
         selectedOtherUser,
-        selectedPayeeId,
-        selectedPayeeName,
-        selectedSettlementAmount,
-        selectedExpenseId,
+      selectedPayeeId,
+      selectedPayeeName,
+      selectedSettlementAmount,
+      selectedSettlementGroupId,
+      selectedExpenseId,
         selectedFriendId,
         selectedFriendName,
         selectedBudgetId,
@@ -434,14 +461,10 @@ function AppContent() {
       };
       
       // Save current screen to history with its state, then add new screen
-      // First, ensure current screen is in history (update if it's already there)
       const lastHistoryEntry = navHistory.history[navHistory.history.length - 1];
       
-      if (lastHistoryEntry && lastHistoryEntry.screen === currentScreen) {
-        // Current screen is already last entry, just update its params
-        navHistory.push(currentScreen, currentState);
-      } else {
-        // Current screen is not in history, add it
+      // Only push current screen if it's not already the last entry in history
+      if (!lastHistoryEntry || lastHistoryEntry.screen !== currentScreen) {
         navHistory.push(currentScreen, currentState);
       }
       
@@ -529,7 +552,7 @@ function AppContent() {
           onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           onNavigateToGroups={() => setCurrentScreenWithHistory('groups')}
           onNavigateToFinance={() => setCurrentScreenWithHistory('finance')}
-          onNavigateToChores={() => setCurrentScreenWithHistory('chores')}
+          onNavigateToChores={() => navigate('chores', { selectedGroupId: null })}
           onNavigateToRides={() => setCurrentScreenWithHistory('rides')}
           onNavigateToSpaceV={() => setCurrentScreenWithHistory('spacev')}
           onNavigateToMessages={() => setCurrentScreenWithHistory('conversations')}
@@ -554,6 +577,12 @@ function AppContent() {
           onViewExpense={(expenseId) => {
             navigate('expenseDetail', { selectedExpenseId: expenseId });
           }}
+          onViewExpenseHistory={() => {
+            // Navigate to all expense history (no expenseId)
+            // Clear selectedExpenseId to show all history
+            setSelectedExpenseId(null);
+            setCurrentScreenWithHistory('expenseHistory');
+          }}
           onViewFriends={() => setCurrentScreenWithHistory('billchopFriends')}
           onViewGroups={() => setCurrentScreenWithHistory('billchopGroups')}
           onBack={goBack}
@@ -571,8 +600,23 @@ function AppContent() {
       component: (
         <ChoreListScreen
           key={`chores-${choreRefreshKey}`}
-          groupId={selectedGroupId || undefined}
-          onCreateChore={() => setCurrentScreenWithHistory('createChore')}
+          groupId={(() => {
+            // Only pass groupId if we explicitly navigated with selectedGroupId (and it's not null)
+            // Check the current navigation entry's params
+            const currentEntry = navHistory.history[navHistory.history.length - 1];
+            const paramGroupId = currentEntry?.params?.selectedGroupId;
+            // If paramGroupId is explicitly null, don't use it
+            // If paramGroupId is undefined, don't use selectedGroupId state (it might be stale)
+            // Only use it if paramGroupId is explicitly set to a non-null value
+            return paramGroupId !== undefined && paramGroupId !== null ? paramGroupId : undefined;
+          })()}
+          onCreateChore={() => {
+            // Clear selectedGroupId when creating from main chores screen (not from group)
+            navigate('createChore', { selectedGroupId: null });
+          }}
+          onViewHistory={() => {
+            navigate('choreHistory', {});
+          }}
           onViewChore={(choreId) => {
             navigate('choreDetail', { selectedChoreId: choreId });
           }}
@@ -631,11 +675,16 @@ function AppContent() {
             payeeId={selectedPayeeId}
             amount={selectedSettlementAmount}
             payeeName={selectedPayeeName}
+            groupId={selectedSettlementGroupId || undefined}
             onBack={goBack}
             onSuccess={() => {
               setExpenseRefreshKey(prev => prev + 1);
+              setGroupRefreshKey(prev => prev + 1);
               goBack();
             }}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'settleUp'
@@ -654,10 +703,34 @@ function AppContent() {
             onEdit={(expenseId) => {
               navigate('editExpense', { selectedExpenseId: expenseId });
             }}
+            onViewHistory={() => navigate('expenseHistory', { selectedExpenseId })}
             onNavigateToUserProfile={(userId) => navigate('userProfile', { selectedUserId: userId })}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'expenseDetail'
+        ),
+      });
+    }
+
+    // Expense History Screen - can be for specific expense or all history
+    // Expense History Screen - can be for specific expense or all history
+    if (currentScreen === 'expenseHistory') {
+      screens.push({
+        name: 'expenseHistory',
+        key: selectedExpenseId ? `expenseHistory-${selectedExpenseId}` : 'expenseHistory-all',
+        component: wrapScreen(
+          <ExpenseHistoryScreen
+            expenseId={selectedExpenseId || undefined}
+            onBack={goBack}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
+          />,
+          true,
+          'expenseHistory'
         ),
       });
     }
@@ -674,6 +747,9 @@ function AppContent() {
               setExpenseRefreshKey(prev => prev + 1);
               goBack();
             }}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'editExpense'
@@ -689,13 +765,40 @@ function AppContent() {
           <GroupDetailScreen
             key={`group-${selectedGroupId}-${groupRefreshKey}`}
             groupId={selectedGroupId}
-            onCreateExpense={() => setCurrentScreenWithHistory('createExpense')}
-        onBack={goBack} 
+            onCreateExpense={() => navigate('createExpense', { selectedGroupId: selectedGroupId })}
+            onCreateChore={() => navigate('createChore', { selectedGroupId: selectedGroupId })}
+            onViewChore={(choreId) => navigate('choreDetail', { selectedChoreId: choreId })}
+            onViewAllChores={() => navigate('chores', { selectedGroupId: selectedGroupId })}
+            onBack={goBack} 
             onSettings={(groupId) => {
               navigate('groupSettings', { selectedGroupId: groupId });
             }}
             onAddMember={(groupId) => {
               navigate('addGroupMember', { selectedGroupId: groupId });
+            }}
+            onSettleUp={(payeeId, amount, payeeName, groupId) => {
+              navigate('settleUp', {
+                selectedPayeeId: payeeId,
+                selectedSettlementAmount: amount,
+                selectedPayeeName: payeeName,
+                selectedSettlementGroupId: groupId,
+              });
+            }}
+            onMessageGroup={async (groupId, groupName) => {
+              try {
+                const { createGroupChat } = await import('./src/api/messagingApi');
+                if (!token) return;
+                const conversation = await createGroupChat(token, groupId);
+                setSelectedChatId(conversation.id);
+                setSelectedGroup(conversation.group);
+                navigate('messageThread', {
+                  selectedChatId: conversation.id,
+                  selectedGroup: conversation.group,
+                });
+              } catch (error) {
+                console.error('Failed to create group chat:', error);
+                Alert.alert('Error', 'Failed to start group chat. Please try again.');
+              }
             }}
             onNavigateToUserProfile={(userId) => navigate('userProfile', { selectedUserId: userId })}
           />,
@@ -712,7 +815,7 @@ function AppContent() {
         component: wrapScreen(
           <GroupSettingsScreen
             groupId={selectedGroupId}
-        onBack={goBack}
+            onBack={goBack}
             onGroupUpdated={() => {
               setGroupRefreshKey(prev => prev + 1);
             }}
@@ -720,6 +823,9 @@ function AppContent() {
               navigate('addGroupMember', { selectedGroupId: groupId });
             }}
             onNavigateToUserProfile={(userId) => navigate('userProfile', { selectedUserId: userId })}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'groupSettings'
@@ -739,6 +845,9 @@ function AppContent() {
               setGroupRefreshKey(prev => prev + 1);
               goBack();
             }}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'addGroupMember'
@@ -758,6 +867,9 @@ function AppContent() {
               setGroupRefreshKey(prev => prev + 1);
               navigate('groupDetail', { selectedGroupId: groupId });
             }}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'groupInvitation'
@@ -779,6 +891,10 @@ function AppContent() {
             }}
             onEdit={() => navigate('editChore', { selectedChoreId })}
             onViewHistory={() => navigate('choreHistory', { selectedChoreId })}
+            onNavigateToGroup={(groupId) => navigate('groupDetail', { selectedGroupId: groupId })}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'choreDetail'
@@ -799,6 +915,9 @@ function AppContent() {
               setChoreRefreshKey(prev => prev + 1);
               goBack();
             }}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'editChore'
@@ -806,15 +925,19 @@ function AppContent() {
       });
     }
 
-    if (selectedChoreId) {
+    // ChoreHistoryScreen - Show all completed chores (no choreId needed)
+    if (currentScreen === 'choreHistory' || navHistory.history.some(h => h.screen === 'choreHistory')) {
       screens.push({
         name: 'choreHistory',
-        key: `choreHistory-${selectedChoreId}`,
+        key: 'choreHistory-all',
         component: wrapScreen(
           <ChoreHistoryScreen
-            key={`chore-history-${selectedChoreId}`}
-            choreId={selectedChoreId}
+            key="chore-history-all"
             onBack={goBack}
+            onViewChore={(choreId) => navigate('choreDetail', { selectedChoreId: choreId })}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'choreHistory'
@@ -834,6 +957,10 @@ function AppContent() {
             onRefresh={() => {
               setRideRefreshKey(prev => prev + 1);
             }}
+            onNavigateToEdit={(rideId) => navigate('editRide', { selectedRideId: rideId })}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'rideDetail'
@@ -863,6 +990,9 @@ function AppContent() {
               navigate('editSpaceV', { selectedSpaceVId: spacevId });
             }}
             onNavigateToUserProfile={(userId) => navigate('userProfile', { selectedUserId: userId })}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'spacevDetail'
@@ -881,6 +1011,9 @@ function AppContent() {
             onSuccess={() => {
               navigate('spacevDetail', { selectedSpaceVId });
             }}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'editSpaceV'
@@ -898,12 +1031,14 @@ function AppContent() {
               params: {
                 chatId: selectedChatId,
                 otherUser: selectedOtherUser,
+                group: selectedGroup,
               },
             }}
             navigation={{
               goBack: () => {
                 setSelectedChatId(null);
                 setSelectedOtherUser(null);
+                setSelectedGroup(null);
                 goBack();
               },
             }}
@@ -926,6 +1061,11 @@ function AppContent() {
             onViewExpense={(expenseId) => {
               navigate('expenseDetail', { selectedExpenseId: expenseId });
             }}
+            onCreateChore={(friendId) => navigate('createChore', { selectedFriendId: friendId, selectedGroupId: null })}
+            onCreateExpense={(friendId) => navigate('createExpense', { selectedFriendId: friendId, selectedGroupId: null })}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'friendExpenseList'
@@ -946,6 +1086,9 @@ function AppContent() {
               setFinanceRefreshKey(prev => prev + 1);
               goBack();
             }}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'editTransaction'
@@ -966,6 +1109,9 @@ function AppContent() {
               setFinanceRefreshKey(prev => prev + 1);
               goBack();
             }}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'editAccount'
@@ -986,6 +1132,9 @@ function AppContent() {
               setBudgetRefreshKey(prev => prev + 1);
               goBack();
             }}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'editBudget'
@@ -1006,6 +1155,9 @@ function AppContent() {
               navigate('addContribution', { selectedGoalId });
             }}
             onBack={goBack}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'goalDetail'
@@ -1026,6 +1178,9 @@ function AppContent() {
               setGoalRefreshKey(prev => prev + 1);
               goBack();
             }}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'addContribution'
@@ -1046,6 +1201,9 @@ function AppContent() {
               setGoalRefreshKey(prev => prev + 1);
               goBack();
             }}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'editGoal'
@@ -1064,6 +1222,9 @@ function AppContent() {
             onRecordPayment={() => navigate('recordLoanPayment', { selectedLoanId })}
             onLoanUpdated={() => setLoanRefreshKey((prev) => prev + 1)}
             onBack={goBack}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'loanDetail'
@@ -1084,6 +1245,9 @@ function AppContent() {
               setLoanRefreshKey((prev) => prev + 1);
               goBack();
             }}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'recordLoanPayment'
@@ -1096,7 +1260,12 @@ function AppContent() {
       name: 'editProfile',
       key: 'editProfile',
       component: wrapScreen(
-        <EditProfileScreen onBack={goBack} />,
+        <EditProfileScreen 
+          onBack={goBack}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
+        />,
         true,
         'editProfile'
       ),
@@ -1106,7 +1275,12 @@ function AppContent() {
       name: 'trustScoreInsights',
       key: 'trustScoreInsights',
       component: wrapScreen(
-        <TrustScoreInsightsScreen onBack={goBack} />,
+        <TrustScoreInsightsScreen 
+          onBack={goBack}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
+        />,
         true,
         'trustScoreInsights'
       ),
@@ -1117,12 +1291,15 @@ function AppContent() {
       key: `profile-${Date.now()}`,
       component: wrapScreen(
       <ProfileScreen
-          key={`profile-${Date.now()}`}
+        key={`profile-${Date.now()}`}
         onEdit={() => navigate('editProfile')}
         onBack={goBack}
         onSettings={() => navigate('settings')}
         onViewTrustScoreInsights={() => navigate('trustScoreInsights')}
-        />,
+        onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+        onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+        onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
+      />,
         true,
         'profile'
       ),
@@ -1134,6 +1311,7 @@ function AppContent() {
       component: wrapScreen(
         <CreateExpenseScreen
           groupId={selectedGroupId || undefined}
+          friendId={selectedFriendId || undefined}
           onBack={goBack}
           onSuccess={() => {
             setExpenseRefreshKey(prev => prev + 1);
@@ -1142,6 +1320,9 @@ function AppContent() {
             }
             goBack();
           }}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
         />,
         true,
         'createExpense'
@@ -1152,7 +1333,12 @@ function AppContent() {
       name: 'billchopAnalytics',
       key: 'billchopAnalytics',
       component: wrapScreen(
-        <BillchopAnalyticsScreen onBack={goBack} />,
+        <BillchopAnalyticsScreen 
+          onBack={goBack}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
+        />,
         true,
         'billchopAnalytics'
       ),
@@ -1171,6 +1357,9 @@ function AppContent() {
               selectedPayeeName: payeeName,
             });
           }}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
         />,
         true,
         'balanceSummary'
@@ -1198,6 +1387,9 @@ function AppContent() {
           onViewRide={(rideId) => {
             navigate('rideDetail', { selectedRideId: rideId });
           }}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
         />,
         true,
         'activity'
@@ -1216,6 +1408,33 @@ function AppContent() {
               selectedFriendName: friendName,
             });
           }}
+          onSettleUp={(payeeId, amount, payeeName) => {
+            navigate('settleUp', {
+              selectedPayeeId: payeeId,
+              selectedSettlementAmount: amount,
+              selectedPayeeName: payeeName,
+            });
+          }}
+          onAddNewFriends={() => setCurrentScreenWithHistory('friendSearch')}
+          onMessageFriend={async (friendId, friendName) => {
+            // Start conversation and navigate to message thread
+            if (!token) return;
+            
+            try {
+              const { startConversation } = await import('./src/api/messagingApi');
+              const conversation = await startConversation(token, friendId);
+              navigate('messageThread', {
+                selectedChatId: conversation.id,
+                selectedOtherUser: { id: friendId, profile: { displayName: friendName } },
+              });
+            } catch (err) {
+              // If conversation fails, navigate to new conversation screen
+              setCurrentScreenWithHistory('newConversation');
+            }
+          }}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
         />,
         true,
         'billchopFriends'
@@ -1234,6 +1453,7 @@ function AppContent() {
           onViewExpense={(expenseId) => {
             navigate('expenseDetail', { selectedExpenseId: expenseId });
           }}
+          onCreateCircle={() => setCurrentScreenWithHistory('createGroup')}
         />,
         true,
         'billchopGroups'
@@ -1246,10 +1466,13 @@ function AppContent() {
       component: wrapScreen(
         <CreateGroupScreen
           onBack={goBack}
-          onSuccess={() => {
+          onSuccess={(groupId) => {
             setGroupRefreshKey(prev => prev + 1);
-            goBack();
+            navigate('groupDetail', { selectedGroupId: groupId });
           }}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
         />,
         true,
         'createGroup'
@@ -1266,6 +1489,9 @@ function AppContent() {
             navigate('groupDetail', { selectedGroupId: groupId });
           }}
           onBack={goBack}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
         />,
         true,
         'groups'
@@ -1284,6 +1510,9 @@ function AppContent() {
             setFinanceRefreshKey(prev => prev + 1);
             goBack();
           }}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
         />,
         true,
         'addTransaction'
@@ -1327,6 +1556,9 @@ function AppContent() {
             navigate('financeHistory', { selectedContext: context });
           }}
           onBack={goBack}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
         />
       ),
     });
@@ -1338,6 +1570,9 @@ function AppContent() {
         <FinanceHistoryScreen
           context={selectedContext || undefined}
           onBack={goBack}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
         />,
         true,
         'financeHistory'
@@ -1357,6 +1592,9 @@ function AppContent() {
               navigate('editBudget', { selectedBudgetId: budgetId });
             }}
             onBack={goBack}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'budgets'
@@ -1376,6 +1614,9 @@ function AppContent() {
               setBudgetRefreshKey(prev => prev + 1);
               goBack();
             }}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'createBudget'
@@ -1396,6 +1637,9 @@ function AppContent() {
               navigate('goalDetail', { selectedGoalId: goalId });
             }}
             onBack={goBack}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'goals'
@@ -1416,6 +1660,9 @@ function AppContent() {
               setGoalRefreshKey(prev => prev + 1);
               goBack();
             }}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'createGoal'
@@ -1436,6 +1683,9 @@ function AppContent() {
               navigate('loanDetail', { selectedLoanId: loanId });
             }}
             onBack={goBack}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'loans'
@@ -1455,6 +1705,9 @@ function AppContent() {
               setLoanRefreshKey((prev) => prev + 1);
               goBack();
             }}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'createLoan'
@@ -1514,23 +1767,46 @@ function AppContent() {
       name: 'choreStats',
       key: 'choreStats',
       component: wrapScreen(
-        <ChoreStatsScreen onBack={goBack} />,
+        <ChoreStatsScreen 
+          onBack={goBack}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
+        />,
         true,
         'choreStats'
       ),
     });
+
+    // Only show createChore if we have params or it's explicitly navigated to
+    // Check if selectedGroupId was explicitly passed (not just persisted)
+    const currentEntry = navHistory.history[navHistory.history.length - 1];
+    const explicitGroupId = currentEntry?.params?.selectedGroupId !== undefined 
+      ? (currentEntry.params.selectedGroupId === null ? undefined : currentEntry.params.selectedGroupId)
+      : undefined;
+    const explicitFriendId = currentEntry?.params?.selectedFriendId !== undefined 
+      ? currentEntry.params.selectedFriendId
+      : undefined;
 
     screens.push({
       name: 'createChore',
       key: 'createChore',
       component: wrapScreen(
         <CreateChoreScreen
-          groupId={selectedGroupId || undefined}
+          groupId={explicitGroupId}
+          friendId={explicitFriendId}
           onBack={goBack}
           onSuccess={() => {
             setChoreRefreshKey(prev => prev + 1);
+            // Refresh group if we came from a group
+            if (explicitGroupId) {
+              setGroupRefreshKey(prev => prev + 1);
+            }
             goBack();
           }}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
         />,
         true,
         'createChore'
@@ -1550,12 +1826,40 @@ function AppContent() {
                   selectedChatId: params.chatId,
                   selectedOtherUser: params.otherUser,
                 });
+              } else if (screen === 'NewConversation') {
+                setCurrentScreenWithHistory('newConversation');
               }
             },
           }}
+          onBack={goBack}
+          onNewMessage={() => setCurrentScreenWithHistory('newConversation')}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
         />,
         true,
         'conversations'
+      ),
+    });
+
+    screens.push({
+      name: 'newConversation',
+      key: 'newConversation',
+      component: wrapScreen(
+        <NewConversationScreen
+          onBack={goBack}
+          onConversationStarted={(chatId, otherUser) => {
+            navigate('messageThread', {
+              selectedChatId: chatId,
+              selectedOtherUser: otherUser,
+            });
+          }}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
+        />,
+        true,
+        'newConversation'
       ),
     });
 
@@ -1569,6 +1873,9 @@ function AppContent() {
             setSpacevRefreshKey(prev => prev + 1);
             goBack();
           }}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
         />,
         true,
         'createSpaceV'
@@ -1586,6 +1893,9 @@ function AppContent() {
             setRideRefreshKey(prev => prev + 1);
             goBack();
           }}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
         />,
         true,
         'createRide'
@@ -1596,7 +1906,12 @@ function AppContent() {
       name: 'analytics',
       key: 'analytics',
       component: wrapScreen(
-        <AnalyticsScreen onBack={goBack} />,
+        <AnalyticsScreen 
+          onBack={goBack}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
+        />,
         true,
         'analytics'
       ),
@@ -1615,6 +1930,9 @@ function AppContent() {
             setSelectedUserId(userId);
             navigate('userProfile', { selectedUserId: userId });
           }}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
         />,
         true,
         'friendSearch'
@@ -1628,7 +1946,11 @@ function AppContent() {
         <FriendsListScreen
           onBack={goBack}
           onSearchFriends={() => setCurrentScreenWithHistory('friendSearch')}
+          onAddNewFriends={() => setCurrentScreenWithHistory('friendSearch')}
           onNavigateToUserProfile={(userId) => navigate('userProfile', { selectedUserId: userId })}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
         />,
         true,
         'friends'
@@ -1655,6 +1977,9 @@ function AppContent() {
               // Navigate to user's listings
               Alert.alert('Info', 'User listings feature coming soon');
             }}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
           />,
           true,
           'userProfile'
@@ -1677,7 +2002,15 @@ function AppContent() {
             setSelectedUserId(friendId);
             navigate('userProfile', { selectedUserId: friendId });
           }}
-          onViewMessage={(chatId) => navigate('messageThread', { selectedChatId: chatId })}
+          onViewMessage={(chatId, groupId, groupName) => {
+            navigate('messageThread', {
+              selectedChatId: chatId,
+              selectedGroup: groupId ? { id: groupId, name: groupName } : undefined,
+            });
+          }}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
         />,
         true,
         'notifications'
@@ -1692,6 +2025,8 @@ function AppContent() {
           onBack={goBack}
           onNavigateToAccount={() => setCurrentScreenWithHistory('accountSettings')}
           onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
         />,
         true,
         'settings'
@@ -1702,7 +2037,12 @@ function AppContent() {
       name: 'accountSettings',
       key: 'accountSettings',
       component: wrapScreen(
-        <AccountSettingsScreen onBack={goBack} />,
+        <AccountSettingsScreen 
+          onBack={goBack}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
+        />,
         true,
         'accountSettings'
       ),
@@ -1721,10 +2061,11 @@ function AppContent() {
     goalRefreshKey,
     loanRefreshKey,
     selectedGroupId,
-    selectedPayeeId,
-    selectedPayeeName,
-    selectedSettlementAmount,
-    selectedExpenseId,
+      selectedPayeeId,
+      selectedPayeeName,
+      selectedSettlementAmount,
+      selectedSettlementGroupId,
+      selectedExpenseId,
     selectedChoreId,
     selectedRideId,
     selectedSpaceVId,
@@ -1771,10 +2112,22 @@ function AppContent() {
   }
 
   if (!isAuthenticated) {
+    if (showForgotPassword) {
+      return (
+        <ForgotPasswordScreen
+          onBackToLogin={() => setShowForgotPassword(false)}
+        />
+      );
+    }
     if (showRegister) {
       return <RegisterScreen onSwitchToLogin={() => setShowRegister(false)} />;
     }
-    return <LoginScreen onSwitchToRegister={() => setShowRegister(true)} />;
+    return (
+      <LoginScreen
+        onSwitchToRegister={() => setShowRegister(true)}
+        onForgotPassword={() => setShowForgotPassword(true)}
+      />
+    );
   }
 
   // Render all screens at root level with smooth transitions

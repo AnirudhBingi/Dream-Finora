@@ -16,12 +16,16 @@ import { getProfile } from '../api/profileApi';
 import { SkeletonLoanList } from '../components/SkeletonLoader';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
+import { Header } from '../components/Header';
 
 interface LoansListScreenProps {
   context: 'local' | 'home';
   onCreateLoan: () => void;
   onViewLoan: (loanId: string) => void;
   onBack: () => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 type LoanStatusFilter = 'all' | 'active' | 'completed' | 'paused';
@@ -31,6 +35,9 @@ export function LoansListScreen({
   onCreateLoan,
   onViewLoan,
   onBack,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: LoansListScreenProps) {
   const { token } = useAuth();
   const [loans, setLoans] = useState<Loan[]>([]);
@@ -131,6 +138,13 @@ export function LoansListScreen({
   if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <Header
+          title={context === 'local' ? 'Local Loans' : 'Home Country Loans'}
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2563EB" />
           <Text style={styles.loadingText}>Loading loans...</Text>
@@ -141,6 +155,13 @@ export function LoansListScreen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title={context === 'local' ? 'Local Loans' : 'Home Country Loans'}
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
@@ -149,17 +170,6 @@ export function LoansListScreen({
         }
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.title}>Loans</Text>
-            <View style={styles.placeholder} />
-          </View>
 
           {error && (
             <View style={styles.errorContainer}>
@@ -313,30 +323,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    minHeight: 44,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#2563EB',
-    fontWeight: '500',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  placeholder: {
-    width: 60,
   },
   loadingContainer: {
     flex: 1,

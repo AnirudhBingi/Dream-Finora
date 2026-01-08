@@ -13,17 +13,24 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
 import { getGroupInvitation, acceptGroupInvitation, declineGroupInvitation, GroupInvitation } from '../api/groupApi';
+import { Header } from '../components/Header';
 
 interface GroupInvitationScreenProps {
   invitationToken: string;
   onBack: () => void;
   onAccept?: (groupId: string) => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export function GroupInvitationScreen({
   invitationToken,
   onBack,
   onAccept,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: GroupInvitationScreenProps) {
   const { token, user } = useAuth();
   const [invitation, setInvitation] = useState<GroupInvitation | null>(null);
@@ -133,13 +140,13 @@ export function GroupInvitationScreen({
   if (error || !invitation) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <MaterialIcons name="arrow-back" size={24} color="#1F2937" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Invitation</Text>
-          <View style={styles.placeholder} />
-        </View>
+        <Header
+          title="Group Invitation"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <View style={styles.errorContainer}>
           <MaterialIcons name="error-outline" size={48} color="#EF4444" />
           <Text style={styles.errorText}>{error || 'Invitation not found'}</Text>
@@ -156,13 +163,13 @@ export function GroupInvitationScreen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onBack} style={styles.backButton}>
-          <MaterialIcons name="arrow-back" size={24} color="#1F2937" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Group Invitation</Text>
-        <View style={styles.placeholder} />
-      </View>
+      <Header
+        title="Group Invitation"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
 
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
@@ -261,27 +268,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#F9FAFB',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  backButton: {
-    padding: 4,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  placeholder: {
-    width: 32,
   },
   container: {
     flex: 1,

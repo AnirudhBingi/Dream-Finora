@@ -5,6 +5,10 @@ export class CreateSettlementDto {
   @IsNotEmpty()
   payeeId: string; // User who receives the payment (the one who is owed)
 
+  @IsString()
+  @IsOptional()
+  payerId?: string; // User who pays (if not provided, defaults to current user)
+
   @IsNumber()
   @Min(0.01)
   amount: number;
@@ -24,5 +28,9 @@ export class CreateSettlementDto {
   @IsString({ each: true })
   @IsOptional()
   splitIds?: string[]; // Optional: specific expense splits to settle (if not provided, settles all outstanding)
+
+  @IsString()
+  @IsOptional()
+  groupId?: string; // Optional: filter splits to only those within this group (for group-specific settlements)
 }
 

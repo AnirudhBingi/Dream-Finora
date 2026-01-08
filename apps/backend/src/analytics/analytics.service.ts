@@ -265,15 +265,14 @@ export class AnalyticsService {
   ): Promise<ExpenseSpendingByCategory[]> {
     const where: any = {
       userId, // Expense splits for this user
-      expense: {
-        // Filter by expense date if provided
-      },
     };
 
     if (startDate || endDate) {
-      where.expense.date = {};
-      if (startDate) where.expense.date.gte = startDate;
-      if (endDate) where.expense.date.lte = endDate;
+      where.Expense = {
+        date: {},
+      };
+      if (startDate) where.Expense.date.gte = startDate;
+      if (endDate) where.Expense.date.lte = endDate;
     }
 
     // Get all expense splits for this user
@@ -463,16 +462,146 @@ export class AnalyticsService {
     // TODO: Convert home analytics to primary currency using CurrencyService
     // For now, we'll combine them as-is (assuming same currency or manual conversion needed)
 
+    // Combine spending by category
+    const categoryMap = new Map<string, number>();
+    let totalSpending = 0;
+    
+    [...localAnalytics.spendingByCategory, ...homeAnalytics.spendingByCategory].forEach((item) => {
+      const current = categoryMap.get(item.category) || 0;
+      categoryMap.set(item.category, current + item.amount);
+      totalSpending += item.amount;
+    });
+
+    const combinedSpendingByCategory: SpendingByCategory[] = Array.from(categoryMap.entries())
+      .map(([category, amount]) => ({
+        category,
+        amount: Math.round(amount * 100) / 100,
+        percentage: totalSpending > 0 ? Math.round((amount / totalSpending) * 10000) / 100 : 0,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
+    // Combine monthly trends
+    const monthlyMap = new Map<string, { income: number; expense: number }>();
+    
+    [...localAnalytics.monthlyTrends, ...homeAnalytics.monthlyTrends].forEach((trend) => {
+      const existing = monthlyMap.get(trend.month) || { income: 0, expense: 0 };
+      monthlyMap.set(trend.month, {
+        income: existing.income + trend.income,
+        expense: existing.expense + trend.expense,
+      });
+    });
+
+    const combinedMonthlyTrends: MonthlyTrend[] = Array.from(monthlyMap.entries())
+      .map(([month, data]) => ({
+        month,
+        income: Math.round(data.income * 100) / 100,
+        expense: Math.round(data.expense * 100) / 100,
+        net: Math.round((data.income - data.expense) * 100) / 100,
+      }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    // Combine balance over time
+    const balanceMap = new Map<string, number>();
+    
+    [...localAnalytics.balanceOverTime, ...homeAnalytics.balanceOverTime].forEach((balance) => {
+      const existing = balanceMap.get(balance.date) || 0;
+      balanceMap.set(balance.date, existing + balance.balance);
+    });
+
+    const combinedBalanceOverTime: BalanceOverTime[] = Array.from(balanceMap.entries())
+      .map(([date, balance]) => ({
+        date,
+        balance: Math.round(balance * 100) / 100,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // Combine budget performance
+    const combinedBudgetPerformance = {
+      totalBudgets: localAnalytics.budgetPerformance.totalBudgets + homeAnalytics.budgetPerformance.totalBudgets,
+      budgetsOnTrack: localAnalytics.budgetPerformance.budgetsOnTrack + homeAnalytics.budgetPerformance.budgetsOnTrack,
+      budgetsWarning: localAnalytics.budgetPerformance.budgetsWarning + homeAnalytics.budgetPerformance.budgetsWarning,
+      budgetsExceeded: localAnalytics.budgetPerformance.budgetsExceeded + homeAnalytics.budgetPerformance.budgetsExceeded,
+      totalBudgeted: Math.round((localAnalytics.budgetPerformance.totalBudgeted + homeAnalytics.budgetPerformance.totalBudgeted) * 100) / 100,
+      totalSpent: Math.round((localAnalytics.budgetPerformance.totalSpent + homeAnalytics.budgetPerformance.totalSpent) * 100) / 100,
+      adherenceRate: 0, // Will calculate below
+      averageAdherence: 0, // Will calculate below
+    };
+    
+    const totalBudgeted = combinedBudgetPerformance.totalBudgeted;
+    combinedBudgetPerformance.adherenceRate = totalBudgeted > 0 
+      ? Math.round((1 - combinedBudgetPerformance.totalSpent / totalBudgeted) * 10000) / 100 
+      : 100;
+    
+    const totalBudgets = combinedBudgetPerformance.totalBudgets;
+    combinedBudgetPerformance.averageAdherence = totalBudgets > 0
+      ? Math.round((combinedBudgetPerformance.budgetsOnTrack / totalBudgets) * 10000) / 100
+      : 100;
+
+    // Combine goals progress
+    const combinedGoalsProgress = {
+      totalGoals: localAnalytics.goalsProgress.totalGoals + homeAnalytics.goalsProgress.totalGoals,
+      activeGoals: localAnalytics.goalsProgress.activeGoals + homeAnalytics.goalsProgress.activeGoals,
+      completedGoals: localAnalytics.goalsProgress.completedGoals + homeAnalytics.goalsProgress.completedGoals,
+      totalTargetAmount: Math.round((localAnalytics.goalsProgress.totalTargetAmount + homeAnalytics.goalsProgress.totalTargetAmount) * 100) / 100,
+      totalCurrentAmount: Math.round((localAnalytics.goalsProgress.totalCurrentAmount + homeAnalytics.goalsProgress.totalCurrentAmount) * 100) / 100,
+      overallProgress: 0, // Will calculate below
+      averageProgress: 0, // Will calculate below
+    };
+    
+    const totalTarget = combinedGoalsProgress.totalTargetAmount;
+    combinedGoalsProgress.overallProgress = totalTarget > 0
+      ? Math.round((combinedGoalsProgress.totalCurrentAmount / totalTarget) * 10000) / 100
+      : 0;
+    
+    // Calculate average progress (simplified - would need individual goal progress for accurate average)
+    const localProgress = localAnalytics.goalsProgress.totalGoals > 0 
+      ? localAnalytics.goalsProgress.overallProgress 
+      : 0;
+    const homeProgress = homeAnalytics.goalsProgress.totalGoals > 0
+      ? homeAnalytics.goalsProgress.overallProgress
+      : 0;
+    const totalGoals = combinedGoalsProgress.totalGoals;
+    combinedGoalsProgress.averageProgress = totalGoals > 0
+      ? Math.round(((localProgress * localAnalytics.goalsProgress.totalGoals + homeProgress * homeAnalytics.goalsProgress.totalGoals) / totalGoals) * 100) / 100
+      : 0;
+
+    // Combine loan summary
+    const combinedLoanSummary = {
+      totalLoans: localAnalytics.loanSummary.totalLoans + homeAnalytics.loanSummary.totalLoans,
+      activeLoans: localAnalytics.loanSummary.activeLoans + homeAnalytics.loanSummary.activeLoans,
+      completedLoans: localAnalytics.loanSummary.completedLoans + homeAnalytics.loanSummary.completedLoans,
+      totalPrincipal: Math.round((localAnalytics.loanSummary.totalPrincipal + homeAnalytics.loanSummary.totalPrincipal) * 100) / 100,
+      totalRemaining: Math.round((localAnalytics.loanSummary.totalRemaining + homeAnalytics.loanSummary.totalRemaining) * 100) / 100,
+      totalPaid: Math.round((localAnalytics.loanSummary.totalPaid + homeAnalytics.loanSummary.totalPaid) * 100) / 100,
+      totalInterestPaid: Math.round((localAnalytics.loanSummary.totalInterestPaid + homeAnalytics.loanSummary.totalInterestPaid) * 100) / 100,
+      progressPercentage: 0, // Will calculate below
+    };
+    
+    const totalPrincipal = combinedLoanSummary.totalPrincipal;
+    combinedLoanSummary.progressPercentage = totalPrincipal > 0
+      ? Math.round((combinedLoanSummary.totalPaid / totalPrincipal) * 10000) / 100
+      : 0;
+
+    // Calculate combined income vs expenses
+    const combinedIncomeVsExpenses = this.calculateIncomeVsExpenses(combinedMonthlyTrends);
+
+    // Create combined analytics object (using Omit to allow 'combined' context)
+    const combinedAnalytics = {
+      context: 'combined' as const,
+      spendingByCategory: combinedSpendingByCategory,
+      monthlyTrends: combinedMonthlyTrends,
+      balanceOverTime: combinedBalanceOverTime,
+      incomeVsExpenses: combinedIncomeVsExpenses,
+      budgetPerformance: combinedBudgetPerformance,
+      goalsProgress: combinedGoalsProgress,
+      loanSummary: combinedLoanSummary,
+    };
+
     return {
       context: 'combined',
       local: localAnalytics,
       home: homeAnalytics,
-      // Combined totals (would need currency conversion in production)
-      combined: {
-        totalIncome: localAnalytics.incomeVsExpenses.totalIncome + homeAnalytics.incomeVsExpenses.totalIncome,
-        totalExpenses: localAnalytics.incomeVsExpenses.totalExpenses + homeAnalytics.incomeVsExpenses.totalExpenses,
-        net: localAnalytics.incomeVsExpenses.net + homeAnalytics.incomeVsExpenses.net,
-      },
+      combined: combinedAnalytics,
     };
   }
 

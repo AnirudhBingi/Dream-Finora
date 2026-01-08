@@ -16,12 +16,21 @@ import { useAuth } from '../auth/authContext';
 import { getProfile, updateProfile, uploadAvatar, Profile } from '../api/profileApi';
 import { getApiBaseUrl } from '../api/getApiBaseUrl';
 import { pickImage } from '../utils/imagePicker';
+import { Header } from '../components/Header';
 
 interface EditProfileScreenProps {
   onBack: () => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
-export function EditProfileScreen({ onBack }: EditProfileScreenProps) {
+export function EditProfileScreen({ 
+  onBack,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
+}: EditProfileScreenProps) {
   const { token, user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -40,17 +49,25 @@ export function EditProfileScreen({ onBack }: EditProfileScreenProps) {
     try {
       setLoading(true);
       const profileData = await getProfile(token);
-      setProfile(profileData);
-      setDisplayName(profileData.displayName || '');
-      setBio(profileData.bio || '');
-      if (profileData.avatarUrl) {
-        const fullUrl = profileData.avatarUrl.startsWith('http')
-          ? profileData.avatarUrl
-          : `${getApiBaseUrl()}${profileData.avatarUrl}`;
-        setAvatarUri(fullUrl);
+      if (profileData) {
+        setProfile(profileData);
+        setDisplayName(profileData.displayName || '');
+        setBio(profileData.bio || '');
+        if (profileData.avatarUrl) {
+          const fullUrl = profileData.avatarUrl.startsWith('http')
+            ? profileData.avatarUrl
+            : `${getApiBaseUrl()}${profileData.avatarUrl}`;
+          setAvatarUri(fullUrl);
+        }
+      } else {
+        setProfile(null);
+        setDisplayName('');
+        setBio('');
+        setAvatarUri('');
       }
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to load profile');
+      setProfile(null);
     } finally {
       setLoading(false);
     }
@@ -118,18 +135,15 @@ export function EditProfileScreen({ onBack }: EditProfileScreenProps) {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title="Edit Profile"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <TouchableOpacity 
-            style={styles.backButton} 
-            onPress={onBack}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.backButtonText}>← Back</Text>
-          </TouchableOpacity>
-        </View>
-
         <View style={styles.content}>
           <TouchableOpacity style={styles.avatarContainer} onPress={handlePickImage}>
           {avatarUri ? (
@@ -205,26 +219,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 24,
-  },
-  header: {
-    paddingHorizontal: 16,
-    paddingTop: 0,
-    paddingBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    minWidth: 60,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#2563EB',
-    fontWeight: '600',
   },
   loadingContainer: {
     flex: 1,

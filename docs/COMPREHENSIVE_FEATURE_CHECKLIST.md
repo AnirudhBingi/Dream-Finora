@@ -21,9 +21,9 @@ This document ensures we haven't missed ANY features across Friends, Groups, Mes
 | Accept friend request | ✅ Required | ✅ Implemented | ✅ POST /friends/:id/accept | ✅ FriendsListScreen | - | - |
 | Reject friend request | ✅ Required | ✅ Implemented | ✅ POST /friends/:id/reject | ✅ FriendsListScreen | - | - |
 | Remove/unfriend | ✅ Required | ✅ Implemented | ✅ DELETE /friends/:id | ✅ FriendsListScreen | - | - |
-| Block user | ✅ Required | ✅ Implemented | ✅ POST /friends/block/:friendId | ⚠️ Partial | HIGH | API exists, UI missing |
-| **Unblock user** | ✅ Required | ❌ **MISSING** | ❌ Missing | ❌ Missing | **HIGH** | **CRITICAL GAP** |
-| **View blocked users list** | ✅ Required | ❌ **MISSING** | ❌ Missing | ❌ Missing | **HIGH** | **CRITICAL GAP** |
+| Block user | ✅ Required | ✅ Implemented | ✅ POST /friends/block/:friendId | ⚠️ Need verify UI | - | Backend implemented |
+| Unblock user | ✅ Required | ✅ Implemented | ✅ POST /friends/unblock/:friendId | ⚠️ Need verify UI | - | Backend implemented |
+| View blocked users list | ✅ Required | ✅ Implemented | ✅ GET /friends/blocked | ⚠️ Need verify UI | - | Backend implemented |
 | Friends list screen | ✅ Required | ✅ Implemented | ✅ GET /friends | ✅ FriendsListScreen | - | - |
 | Friend requests screen | ✅ Required | ✅ Implemented | ✅ GET /friends/requests | ✅ FriendsListScreen | - | Shows incoming/outgoing |
 | Friend search | ✅ Required | ✅ Implemented | ✅ GET /friends/search | ✅ FriendSearchScreen | - | Supports email/mobile/name |
@@ -79,7 +79,7 @@ This document ensures we haven't missed ANY features across Friends, Groups, Mes
 | Change member roles (promote/demote) | ✅ Required | ✅ Implemented | ✅ PUT /groups/:id/members/:memberId/role | ✅ GroupSettingsScreen | - | - |
 | Transfer ownership | ✅ Required | ✅ Implemented | ✅ POST /groups/:id/transfer-ownership | ✅ GroupSettingsScreen | - | Creator only |
 | Leave group | ✅ Required | ✅ Implemented | ✅ POST /groups/:id/leave | ✅ GroupSettingsScreen | - | Member option |
-| **Group invitations (non-friends)** | ✅ Required | ❌ **MISSING** | ❌ Missing | ❌ Missing | **HIGH** | **CRITICAL GAP** |
+| Group invitations (non-friends) | ✅ Required | ✅ Implemented | ✅ POST /groups/:id/invite, GET/POST /groups/invitations/:token | ✅ GroupInvitationScreen | - | Full invitation system implemented |
 
 ### 2.3 Group Features
 
@@ -175,7 +175,7 @@ This document ensures we haven't missed ANY features across Friends, Groups, Mes
 | Share listing | ✅ Required | ✅ Implemented | ✅ POST /listings/:id/share | ✅ SpaceVDetailScreen | - | - |
 | Comment on listing | ✅ Required | ✅ Implemented | ✅ POST /listings/:id/comments | ✅ SpaceVDetailScreen | - | - |
 | Get comments | ✅ Required | ✅ Implemented | ✅ GET /listings/:id/comments | ✅ SpaceVDetailScreen | - | - |
-| **Edit own comment** | ✅ Required | ❌ **MISSING** | ❌ Missing | ❌ Missing | **MEDIUM** | **CRITICAL GAP** |
+| **Edit own comment** | ✅ Required | ✅ Implemented | ✅ PUT /listings/:id/comments/:commentId | ⚠️ Need verify UI | - | ✅ **EXISTS** - Backend implemented |
 | Delete own comment | ✅ Required | ✅ Implemented | ✅ DELETE /listings/:id/comments/:commentId | ✅ SpaceVDetailScreen | - | - |
 
 ### 4.3 Listing Features
@@ -208,12 +208,12 @@ This document ensures we haven't missed ANY features across Friends, Groups, Mes
 
 | Feature | Category | Effort | Notes |
 |---------|----------|--------|-------|
-| **Unblock user** | Friends | Low | Need endpoint + UI |
-| **View blocked users list** | Friends | Low-Medium | Need endpoint + screen |
-| **Block user UI** | Friends | Low | API exists, UI missing |
-| **Add group members by email/mobile** | Groups | Medium | Currently only by userId |
-| **Group invitations** | Groups | Medium | Invite non-friends |
-| **Edit listing comments** | SpaceV | Low-Medium | Edit own comments |
+| ~~Unblock user~~ | Friends | ✅ Implemented | Backend endpoint exists (POST /friends/unblock/:friendId), UI needs verification |
+| ~~View blocked users list~~ | Friends | ✅ Implemented | Backend endpoint exists (GET /friends/blocked), UI needs verification |
+| Block user UI | Friends | Low | Backend implemented, UI needs verification |
+| ~~Add group members by email/mobile~~ | Groups | ✅ Implemented | Via invitation system (POST /groups/:id/invite) |
+| ~~Group invitations~~ | Groups | ✅ Implemented | Full invitation system with email/mobile support |
+| ~~Edit listing comments~~ | SpaceV | ✅ Implemented | Edit own comments - Backend endpoint exists |
 
 ### 5.2 MEDIUM PRIORITY - Important Gaps
 
@@ -306,7 +306,7 @@ This document ensures we haven't missed ANY features across Friends, Groups, Mes
 ## 8. NOTES
 
 1. **Group avatar**: Schema needs `avatarUrl` field added to Group model
-2. **Edit comments**: Backend endpoint needed, UI exists for delete
+2. ✅ **Edit comments**: Backend endpoint EXISTS (PUT /listings/:id/comments/:commentId), UI integration may need verification
 3. **Block user**: API exists but no UI to trigger it
 4. **Unblock**: No API or UI exists
 5. **Group chats**: Marked as "future" in SOP, not current priority

@@ -10,6 +10,9 @@ export enum NotificationType {
   EXPENSE_SPLIT_PAID = 'expense_split_paid',
   CHORE_ASSIGNED = 'chore_assigned',
   CHORE_COMPLETED = 'chore_completed',
+  CHORE_CREATED = 'chore_created',
+  CHORE_UPDATED = 'chore_updated',
+  CHORE_DELETED = 'chore_deleted',
   GROUP_MEMBER_ADDED = 'group_member_added',
   GROUP_MEMBER_REMOVED = 'group_member_removed',
   FRIEND_REQUEST = 'friend_request',
@@ -66,6 +69,9 @@ export class NotificationService {
         [NotificationType.EXPENSE_SPLIT_PAID]: 'expenseReminders',
         [NotificationType.CHORE_ASSIGNED]: 'choreReminders',
         [NotificationType.CHORE_COMPLETED]: 'choreReminders',
+        [NotificationType.CHORE_CREATED]: 'choreReminders',
+        [NotificationType.CHORE_UPDATED]: 'choreReminders',
+        [NotificationType.CHORE_DELETED]: 'choreReminders',
         [NotificationType.MESSAGE_RECEIVED]: 'messageNotifications',
         [NotificationType.LISTING_INTEREST]: 'listingNotifications',
       };
@@ -266,6 +272,54 @@ export class NotificationService {
     });
   }
 
+  async notifyChoreCreated(
+    userId: string,
+    choreId: string,
+    choreTitle: string,
+    createdByName: string,
+    groupName?: string,
+  ) {
+    const message = groupName
+      ? `${createdByName} created a new chore in ${groupName}: ${choreTitle}`
+      : `${createdByName} created a new chore: ${choreTitle}`;
+    return this.createNotification({
+      userId,
+      type: NotificationType.CHORE_CREATED,
+      title: 'New Chore Created',
+      message,
+      data: { choreId, groupName },
+    });
+  }
+
+  async notifyChoreUpdated(
+    userId: string,
+    choreId: string,
+    choreTitle: string,
+    updatedByName: string,
+  ) {
+    return this.createNotification({
+      userId,
+      type: NotificationType.CHORE_UPDATED,
+      title: 'Chore Updated',
+      message: `${updatedByName} updated chore: ${choreTitle}`,
+      data: { choreId },
+    });
+  }
+
+  async notifyChoreDeleted(
+    userId: string,
+    choreTitle: string,
+    deletedByName: string,
+  ) {
+    return this.createNotification({
+      userId,
+      type: NotificationType.CHORE_DELETED,
+      title: 'Chore Deleted',
+      message: `${deletedByName} deleted chore: ${choreTitle}`,
+      data: {},
+    });
+  }
+
   // Group notifications
   async notifyGroupMemberAdded(
     userId: string,
@@ -333,13 +387,25 @@ export class NotificationService {
     messageId: string,
     senderName: string,
     messagePreview: string,
+    groupName?: string,
+    groupId?: string,
   ) {
+    // For group chats, show group name in title; for direct chats, show sender name
+    const title = groupName 
+      ? `${senderName} in ${groupName}`
+      : `Message from ${senderName}`;
+    
     return this.createNotification({
       userId,
       type: NotificationType.MESSAGE_RECEIVED,
-      title: `Message from ${senderName}`,
+      title,
       message: messagePreview.length > 50 ? `${messagePreview.substring(0, 50)}...` : messagePreview,
-      data: { chatId, messageId },
+      data: { 
+        chatId, 
+        messageId,
+        ...(groupId && { groupId }),
+        ...(groupName && { groupName }),
+      },
     });
   }
 

@@ -13,10 +13,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
 import { getUserProfile, UserProfile } from '../api/profileApi';
-import { getApiBaseUrl } from '../api/getApiBaseUrl';
+import { getAvatarUrl } from '../utils/avatar';
 import { sendFriendRequest, acceptFriendRequest, rejectFriendRequest, removeFriend, blockUser } from '../api/friendApi';
 import { SkeletonDetailScreen } from '../components/SkeletonLoader';
 import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
+import { Header } from '../components/Header';
 
 interface UserProfileScreenProps {
   userId: string;
@@ -24,6 +25,9 @@ interface UserProfileScreenProps {
   onNavigateToMessage?: (userId: string) => void;
   onNavigateToMutualFriends?: (userId: string) => void;
   onNavigateToListings?: (userId: string) => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export function UserProfileScreen({
@@ -32,6 +36,9 @@ export function UserProfileScreen({
   onNavigateToMessage,
   onNavigateToMutualFriends,
   onNavigateToListings,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: UserProfileScreenProps) {
   const { token, user: currentUser } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -56,14 +63,6 @@ export function UserProfileScreen({
     } finally {
       setLoading(false);
     }
-  }
-
-  function getAvatarUrl(avatarUrl: string | null): string | null {
-    if (!avatarUrl) return null;
-    if (avatarUrl.startsWith('http')) return avatarUrl;
-    const baseUrl = getApiBaseUrl();
-    const cleanPath = avatarUrl.startsWith('/') ? avatarUrl : `/${avatarUrl}`;
-    return `${baseUrl}${cleanPath}`;
   }
 
   function getTrustScoreColor(score: number): string {
@@ -161,25 +160,46 @@ export function UserProfileScreen({
 
   if (loading) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <Header
+          title="Profile"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <SkeletonDetailScreen />
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <Header
+          title="Profile"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <ErrorState message={error} onRetry={loadProfile} />
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (!profile) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <Header
+          title="Profile"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <ErrorState message="Profile not found" onRetry={loadProfile} />
-      </View>
+      </SafeAreaView>
     );
   }
 
@@ -191,13 +211,15 @@ export function UserProfileScreen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title={profile.displayName || 'Profile'}
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-          </View>
 
           <View style={styles.avatarContainer}>
             {avatarUrl ? (
@@ -467,24 +489,6 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 24,
     alignItems: 'center',
-  },
-  header: {
-    width: '100%',
-    marginBottom: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    minWidth: 60,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#2563EB',
-    fontWeight: '500',
   },
   avatarContainer: {
     marginBottom: 16,

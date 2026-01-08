@@ -12,13 +12,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
 import { getActivityFeed, ActivityItem } from '../api/activityApi';
+import { Header } from '../components/Header';
 
 interface ActivityScreenProps {
   onBack: () => void;
   onViewExpense?: (expenseId: string) => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
-export function ActivityScreen({ onBack, onViewExpense }: ActivityScreenProps) {
+export function ActivityScreen({ 
+  onBack, 
+  onViewExpense,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
+}: ActivityScreenProps) {
   const { token } = useAuth();
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,7 +80,7 @@ export function ActivityScreen({ onBack, onViewExpense }: ActivityScreenProps) {
   }
 
   function getActivityIcon(type: string, action: string): keyof typeof MaterialIcons.glyphMap {
-    if (type === 'expense') {
+    if (type === 'expense_created' || type === 'expense') {
       switch (action) {
         case 'created':
           return 'add-circle';
@@ -82,8 +92,8 @@ export function ActivityScreen({ onBack, onViewExpense }: ActivityScreenProps) {
           return 'receipt';
       }
     }
-    if (type === 'settlement') {
-      return 'check-circle';
+    if (type === 'settlement_created' || type === 'settlement') {
+      return 'account-balance-wallet';
     }
     if (type === 'chore') {
       return 'check-circle';
@@ -111,9 +121,13 @@ export function ActivityScreen({ onBack, onViewExpense }: ActivityScreenProps) {
   }
 
   function handleActivityPress(activity: ActivityItem) {
-    // Only navigate if expense still exists (not deleted)
-    if (activity.type === 'expense' && activity.metadata?.expenseId && activity.metadata?.isTappable !== false && onViewExpense) {
-      onViewExpense(activity.metadata.expenseId);
+    // Navigate to expense if available
+    if (activity.type === 'expense_created' && activity.data?.expenseId && onViewExpense) {
+      onViewExpense(activity.data.expenseId);
+    }
+    // Navigate to expense for settlements (if linked to an expense)
+    if (activity.type === 'settlement_created' && activity.data?.expenseId && onViewExpense) {
+      onViewExpense(activity.data.expenseId);
     }
     // TODO: Add navigation for other activity types
   }
@@ -121,13 +135,13 @@ export function ActivityScreen({ onBack, onViewExpense }: ActivityScreenProps) {
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Activity</Text>
-          <View style={styles.placeholder} />
-        </View>
+        <Header
+          title="Activity"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2563EB" />
           <Text style={styles.loadingText}>Loading activities...</Text>
@@ -139,13 +153,13 @@ export function ActivityScreen({ onBack, onViewExpense }: ActivityScreenProps) {
   if (error) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Activity</Text>
-          <View style={styles.placeholder} />
-        </View>
+        <Header
+          title="Activity"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <View style={styles.errorContainer}>
           <MaterialIcons name="error-outline" size={48} color="#EF4444" />
           <Text style={styles.errorText}>{error}</Text>
@@ -159,13 +173,13 @@ export function ActivityScreen({ onBack, onViewExpense }: ActivityScreenProps) {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-          <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Activity</Text>
-        <View style={styles.placeholder} />
-      </View>
+      <Header
+        title="Activity"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
 
       <ScrollView
         style={styles.container}
@@ -184,9 +198,10 @@ export function ActivityScreen({ onBack, onViewExpense }: ActivityScreenProps) {
           <View style={styles.timeline}>
             {activities.map((activity, index) => {
               const isLast = index === activities.length - 1;
-              const iconName = getActivityIcon(activity.type, activity.action);
-              const iconColor = getActivityColor(activity.type, activity.action);
-              const isTappable = activity.type === 'expense' && activity.metadata?.expenseId && activity.metadata?.isTappable;
+              const iconName = getActivityIcon(activity.type, '');
+              const iconColor = getActivityColor(activity.type, '');
+              const isTappable = (activity.type === 'expense_created' || activity.type === 'settlement_created') && 
+                                 activity.data?.expenseId;
 
               return (
                 <TouchableOpacity
@@ -205,16 +220,25 @@ export function ActivityScreen({ onBack, onViewExpense }: ActivityScreenProps) {
                   <View style={styles.timelineContent}>
                     <View style={styles.activityCard}>
                       <View style={styles.activityHeader}>
-                        <Text style={styles.activityTitle}>{activity.title}</Text>
-                        <Text style={styles.activityTime}>{formatDate(activity.createdAt)}</Text>
+                        <Text style={styles.activityTitle}>
+                          {activity.type === 'settlement_created' ? 'Settlement' : 
+                           activity.type === 'expense_created' ? 'Expense' : 
+                           activity.type}
+                        </Text>
+                        <Text style={styles.activityTime}>{formatDate(activity.timestamp)}</Text>
                       </View>
                       <Text style={styles.activityDescription}>{activity.description}</Text>
-                      {activity.metadata?.amount && (
+                      {activity.user && (
+                        <Text style={styles.activityUser}>
+                          {activity.user.profile?.displayName || activity.user.email || 'Unknown'}
+                        </Text>
+                      )}
+                      {activity.data?.amount && (
                         <Text style={styles.activityAmount}>
                           {new Intl.NumberFormat('en-US', {
                             style: 'currency',
-                            currency: activity.metadata.currency || 'USD',
-                          }).format(activity.metadata.amount)}
+                            currency: activity.data.currency || 'USD',
+                          }).format(activity.data.amount)}
                         </Text>
                       )}
                       {isTappable && (
@@ -238,31 +262,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#F9FAFB',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  backButton: {
-    padding: 8,
-    minWidth: 40,
-    minHeight: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  placeholder: {
-    width: 40,
   },
   container: {
     flex: 1,
@@ -369,6 +368,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
+  },
+  activityUser: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 4,
   },
   activityTitle: {
     fontSize: 16,

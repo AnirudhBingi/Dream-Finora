@@ -3,7 +3,6 @@ import { NativeModules } from 'react-native';
 
 function tryGetHostFromScriptURL(): string | null {
   const scriptURL: unknown = NativeModules?.SourceCode?.scriptURL;
-  console.log('[API] Script URL:', scriptURL);
   
   if (typeof scriptURL !== 'string') return null;
 
@@ -17,7 +16,6 @@ function tryGetHostFromScriptURL(): string | null {
   if (!hostPort) return null;
 
   const host = hostPort.split(':')[0];
-  console.log('[API] Extracted host from script URL:', host);
   return host || null;
 }
 
@@ -25,14 +23,12 @@ function tryGetHostFromExpoConstants(): string | null {
   try {
     // Try expo-constants first (recommended way)
     const manifest = Constants.expoConfig || Constants.manifest;
-    console.log('[API] Expo Constants manifest:', manifest);
     
     if (manifest) {
       // Check expoGo.debuggerHost (for Expo Go)
       const debuggerHost = (manifest as any)?.expoGo?.debuggerHost;
       if (typeof debuggerHost === 'string') {
         const host = debuggerHost.split(':')[0];
-        console.log('[API] Extracted host from expoGo.debuggerHost:', host);
         return host;
       }
       
@@ -40,14 +36,12 @@ function tryGetHostFromExpoConstants(): string | null {
       const hostUri = (manifest as any)?.hostUri;
       if (typeof hostUri === 'string') {
         const host = hostUri.split(':')[0];
-        console.log('[API] Extracted host from hostUri:', host);
         return host;
       }
     }
     
     // Fallback to NativeModules (for older Expo versions)
     const manifestRaw: unknown = (NativeModules as any)?.ExponentConstants?.manifest;
-    console.log('[API] NativeModules manifest raw:', manifestRaw);
     
     const parsedManifest =
       typeof manifestRaw === 'string'
@@ -61,27 +55,41 @@ function tryGetHostFromExpoConstants(): string | null {
         : manifestRaw;
 
     const debuggerHost: unknown = parsedManifest?.expoGo?.debuggerHost || parsedManifest?.debuggerHost;
-    console.log('[API] NativeModules debugger host:', debuggerHost);
     
     if (typeof debuggerHost === 'string') {
       const host = debuggerHost.split(':')[0];
-      console.log('[API] Extracted host from NativeModules manifest:', host);
       return host;
     }
   } catch (error) {
-    console.error('[API] Error getting host from Expo Constants:', error);
+    // Silently fail - only log in development if needed
+    if (__DEV__) {
+      console.error('[API] Error getting host from Expo Constants:', error);
+    }
   }
   
   return null;
 }
 
+// Cache the API base URL to avoid recalculating on every call
+let cachedApiBaseUrl: string | null = null;
+
 export function getApiBaseUrl(): string {
+  // Return cached value if available
+  if (cachedApiBaseUrl) {
+    return cachedApiBaseUrl;
+  }
+  
   const host = tryGetHostFromScriptURL() ?? tryGetHostFromExpoConstants();
   const url = host ? `http://${host}:3001` : 'http://localhost:3001';
   
-  // Log for debugging
-  console.log('[API] Detected host:', host || 'localhost (fallback)');
-  console.log('[API] Base URL:', url);
+  // Cache the result
+  cachedApiBaseUrl = url;
+  
+  // Only log once on first call (for debugging)
+  if (__DEV__) {
+    console.log('[API] Detected host:', host || 'localhost (fallback)');
+    console.log('[API] Base URL:', url);
+  }
   
   return url;
 }

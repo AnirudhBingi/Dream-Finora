@@ -23,6 +23,7 @@ import {
 import { setBadgeCount } from '../services/pushNotifications';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
+import { Header } from '../components/Header';
 
 interface NotificationsScreenProps {
   onBack: () => void;
@@ -32,7 +33,10 @@ interface NotificationsScreenProps {
   onViewRide?: (rideId: string) => void;
   onViewGroup?: (groupId: string) => void;
   onViewFriend?: (friendId: string) => void;
-  onViewMessage?: (chatId: string) => void;
+  onViewMessage?: (chatId: string, groupId?: string, groupName?: string) => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export function NotificationsScreen({
@@ -44,6 +48,9 @@ export function NotificationsScreen({
   onViewGroup,
   onViewFriend,
   onViewMessage,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: NotificationsScreenProps) {
   const { token } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -181,7 +188,11 @@ export function NotificationsScreen({
     } else if (notification.data?.groupId && onViewGroup) {
       onViewGroup(notification.data.groupId);
     } else if (notification.data?.chatId && onViewMessage) {
-      onViewMessage(notification.data.chatId);
+      onViewMessage(
+        notification.data.chatId,
+        notification.data.groupId,
+        notification.data.groupName,
+      );
     } else if (notification.type === 'friend_request' && notification.data?.friendId) {
       // For friend requests, clicking the card goes to friends list (requests tab)
       // The "View Profile" button will handle profile navigation separately
@@ -228,6 +239,9 @@ export function NotificationsScreen({
         return 'check-circle';
       case 'chore_assigned':
       case 'chore_completed':
+      case 'chore_created':
+      case 'chore_updated':
+      case 'chore_deleted':
         return 'task';
       case 'group_member_added':
       case 'group_member_removed':
@@ -264,7 +278,12 @@ export function NotificationsScreen({
       case 'expense_deleted':
         return '#EF4444'; // Red
       case 'chore_assigned':
+      case 'chore_created':
         return '#F59E0B'; // Amber
+      case 'chore_updated':
+        return '#3B82F6'; // Blue
+      case 'chore_deleted':
+        return '#EF4444'; // Red
       case 'friend_request':
       case 'friend_accepted':
         return '#8B5CF6'; // Purple
@@ -332,9 +351,45 @@ export function NotificationsScreen({
     { key: 'listing_commented', label: 'Listings' },
   ];
 
+  // Prepare right actions for header (unreadCount is already calculated above)
+  const rightActions = (
+    <>
+      {unreadCount > 0 && (
+        <TouchableOpacity
+          style={styles.headerActionButton}
+          onPress={handleMarkAllAsRead}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Mark all as read"
+        >
+          <MaterialIcons name="done-all" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      )}
+      {(notifications || []).length > 0 && (
+        <TouchableOpacity
+          style={styles.headerActionButton}
+          onPress={handleClearAll}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Clear all notifications"
+        >
+          <MaterialIcons name="delete-outline" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      )}
+    </>
+  );
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <Header
+          title="Notifications"
+          onBack={onBack}
+          rightActions={rightActions}
+          showNotifications={false}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2563EB" />
           <Text style={styles.loadingText}>Loading notifications...</Text>
@@ -345,36 +400,14 @@ export function NotificationsScreen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={onBack}
-          activeOpacity={0.7}
-        >
-          <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Notifications</Text>
-        <View style={styles.headerRight}>
-          {unreadCount > 0 && (
-            <TouchableOpacity
-              style={styles.markAllButton}
-              onPress={handleMarkAllAsRead}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.markAllButtonText}>Mark all read</Text>
-            </TouchableOpacity>
-          )}
-          {(notifications || []).length > 0 && (
-            <TouchableOpacity
-              style={styles.clearAllButton}
-              onPress={handleClearAll}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons name="delete-outline" size={20} color="#EF4444" />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
+      <Header
+        title="Notifications"
+        onBack={onBack}
+        rightActions={rightActions}
+        showNotifications={false}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToSettings={onNavigateToSettings}
+      />
 
       {/* Filter Chips */}
       {notifications.length > 0 && (
@@ -526,50 +559,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#6B7280',
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-    backgroundColor: '#FFFFFF',
-  },
-  backButton: {
+  headerActionButton: {
     padding: 8,
-    minWidth: 40,
-    minHeight: 40,
+    minWidth: 44,
+    minHeight: 44,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#111827',
-    flex: 1,
-    marginLeft: 8,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  markAllButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  markAllButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#2563EB',
-  },
-  clearAllButton: {
-    padding: 8,
-    minWidth: 40,
-    minHeight: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
   container: {
     flex: 1,

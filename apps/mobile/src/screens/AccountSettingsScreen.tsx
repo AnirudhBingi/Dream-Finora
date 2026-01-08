@@ -22,12 +22,21 @@ import {
   UpdateEmailDto,
   DeleteAccountDto,
 } from '../api/accountApi';
+import { Header } from '../components/Header';
 
 interface AccountSettingsScreenProps {
   onBack: () => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
-export function AccountSettingsScreen({ onBack }: AccountSettingsScreenProps) {
+export function AccountSettingsScreen({ 
+  onBack,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
+}: AccountSettingsScreenProps) {
   const { token, logout } = useAuth();
   const [loading, setLoading] = useState(true);
   const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
@@ -187,22 +196,18 @@ export function AccountSettingsScreen({ onBack }: AccountSettingsScreenProps) {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title="Account Settings"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.title}>Account Settings</Text>
-            <View style={styles.placeholder} />
-          </View>
 
           {/* Account Information */}
           <View style={styles.section}>
@@ -439,31 +444,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-    marginTop: 8,
-  },
-  backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    minHeight: 44,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#2563EB',
-    fontWeight: '500',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  placeholder: {
-    width: 60,
   },
   loadingContainer: {
     flex: 1,

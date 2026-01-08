@@ -39,6 +39,9 @@ export class GroupService {
         id: randomUUID(),
         name: createGroupDto.name,
         description: createGroupDto.description,
+        icon: createGroupDto.icon || 'group',
+        avatarUrl: createGroupDto.avatarUrl || null,
+        allowMemberEditing: createGroupDto.allowMemberEditing ?? false,
         createdBy: userId,
         GroupMember: {
           create: allMemberIds.map((memberId) => ({
@@ -80,7 +83,38 @@ export class GroupService {
       },
     });
 
-    return group;
+    // Transform Prisma structure to match frontend expectations
+    const { GroupMember, User, ...groupBase } = group;
+    return {
+      ...groupBase,
+      members: GroupMember.map((member) => ({
+        id: member.id,
+        groupId: member.groupId,
+        userId: member.userId,
+        role: member.role,
+        createdAt: member.createdAt.toISOString(),
+        user: {
+          id: member.User.id,
+          email: member.User.email,
+          profile: member.User.UserProfile
+            ? {
+                displayName: member.User.UserProfile.displayName,
+                avatarUrl: member.User.UserProfile.avatarUrl,
+              }
+            : null,
+        },
+      })),
+      createdByUser: {
+        id: User.id,
+        email: User.email,
+        profile: User.UserProfile
+          ? {
+              displayName: User.UserProfile.displayName,
+              avatarUrl: User.UserProfile.avatarUrl,
+            }
+          : null,
+      },
+    } as any;
   }
 
   async getGroups(userId: string, limit: number = 50, offset: number = 0) {
@@ -126,6 +160,7 @@ export class GroupService {
         _count: {
           select: {
             Expense: true,
+            Chore: true,
           },
         },
       },
@@ -146,8 +181,115 @@ export class GroupService {
       }),
     ]);
 
+    // Get ride counts for each group (via expenses)
+    const groupIds = groups.map(g => g.id);
+    
+    // First, get all expenses for these groups
+    const expenses = await this.prisma.expense.findMany({
+      where: {
+        groupId: { in: groupIds },
+      },
+      select: {
+        id: true,
+        groupId: true,
+      },
+    });
+    
+    const expenseIds = expenses.map(e => e.id);
+    const expenseToGroupMap = new Map<string, string>();
+    expenses.forEach(e => {
+      if (e.groupId) {
+        expenseToGroupMap.set(e.id, e.groupId);
+      }
+    });
+    
+    // Then get rides linked to these expenses
+    const rides = await this.prisma.ride.findMany({
+      where: {
+        expenseId: { in: expenseIds },
+      },
+      select: {
+        expenseId: true,
+      },
+    });
+
+    // Create a map of groupId -> ride count
+    const groupRideCountMap = new Map<string, number>();
+    rides.forEach(ride => {
+      if (ride.expenseId) {
+        const groupId = expenseToGroupMap.get(ride.expenseId);
+        if (groupId) {
+          const currentCount = groupRideCountMap.get(groupId) || 0;
+          groupRideCountMap.set(groupId, currentCount + 1);
+        }
+      }
+    });
+
+    // Get message counts for each group (via chats)
+    const groupChats = await this.prisma.chat.findMany({
+      where: {
+        groupId: { in: groupIds },
+      },
+      select: {
+        groupId: true,
+        _count: {
+          select: {
+            Message: true,
+          },
+        },
+      },
+    });
+
+    // Create a map of groupId -> message count
+    const groupMessageCountMap = new Map<string, number>();
+    groupChats.forEach(chat => {
+      if (chat.groupId) {
+        groupMessageCountMap.set(chat.groupId, chat._count.Message);
+      }
+    });
+
+    // Transform Prisma structure to match frontend expectations
+    const transformedGroups = groups.map((group) => {
+      const { GroupMember, User, ...groupBase } = group;
+      return {
+        ...groupBase,
+        members: GroupMember.map((member) => ({
+          id: member.id,
+          groupId: member.groupId,
+          userId: member.userId,
+          role: member.role,
+          createdAt: member.createdAt.toISOString(),
+          user: {
+            id: member.User.id,
+            email: member.User.email,
+            profile: member.User.UserProfile
+              ? {
+                  displayName: member.User.UserProfile.displayName,
+                  avatarUrl: member.User.UserProfile.avatarUrl,
+                }
+              : null,
+          },
+        })),
+        createdByUser: {
+          id: User.id,
+          email: User.email,
+          profile: User.UserProfile
+            ? {
+                displayName: User.UserProfile.displayName,
+                avatarUrl: User.UserProfile.avatarUrl,
+              }
+            : null,
+        },
+        _count: {
+          ...groupBase._count,
+          rides: groupRideCountMap.get(group.id) || 0,
+          messages: groupMessageCountMap.get(group.id) || 0,
+        },
+      };
+    });
+
     return {
-      groups,
+      groups: transformedGroups,
       total,
       limit,
       offset,
@@ -236,7 +378,67 @@ export class GroupService {
       throw new NotFoundException('Group not found');
     }
 
-    return group;
+    // Transform Prisma structure to match frontend expectations
+    const { GroupMember, User, Expense, ...groupBase } = group;
+    
+    return {
+      ...groupBase,
+      members: GroupMember.map((member) => ({
+        id: member.id,
+        groupId: member.groupId,
+        userId: member.userId,
+        role: member.role,
+        createdAt: member.createdAt.toISOString(),
+        user: {
+          id: member.User.id,
+          email: member.User.email,
+          profile: member.User.UserProfile
+            ? {
+                displayName: member.User.UserProfile.displayName,
+                avatarUrl: member.User.UserProfile.avatarUrl,
+              }
+            : null,
+        },
+      })),
+      createdByUser: {
+        id: User.id,
+        email: User.email,
+        profile: User.UserProfile
+          ? {
+              displayName: User.UserProfile.displayName,
+              avatarUrl: User.UserProfile.avatarUrl,
+            }
+          : null,
+      },
+      expenses: (Expense || []).map((expense) => ({
+        id: expense.id,
+        description: expense.description,
+        amount: expense.amount,
+        currency: expense.currency,
+        date: expense.date instanceof Date ? expense.date.toISOString() : new Date(expense.date).toISOString(),
+        createdAt: expense.createdAt instanceof Date ? expense.createdAt.toISOString() : new Date(expense.createdAt).toISOString(),
+        category: expense.category,
+        receiptUrl: expense.receiptUrl,
+        paidBy: expense.paidBy,
+        splits: expense.ExpenseSplit.map((split) => ({
+          id: split.id,
+          userId: split.userId,
+          amount: split.amount,
+          isPaid: split.isPaid,
+          paidAt: split.paidAt ? (split.paidAt instanceof Date ? split.paidAt.toISOString() : new Date(split.paidAt).toISOString()) : null,
+          user: {
+            id: split.User.id,
+            email: split.User.email,
+            profile: split.User.UserProfile
+              ? {
+                  displayName: split.User.UserProfile.displayName,
+                  avatarUrl: split.User.UserProfile.avatarUrl,
+                }
+              : null,
+          },
+        })),
+      })),
+    } as any;
   }
 
   async addMember(userId: string, groupId: string, memberId: string) {
@@ -1012,7 +1214,7 @@ export class GroupService {
     };
   }
 
-  async updateGroup(userId: string, groupId: string, updateData: { name?: string; description?: string }) {
+  async updateGroup(userId: string, groupId: string, updateData: { name?: string; description?: string; avatarUrl?: string }) {
     // Verify user is admin of group
     const group = await this.prisma.group.findFirst({
       where: {
@@ -1032,7 +1234,10 @@ export class GroupService {
 
     const updated = await this.prisma.group.update({
       where: { id: groupId },
-      data: updateData,
+      data: {
+        ...updateData,
+        ...(updateData.avatarUrl !== undefined && { avatarUrl: updateData.avatarUrl }),
+      },
       include: {
         GroupMember: {
           include: {
@@ -1092,6 +1297,93 @@ export class GroupService {
     });
 
     return { success: true };
+  }
+
+  async updateGroupAvatar(userId: string, groupId: string, avatarUrl: string) {
+    // Verify user is admin of group
+    const group = await this.prisma.group.findFirst({
+      where: {
+        id: groupId,
+        GroupMember: {
+          some: {
+            userId,
+            role: 'ADMIN',
+          },
+        },
+      },
+    });
+
+    if (!group) {
+      throw new NotFoundException('Group not found or you do not have permission to edit it');
+    }
+
+    const updated = await this.prisma.group.update({
+      where: { id: groupId },
+      data: { avatarUrl },
+      include: {
+        GroupMember: {
+          include: {
+            User: {
+              select: {
+                id: true,
+                email: true,
+                UserProfile: {
+                  select: {
+                    displayName: true,
+                    avatarUrl: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        User: {
+          select: {
+            id: true,
+            email: true,
+            UserProfile: {
+              select: {
+                displayName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Transform Prisma structure to match frontend expectations
+    const { GroupMember, User, ...groupBase } = updated;
+    return {
+      ...groupBase,
+      members: GroupMember.map((member) => ({
+        id: member.id,
+        groupId: member.groupId,
+        userId: member.userId,
+        role: member.role,
+        createdAt: member.createdAt.toISOString(),
+        user: {
+          id: member.User.id,
+          email: member.User.email,
+          profile: member.User.UserProfile
+            ? {
+                displayName: member.User.UserProfile.displayName,
+                avatarUrl: member.User.UserProfile.avatarUrl,
+              }
+            : null,
+        },
+      })),
+      createdByUser: {
+        id: User.id,
+        email: User.email,
+        profile: User.UserProfile
+          ? {
+              displayName: User.UserProfile.displayName,
+              avatarUrl: User.UserProfile.avatarUrl,
+            }
+          : null,
+      },
+    } as any;
   }
 
   async changeMemberRole(userId: string, groupId: string, memberId: string, role: 'ADMIN' | 'MEMBER') {

@@ -166,13 +166,27 @@ export class TrustScoreService {
    * - Achievements bonus (10%): Percentage of achievements unlocked
    */
   private async calculateChoreScore(userId: string) {
-    // Get all chores assigned to user
+    // Get all chores assigned to user (via ChoreAssignment or old assignedTo field)
     const assignedChores = await this.prisma.chore.findMany({
       where: {
-        assignedTo: userId,
+        OR: [
+          { assignedTo: userId }, // Legacy single assignment
+          {
+            ChoreAssignment: {
+              some: {
+                userId,
+              },
+            },
+          },
+        ],
       },
       include: {
         ChoreCompletion: {
+          where: {
+            userId,
+          },
+        },
+        ChoreAssignment: {
           where: {
             userId,
           },

@@ -15,12 +15,16 @@ import { getLoanById, Loan, deleteLoan, updateLoan } from '../api/financeApi';
 import { getProfile } from '../api/profileApi';
 import { SkeletonDetailScreen } from '../components/SkeletonLoader';
 import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
+import { Header } from '../components/Header';
 
 interface LoanDetailScreenProps {
   loanId: string;
   onBack: () => void;
   onRecordPayment: () => void;
   onLoanUpdated: () => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export function LoanDetailScreen({
@@ -28,6 +32,9 @@ export function LoanDetailScreen({
   onBack,
   onRecordPayment,
   onLoanUpdated,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: LoanDetailScreenProps) {
   const { token } = useAuth();
   const [loan, setLoan] = useState<Loan | null>(null);
@@ -206,19 +213,15 @@ export function LoanDetailScreen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title="Loan Details"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.title}>Loan Detail</Text>
-            <View style={styles.placeholder} />
-          </View>
 
           {error && (
             <View style={styles.errorContainer}>
@@ -388,30 +391,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    minHeight: 44,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#2563EB',
-    fontWeight: '500',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  placeholder: {
-    width: 60,
   },
   loadingContainer: {
     flex: 1,

@@ -22,12 +22,16 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { SkeletonBudgetList } from '../components/SkeletonLoader';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
+import { Header } from '../components/Header';
 
 interface BudgetScreenProps {
   context: 'local' | 'home';
   onCreateBudget: () => void;
   onEditBudget: (budgetId: string) => void;
   onBack: () => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export function BudgetScreen({
@@ -35,6 +39,9 @@ export function BudgetScreen({
   onCreateBudget,
   onEditBudget,
   onBack,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: BudgetScreenProps) {
   const { token } = useAuth();
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -53,8 +60,13 @@ export function BudgetScreen({
     if (!token) return;
     try {
       const profile = await getProfile(token);
-      setPrimaryCurrency(profile.primaryCurrency || 'USD');
-      setHomeCountryCurrency(profile.homeCountryCurrency || 'USD');
+      if (profile) {
+        setPrimaryCurrency(profile.primaryCurrency || 'USD');
+        setHomeCountryCurrency(profile.homeCountryCurrency || 'USD');
+      } else {
+        setPrimaryCurrency('USD');
+        setHomeCountryCurrency('USD');
+      }
     } catch (err) {
       setPrimaryCurrency('USD');
       setHomeCountryCurrency('USD');
@@ -145,6 +157,13 @@ export function BudgetScreen({
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <Header
+          title={context === 'local' ? 'Local Budgets' : 'Home Country Budgets'}
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2563EB" />
           <Text style={styles.loadingText}>Loading budgets...</Text>
@@ -155,6 +174,13 @@ export function BudgetScreen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title={context === 'local' ? 'Local Budgets' : 'Home Country Budgets'}
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
@@ -163,19 +189,6 @@ export function BudgetScreen({
         }
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>
-              {context === 'local' ? 'Local' : 'Home Country'} Budgets
-            </Text>
-            <View style={styles.placeholder} />
-          </View>
 
           {error && (
             <View style={styles.errorContainer}>
@@ -304,30 +317,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    minHeight: 44,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#2563EB',
-    fontWeight: '500',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  placeholder: {
-    width: 60,
   },
   loadingContainer: {
     flex: 1,

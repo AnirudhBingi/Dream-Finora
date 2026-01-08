@@ -32,6 +32,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { TextInput } from 'react-native';
 import { SkeletonDetailScreen } from '../components/SkeletonLoader';
 import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
+import { Header } from '../components/Header';
 
 interface SpaceVDetailScreenProps {
   spacevId: string;
@@ -40,6 +41,9 @@ interface SpaceVDetailScreenProps {
   onNavigateToMessage?: (chatId: string, otherUser: any) => void;
   onEdit?: (spacevId: string) => void;
   onNavigateToUserProfile?: (userId: string) => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export function SpaceVDetailScreen({
@@ -49,6 +53,9 @@ export function SpaceVDetailScreen({
   onNavigateToMessage,
   onEdit,
   onNavigateToUserProfile,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: SpaceVDetailScreenProps) {
   const { token, user } = useAuth();
   const [listing, setListing] = useState<Listing | null>(null);
@@ -280,16 +287,44 @@ export function SpaceVDetailScreen({
     return colors[status] || '#6B7280';
   }
 
+  // Prepare right actions for header (Edit and Delete buttons for owner)
+  const isOwner = listing?.userId === user?.id;
+  const rightActions = listing && isOwner ? (
+    <>
+      {onEdit && (
+        <TouchableOpacity
+          style={styles.headerActionButton}
+          onPress={() => onEdit(spacevId)}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Edit listing"
+        >
+          <MaterialIcons name="edit" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      )}
+      <TouchableOpacity
+        style={styles.headerActionButton}
+        onPress={handleDelete}
+        activeOpacity={0.7}
+        disabled={updating}
+        accessibilityRole="button"
+        accessibilityLabel="Delete listing"
+      >
+        <MaterialIcons name="delete-outline" size={24} color="#FFFFFF" />
+      </TouchableOpacity>
+    </>
+  ) : undefined;
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>SpaceV Details</Text>
-          <View style={styles.placeholder} />
-        </View>
+        <Header
+          title="SpaceV Details"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <SkeletonDetailScreen />
       </SafeAreaView>
     );
@@ -298,36 +333,33 @@ export function SpaceVDetailScreen({
   if (error || !listing) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>SpaceV Details</Text>
-          <View style={styles.placeholder} />
-        </View>
+        <Header
+          title="SpaceV Details"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <ErrorState message={error || 'SpaceV listing not found'} onRetry={loadListing} />
       </SafeAreaView>
     );
   }
 
-  const isOwner = listing.userId === user?.id;
-
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title="SpaceV Details"
+        onBack={onBack}
+        rightActions={rightActions}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-          </View>
 
           {listing.images && listing.images.length > 0 && (
             <ScrollView
@@ -644,21 +676,14 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 24,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 16,
-  },
-  backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
+  headerActionButton: {
+    padding: 8,
+    minWidth: 44,
     minHeight: 44,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#2563EB',
-    fontWeight: '500',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
   loadingContainer: {
     flex: 1,
@@ -974,16 +999,6 @@ const styles = StyleSheet.create({
   },
   postCommentButtonDisabled: {
     opacity: 0.5,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#111827',
-    flex: 1,
-    textAlign: 'center',
-  },
-  placeholder: {
-    width: 40,
   },
   modalOverlay: {
     flex: 1,

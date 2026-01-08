@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,26 +7,41 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
+  TextInput,
+  Platform,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
 import { getGroups, Group } from '../api/groupApi';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
 import { SkeletonGroupList } from '../components/SkeletonLoader';
+import { Header } from '../components/Header';
+import { Icon } from '../components/Icon';
+import { Avatar } from '../components/Avatar';
+import { useBottomNavPadding } from '../hooks/useBottomNavPadding';
+import { getAvatarUrl } from '../utils/avatar';
 
 interface GroupListScreenProps {
   onCreateGroup: () => void;
   onViewGroup: (groupId: string) => void;
   onBack: () => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export function GroupListScreen({
   onCreateGroup,
   onViewGroup,
   onBack,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: GroupListScreenProps) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -34,7 +49,10 @@ export function GroupListScreen({
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [offset, setOffset] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<TextInput>(null);
   const limit = 20;
+  const bottomPadding = useBottomNavPadding(true);
 
   useEffect(() => {
     loadGroups(true);
@@ -93,26 +111,33 @@ export function GroupListScreen({
     await loadGroups(false);
   }
 
-  function getUserDisplayName(user: Group['createdByUser']): string {
-    if (!user) return 'Unknown';
-    return user.profile?.displayName || user.email || 'Unknown';
+  function getUserDisplayName(groupUser: Group['createdByUser']): string {
+    if (!groupUser) return 'Unknown';
+    if (groupUser.id === user?.id) return 'you';
+    return groupUser.profile?.displayName || groupUser.email || 'Unknown';
   }
+
+  // Filter groups by search query
+  const filteredGroups = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return groups;
+    }
+    return groups.filter(group =>
+      group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      group.description?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [groups, searchQuery]);
 
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-            <Text style={styles.backButtonText}>← Back</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.createButton}
-            onPress={onCreateGroup}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.createButtonText}>+ New Circle</Text>
-          </TouchableOpacity>
-        </View>
+        <Header
+          title="Circles"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
           <View style={styles.content}>
             <SkeletonGroupList count={5} />
@@ -124,11 +149,34 @@ export function GroupListScreen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title="Circles"
+        onBack={onBack}
+        rightContent={
+          <TouchableOpacity
+            onPress={onCreateGroup}
+            style={styles.headerButton}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Create new circle"
+          >
+            <MaterialIcons name="add" size={24} color="#6366F1" />
+          </TouchableOpacity>
+        }
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => loadGroups(true)} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadGroups(true)}
+            tintColor="#6366F1"
+            colors={['#6366F1']}
+          />
         }
         onScroll={(e) => {
           const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
@@ -142,35 +190,61 @@ export function GroupListScreen({
         scrollEventThrottle={400}
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.createButton}
-              onPress={onCreateGroup}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.createButtonText}>+ New Circle</Text>
-            </TouchableOpacity>
-          </View>
-
           {error && (
             <View style={styles.errorContainer}>
               <Text style={styles.errorText}>{error}</Text>
-              <TouchableOpacity style={styles.retryButton} onPress={loadGroups}>
+              <TouchableOpacity style={styles.retryButton} onPress={() => loadGroups(true)}>
                 <Text style={styles.retryButtonText}>Retry</Text>
               </TouchableOpacity>
             </View>
           )}
 
-          <Text style={styles.sectionTitle}>Your Circles</Text>
+          {/* Search Bar */}
+          {groups.length > 0 && (
+            <View style={styles.searchContainer}>
+              <Icon name="search" size={20} color="#6B7280" />
+              <TextInput
+                ref={searchInputRef}
+                style={styles.searchInput}
+                placeholder="Search circles..."
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholderTextColor="#9CA3AF"
+                returnKeyType="search"
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSearchQuery('');
+                    searchInputRef.current?.blur();
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Icon name="close" size={20} color="#6B7280" />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
 
-          {groups.length === 0 ? (
+          {/* Create Circle Button - Prominent */}
+          {filteredGroups.length > 0 && (
+            <TouchableOpacity
+              style={styles.createCircleButton}
+              onPress={onCreateGroup}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="add" size={24} color="#FFFFFF" />
+              <Text style={styles.createCircleButtonText}>Create Circle</Text>
+            </TouchableOpacity>
+          )}
+
+          {filteredGroups.length === 0 && groups.length > 0 ? (
+            <EmptyState
+              icon="search"
+              title="No circles found"
+              message="Try adjusting your search query."
+            />
+          ) : filteredGroups.length === 0 ? (
             <EmptyState
               icon="group"
               title="No circles yet"
@@ -179,36 +253,159 @@ export function GroupListScreen({
               onAction={onCreateGroup}
             />
           ) : (
-            groups.map((group) => (
-              <TouchableOpacity
-                key={group.id}
-                style={styles.groupCard}
-                onPress={() => onViewGroup(group.id)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.groupHeader}>
-                  <Text style={styles.groupName}>{group.name}</Text>
-                  {group._count && (
-                    <Text style={styles.groupExpenseCount}>
-                      {group._count.expenses} billchop{group._count.expenses !== 1 ? 's' : ''}
-                    </Text>
+            filteredGroups.map((group) => {
+              const memberCount = group.members?.length || 0;
+              const expenseCount = group._count?.expenses || 0;
+              const choreCount = group._count?.chores || 0;
+              const rideCount = group._count?.rides || 0;
+              const messageCount = group._count?.messages || 0;
+              // Get first 4 members for avatar preview
+              const previewMembers = (group.members || []).slice(0, 4);
+              const remainingMembers = Math.max(0, memberCount - 4);
+              
+              // Generate group color based on name (consistent)
+              const groupInitial = group.name.charAt(0).toUpperCase();
+              const groupColors = [
+                { bg: '#EEF2FF', icon: '#6366F1' }, // Indigo
+                { bg: '#FDF2F8', icon: '#EC4899' }, // Pink
+                { bg: '#F0FDF4', icon: '#10B981' }, // Green
+                { bg: '#FEF3C7', icon: '#F59E0B' }, // Amber
+                { bg: '#E0E7FF', icon: '#8B5CF6' }, // Purple
+                { bg: '#DBEAFE', icon: '#3B82F6' }, // Blue
+              ];
+              const colorIndex = group.name.charCodeAt(0) % groupColors.length;
+              const groupColor = groupColors[colorIndex];
+              
+              // Calculate activity level (for now based on expenses, later can include all features)
+              const activityLevel = expenseCount > 10 ? 'high' : expenseCount > 0 ? 'medium' : 'low';
+
+              return (
+                <TouchableOpacity
+                  key={group.id}
+                  style={styles.groupCard}
+                  onPress={() => onViewGroup(group.id)}
+                  activeOpacity={0.7}
+                >
+                  {/* Group Icon/Header Section */}
+                  <View style={styles.groupCardHeader}>
+                    <View style={{ position: 'relative' }}>
+                      <Avatar
+                        avatarUrl={getAvatarUrl(group.avatarUrl || null)}
+                        displayName={group.name}
+                        size={56}
+                        />
+                      {/* Group Icon Badge */}
+                      {group.icon && (
+                        <View style={styles.groupIconBadge}>
+                          <MaterialIcons
+                            name={group.icon as any}
+                            size={16}
+                            color="#6366F1"
+                          />
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.groupHeaderContent}>
+                      <View style={styles.groupTitleRow}>
+                        <Text style={styles.groupName}>{group.name}</Text>
+                        {activityLevel === 'high' && (
+                          <View style={styles.activityBadge}>
+                            <View style={styles.activityDot} />
+                            <Text style={styles.activityBadgeText}>Active</Text>
+                          </View>
+                        )}
+                      </View>
+                      {group.description && group.description.trim() && group.description.trim() !== 'Check' && (
+                        <Text style={styles.groupDescription} numberOfLines={1}>
+                          {group.description}
+                        </Text>
+                      )}
+                    </View>
+                    <MaterialIcons name="chevron-right" size={24} color="#9CA3AF" />
+                  </View>
+
+                  {/* Activity Stats Grid - All 4 Features */}
+                  <View style={styles.activityStatsGrid}>
+                    <View style={styles.activityStatItem}>
+                      <View style={[styles.activityStatIcon, { backgroundColor: '#EEF2FF' }]}>
+                        <MaterialIcons name="receipt" size={18} color="#6366F1" />
+                      </View>
+                      <View style={styles.activityStatContent}>
+                        <Text style={styles.activityStatValue}>{expenseCount}</Text>
+                        <Text style={styles.activityStatLabel}>Billchops</Text>
+                      </View>
+                    </View>
+                    <View style={styles.activityStatItem}>
+                      <View style={[styles.activityStatIcon, { backgroundColor: '#F0FDF4' }]}>
+                        <MaterialIcons name="check-circle" size={18} color="#10B981" />
+                      </View>
+                      <View style={styles.activityStatContent}>
+                        <Text style={styles.activityStatValue}>{choreCount}</Text>
+                        <Text style={styles.activityStatLabel}>Chores</Text>
+                      </View>
+                    </View>
+                    <View style={styles.activityStatItem}>
+                      <View style={[styles.activityStatIcon, { backgroundColor: '#DBEAFE' }]}>
+                        <MaterialIcons name="directions-car" size={18} color="#3B82F6" />
+                      </View>
+                      <View style={styles.activityStatContent}>
+                        <Text style={styles.activityStatValue}>{rideCount}</Text>
+                        <Text style={styles.activityStatLabel}>Rides</Text>
+                      </View>
+                    </View>
+                    <View style={styles.activityStatItem}>
+                      <View style={[styles.activityStatIcon, { backgroundColor: '#FDF2F8' }]}>
+                        <MaterialIcons name="chat" size={18} color="#EC4899" />
+                      </View>
+                      <View style={styles.activityStatContent}>
+                        <Text style={styles.activityStatValue}>{messageCount}</Text>
+                        <Text style={styles.activityStatLabel}>Messages</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Member Avatars Preview */}
+                  {previewMembers.length > 0 && (
+                    <View style={styles.membersPreview}>
+                      <View style={styles.avatarsContainer}>
+                        {previewMembers.map((member, index) => {
+                          const displayName = member.user?.profile?.displayName || member.user?.email || 'Unknown';
+                          return (
+                            <View
+                              key={member.id}
+                              style={[
+                                styles.avatarWrapper,
+                                index > 0 && { marginLeft: -8 }, // Overlap avatars
+                              ]}
+                            >
+                              <Avatar
+                                avatarUrl={member.user?.profile?.avatarUrl}
+                                displayName={displayName}
+                                size={36}
+                                borderWidth={2}
+                                borderColor="#FFFFFF"
+                              />
+                            </View>
+                          );
+                        })}
+                        {remainingMembers > 0 && (
+                          <View style={[styles.avatarWrapper, styles.avatarMore, { marginLeft: -8 }]}>
+                            <View style={styles.avatarMoreContainer}>
+                              <Text style={styles.avatarMoreText}>+{remainingMembers}</Text>
+                            </View>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.membersPreviewText}>
+                        {memberCount} member{memberCount !== 1 ? 's' : ''} • Created by {getUserDisplayName(group.createdByUser)}
+                      </Text>
+                    </View>
                   )}
-                </View>
-                {group.description && (
-                  <Text style={styles.groupDescription}>{group.description}</Text>
-                )}
-                <View style={styles.groupFooter}>
-                  <Text style={styles.groupMembers}>
-                    {group.members?.length || 0} member{(group.members?.length || 0) !== 1 ? 's' : ''}
-                  </Text>
-                  <Text style={styles.groupCreator}>
-                    Created by {getUserDisplayName(group.createdByUser)}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))
+                </TouchableOpacity>
+              );
+            })
           )}
-          {hasMore && groups.length > 0 && (
+          {hasMore && filteredGroups.length > 0 && (
             <TouchableOpacity
               style={styles.loadMoreButton}
               onPress={loadMore}
@@ -216,7 +413,7 @@ export function GroupListScreen({
               activeOpacity={0.7}
             >
               {loadingMore ? (
-                <ActivityIndicator size="small" color="#2563EB" />
+                <ActivityIndicator size="small" color="#6366F1" />
               ) : (
                 <Text style={styles.loadMoreButtonText}>Load More</Text>
               )}
@@ -241,36 +438,15 @@ const styles = StyleSheet.create({
     paddingBottom: 24, // lg: 24px
   },
   content: {
-    paddingHorizontal: 24, // lg: 24px
-    // No paddingTop - SafeAreaView handles top spacing
+    paddingHorizontal: 16, // base: 16px (matching Billchop patterns)
+    paddingTop: 16,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  headerButton: {
+    padding: 8,
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16, // md: 16px
-  },
-  backButton: {
-    paddingVertical: 8, // sm: 8px
-    paddingHorizontal: 4, // xs: 4px
-    minHeight: 44, // Touch target
-  },
-  backButtonText: {
-    fontSize: 16, // Body: 16px
-    color: '#2563EB', // Primary Blue
-    fontWeight: '500', // Medium
-  },
-  createButton: {
-    backgroundColor: '#2563EB', // Primary Blue
-    borderRadius: 8, // Button: 8px
-    paddingVertical: 12, // Button: 12px vertical
-    paddingHorizontal: 24, // Button: 24px horizontal
-    minHeight: 44, // Button: 44px touch target
-  },
-  createButtonText: {
-    color: '#fff',
-    fontSize: 16, // Button: 16px
-    fontWeight: '500', // Medium
   },
   loadingContainer: {
     flex: 1,
@@ -307,11 +483,23 @@ const styles = StyleSheet.create({
     fontSize: 16, // Button: 16px
     fontWeight: '500', // Medium
   },
-  sectionTitle: {
-    fontSize: 24, // H2: 24px
-    fontWeight: '600', // Semi-bold
-    color: '#111827', // Gray-900
-    marginBottom: 16, // md: 16px
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#111827',
+    padding: 0,
   },
   emptyContainer: {
     alignItems: 'center',
@@ -341,65 +529,250 @@ const styles = StyleSheet.create({
     fontSize: 16, // Button: 16px
     fontWeight: '500', // Medium
   },
-  groupCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12, // Card: 12px
-    padding: 16, // md: 16px
-    marginBottom: 16, // md: 16px
-    borderWidth: 1,
-    borderColor: '#E5E7EB', // Gray-200
-  },
-  groupHeader: {
+  createCircleButton: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8, // sm: 8px
+    justifyContent: 'center',
+    backgroundColor: '#6366F1',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    gap: 8,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#6366F1',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  createCircleButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  groupCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  groupCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 12,
+  },
+  groupIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+    overflow: 'hidden',
+  },
+  groupImage: {
+    width: '100%',
+    height: '100%',
+  },
+  groupIconBadge: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.2,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  groupIconText: {
+    fontSize: 20,
+    fontWeight: '700',
+    letterSpacing: -0.5,
+  },
+  groupHeaderContent: {
+    flex: 1,
+    gap: 4,
+  },
+  groupTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   groupName: {
-    fontSize: 20, // H3: 20px
-    fontWeight: '600', // Semi-bold
-    color: '#111827', // Gray-900
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    letterSpacing: -0.3,
     flex: 1,
   },
-  groupExpenseCount: {
-    fontSize: 14, // Body: 14px
-    color: '#6B7280', // Gray-500
+  activityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0FDF4',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  activityDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10B981',
+  },
+  activityBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#10B981',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   groupDescription: {
-    fontSize: 16, // Body: 16px
-    color: '#6B7280', // Gray-500
-    marginBottom: 12, // md: 12px (3 * 4px)
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '400',
   },
-  groupFooter: {
+  activityStatsGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  activityStatItem: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 8, // sm: 8px
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB', // Gray-200
+    gap: 10,
+    flex: 1,
+    minWidth: '45%',
   },
-  groupMembers: {
-    fontSize: 14, // Body: 14px
-    color: '#374151', // Gray-700
+  activityStatIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
   },
-  groupCreator: {
-    fontSize: 14, // Body: 14px
-    color: '#6B7280', // Gray-500
+  activityStatContent: {
+    flex: 1,
+  },
+  activityStatValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    letterSpacing: -0.3,
+  },
+  activityStatValueEmpty: {
+    color: '#9CA3AF',
+    opacity: 0.6,
+  },
+  activityStatLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  membersPreview: {
+    gap: 12,
+  },
+  avatarsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatarWrapper: {
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  avatarMore: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  avatarMoreContainer: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarMoreText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6B7280',
+  },
+  membersPreviewText: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '400',
   },
   loadMoreButton: {
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
+    backgroundColor: '#6366F1',
+    borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 24,
     marginTop: 16,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 44,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#6366F1',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   loadMoreButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });
 

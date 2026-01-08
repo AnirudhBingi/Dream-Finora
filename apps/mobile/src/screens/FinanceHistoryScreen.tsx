@@ -21,17 +21,24 @@ import {
 import { getLocalAnalytics, getHomeAnalytics, ContextAnalytics } from '../api/analyticsApi';
 import { getProfile, Profile } from '../api/profileApi';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Header } from '../components/Header';
 
 const screenWidth = Dimensions.get('window').width;
 
 interface FinanceHistoryScreenProps {
   context?: 'local' | 'home';
   onBack: () => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export function FinanceHistoryScreen({
   context: initialContext,
   onBack,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
 }: FinanceHistoryScreenProps) {
   const { token } = useAuth();
   const [history, setHistory] = useState<FinanceHistory | null>(null);
@@ -54,9 +61,10 @@ export function FinanceHistoryScreen({
     if (!token) return;
     try {
       const profileData = await getProfile(token);
-      setProfile(profileData);
+      setProfile(profileData || null);
     } catch (err) {
       console.error('Failed to load profile:', err);
+      setProfile(null);
     }
   }
 
@@ -144,6 +152,13 @@ export function FinanceHistoryScreen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <Header
+        title={initialContext === 'local' ? 'Local Finance History' : 'Home Country Finance History'}
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
@@ -152,17 +167,6 @@ export function FinanceHistoryScreen({
         }
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Finance History</Text>
-            <View style={styles.placeholder} />
-          </View>
 
           {error && (
             <View style={styles.errorContainer}>
@@ -415,30 +419,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    minHeight: 44,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#2563EB',
-    fontWeight: '500',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  placeholder: {
-    width: 60,
   },
   loadingContainer: {
     flex: 1,

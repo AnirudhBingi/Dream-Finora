@@ -73,7 +73,12 @@ export async function getProfile(token: string): Promise<Profile> {
     throw new Error(error.message || `Failed to fetch profile: ${response.status}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  // If API returns null, return a default profile structure
+  if (!data) {
+    throw new Error('Profile data is null');
+  }
+  return data;
 }
 
 export async function updateProfile(

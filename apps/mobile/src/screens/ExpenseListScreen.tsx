@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Image,
   Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -19,6 +20,9 @@ import { Header } from '../components/Header';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
 import { SkeletonExpenseList } from '../components/SkeletonLoader';
+import { Icon } from '../components/Icon';
+import { useBottomNavPadding } from '../hooks/useBottomNavPadding';
+import { getAvatarUrl } from '../utils/avatar';
 
 interface ExpenseListScreenProps {
   onCreateExpense: () => void;
@@ -26,6 +30,7 @@ interface ExpenseListScreenProps {
   onViewAnalytics?: () => void;
   onViewBalances?: () => void;
   onViewExpense?: (expenseId: string) => void;
+  onViewExpenseHistory?: () => void;
   onViewFriends?: () => void;
   onViewGroups?: () => void;
   onNavigateToProfile?: () => void;
@@ -38,7 +43,8 @@ export function ExpenseListScreen({
   onBack, 
   onViewAnalytics, 
   onViewBalances, 
-  onViewExpense, 
+  onViewExpense,
+  onViewExpenseHistory,
   onViewFriends, 
   onViewGroups,
   onNavigateToProfile,
@@ -55,6 +61,7 @@ export function ExpenseListScreen({
   const [loadingMore, setLoadingMore] = useState(false);
   const [offset, setOffset] = useState(0);
   const limit = 20;
+  const bottomPadding = useBottomNavPadding(true);
 
   useEffect(() => {
     loadData(true); // Initial load should show skeleton
@@ -168,18 +175,47 @@ export function ExpenseListScreen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      {/* Fixed Header */}
+      {/* Fixed Header with Primary Actions */}
       <Header
         onNavigateToProfile={onNavigateToProfile}
         onNavigateToNotifications={onNavigateToNotifications}
         onNavigateToSettings={onNavigateToSettings}
+        rightActions={
+          <>
+            {onViewAnalytics && (
+              <TouchableOpacity
+                style={styles.headerActionButton}
+                onPress={onViewAnalytics}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="View Analytics"
+              >
+                <MaterialIcons name="analytics" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.headerPrimaryButton}
+              onPress={onCreateExpense}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Create new expense"
+            >
+              <MaterialIcons name="add" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+          </>
+        }
       />
 
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => loadData(true)} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadData(true)}
+            tintColor="#6366F1"
+            colors={['#6366F1']}
+          />
         }
         onScroll={(e) => {
           const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
@@ -193,25 +229,6 @@ export function ExpenseListScreen({
         scrollEventThrottle={400}
       >
         <View style={styles.content}>
-          {/* Action Buttons - moved from header */}
-          <View style={styles.actionButtonsContainer}>
-              {onViewAnalytics && (
-                <TouchableOpacity
-                  style={styles.analyticsButton}
-                  onPress={onViewAnalytics}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.analyticsButtonText}>Analytics</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={styles.createButton}
-                onPress={onCreateExpense}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.createButtonText}>+ New</Text>
-              </TouchableOpacity>
-          </View>
 
           {error && (
             <View style={styles.errorContainer}>
@@ -222,75 +239,123 @@ export function ExpenseListScreen({
             </View>
           )}
 
-          {balances && (
-            <TouchableOpacity
-              style={styles.balanceCard}
-              onPress={onViewBalances}
-              activeOpacity={0.7}
-            >
-              <View style={styles.balanceCardHeader}>
-              <Text style={styles.balanceTitle}>Your Balances</Text>
-                {onViewBalances && (
-                  <Text style={styles.balanceViewAll}>View All →</Text>
+          {balances && (balances.totalOwed > 0 || balances.totalOwedToUser > 0) && (
+            <View style={styles.balanceSection}>
+              <TouchableOpacity
+                style={styles.balanceFlowCard}
+                onPress={onViewBalances}
+                activeOpacity={0.9}
+              >
+                {/* Top Section - Net Balance Indicator */}
+                {balances.netBalance !== 0 && (
+                  <View style={styles.netBalanceBanner}>
+                    <View style={[styles.netBalanceIndicator, balances.netBalance > 0 ? styles.netBalanceIndicatorPositive : styles.netBalanceIndicatorNegative]}>
+                      <Icon 
+                        name={balances.netBalance > 0 ? "trending-up" : "trending-down"} 
+                        size={16} 
+                        color={balances.netBalance > 0 ? "#10B981" : "#EF4444"} 
+                      />
+                    </View>
+                    <Text style={styles.netBalanceBannerText}>
+                      {balances.netBalance > 0 ? 'You\'re ahead by' : 'You owe'}
+                    </Text>
+                    <Text style={[styles.netBalanceBannerAmount, balances.netBalance > 0 ? styles.netBalanceBannerAmountPositive : styles.netBalanceBannerAmountNegative]}>
+                      {formatCurrency(Math.abs(balances.netBalance), balances.currency || 'USD')}
+                    </Text>
+                  </View>
                 )}
-              </View>
-              <View style={styles.balanceRow}>
-                <Text style={styles.balanceLabel}>You owe:</Text>
-                <Text style={[styles.balanceAmount, styles.balanceNegative]}>
-                  {formatCurrency(balances.totalOwed)}
-                </Text>
-              </View>
-              <View style={styles.balanceRow}>
-                <Text style={styles.balanceLabel}>Owed to you:</Text>
-                <Text style={[styles.balanceAmount, styles.balancePositive]}>
-                  {formatCurrency(balances.totalOwedToUser)}
-                </Text>
-              </View>
-              <View style={[styles.balanceRow, styles.netBalanceRow]}>
-                <Text style={styles.balanceLabel}>Net:</Text>
-                <Text
-                  style={[
-                    styles.balanceAmount,
-                    balances.netBalance >= 0
-                      ? styles.balancePositive
-                      : styles.balanceNegative,
-                  ]}
-                >
-                  {formatCurrency(Math.abs(balances.netBalance))}
-                  {balances.netBalance >= 0 ? ' owed to you' : ' you owe'}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          )}
 
-          {(onViewFriends || onViewGroups) && (
-            <View style={styles.navigationCards}>
-              {onViewFriends && (
-                <TouchableOpacity
-                  style={styles.navCard}
-                  onPress={onViewFriends}
-                  activeOpacity={0.7}
-                >
-                  <MaterialIcons name="people" size={24} color="#2563EB" />
-                  <Text style={styles.navCardText}>Friends</Text>
-                  <MaterialIcons name="chevron-right" size={20} color="#9CA3AF" />
-                </TouchableOpacity>
-              )}
-              {onViewGroups && (
-                <TouchableOpacity
-                  style={styles.navCard}
-                  onPress={onViewGroups}
-                  activeOpacity={0.7}
-                >
-                  <MaterialIcons name="group" size={24} color="#2563EB" />
-                  <Text style={styles.navCardText}>Groups</Text>
-                  <MaterialIcons name="chevron-right" size={20} color="#9CA3AF" />
-                </TouchableOpacity>
-              )}
+                {/* Main Balance Flow */}
+                <View style={styles.balanceFlowContainer}>
+                  {/* Left: You Owe */}
+                  <View style={[styles.balanceFlowSide, styles.balanceFlowSideLeft]}>
+                    <View style={styles.balanceFlowHeader}>
+                      <View style={styles.balanceFlowIconContainer}>
+                        <Icon name="arrow-up" size={16} color="#EF4444" />
+                      </View>
+                      <Text style={styles.balanceFlowLabel}>YOU OWE</Text>
+                    </View>
+                    <Text style={styles.balanceFlowAmountRed}>
+                      {formatCurrency(balances.totalOwed, balances.currency || 'USD')}
+                    </Text>
+                  </View>
+
+                  {/* Center Divider with Floating Action */}
+                  <View style={styles.balanceFlowDivider}>
+                    <TouchableOpacity
+                      style={styles.balanceFlowConnector}
+                      onPress={onCreateExpense}
+                      activeOpacity={0.8}
+                    >
+                      <Icon name="add" size={20} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Right: You're Owed */}
+                  <View style={[styles.balanceFlowSide, styles.balanceFlowSideRight]}>
+                    <View style={styles.balanceFlowHeader}>
+                      <Text style={styles.balanceFlowLabel}>YOU'RE OWED</Text>
+                      <View style={styles.balanceFlowIconContainer}>
+                        <Icon name="arrow-down" size={16} color="#10B981" />
+                      </View>
+                    </View>
+                    <Text style={styles.balanceFlowAmountGreen}>
+                      {formatCurrency(balances.totalOwedToUser, balances.currency || 'USD')}
+                    </Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
             </View>
           )}
 
-          <Text style={styles.sectionTitle}>Recent Billchops</Text>
+          {(onViewFriends || onViewGroups) && (
+            <View style={styles.navigationSection}>
+              <Text style={styles.sectionTitle}>Quick Access</Text>
+              <View style={styles.navigationCards}>
+                {onViewFriends && (
+                  <TouchableOpacity
+                    style={styles.navCard}
+                    onPress={onViewFriends}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.navCardIconContainer}>
+                      <Icon name="friends" size={20} color="#3B82F6" />
+                    </View>
+                    <Text style={styles.navCardText}>Friends</Text>
+                    <MaterialIcons name="chevron-right" size={20} color="#9CA3AF" />
+                  </TouchableOpacity>
+                )}
+                {onViewGroups && (
+                  <TouchableOpacity
+                    style={styles.navCard}
+                    onPress={onViewGroups}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.navCardIconContainer}>
+                      <Icon name="groups" size={20} color="#6366F1" />
+                    </View>
+                    <Text style={styles.navCardText}>Circles</Text>
+                    <MaterialIcons name="chevron-right" size={20} color="#9CA3AF" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )}
+
+          <View style={styles.expensesSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Recent Billchops</Text>
+              {onViewExpenseHistory && (
+                <TouchableOpacity
+                  style={styles.sectionHeaderButton}
+                  onPress={onViewExpenseHistory}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons name="history" size={20} color="#6366F1" />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
 
           {expenses.length === 0 ? (
             <EmptyState
@@ -338,22 +403,42 @@ export function ExpenseListScreen({
                     </View>
                   )}
                   <View style={styles.splitsContainer}>
-                    {(expense.splits || []).map((split) => (
-                      <View key={split?.id || ''} style={styles.splitRow}>
-                        <Text style={styles.splitUser}>
-                          {getUserDisplayNameForSplit(split?.user)}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.splitAmount,
-                            split?.isPaid && styles.splitPaid,
-                          ]}
-                        >
-                          {formatCurrency(split?.amount || 0, expense.currency)}
-                          {split?.isPaid ? ' ✓' : ''}
-                        </Text>
-                      </View>
-                    ))}
+                    {(expense.splits || []).map((split) => {
+                      const avatarUrl = getAvatarUrl(split?.user?.profile?.avatarUrl || null);
+                      const displayName = getUserDisplayNameForSplit(split?.user);
+                      const initials = displayName.charAt(0).toUpperCase();
+                      return (
+                        <View key={split?.id || ''} style={styles.splitRow}>
+                          <View style={styles.splitUserInfo}>
+                            <View style={styles.splitAvatar}>
+                              {avatarUrl ? (
+                                <Image 
+                                  source={{ uri: avatarUrl }} 
+                                  style={styles.splitAvatarImage}
+                                  resizeMode="cover"
+                                />
+                              ) : (
+                                <View style={styles.splitAvatarPlaceholder}>
+                                  <Text style={styles.splitAvatarText}>{initials}</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={styles.splitUser}>
+                              {displayName}
+                            </Text>
+                          </View>
+                          <Text
+                            style={[
+                              styles.splitAmount,
+                              split?.isPaid && styles.splitPaid,
+                            ]}
+                          >
+                            {formatCurrency(split?.amount || 0, expense.currency)}
+                            {split?.isPaid ? ' ✓' : ''}
+                          </Text>
+                        </View>
+                      );
+                    })}
                   </View>
                 </TouchableOpacity>
               ))}
@@ -389,42 +474,29 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   scrollContent: {
-    paddingBottom: 24, // lg: 24px
+    // paddingBottom will be set dynamically via useBottomNavPadding
   },
   content: {
-    paddingHorizontal: 24, // lg: 24px
-    paddingTop: 16, // md: 16px
+    paddingHorizontal: 16,
+    paddingTop: 16,
   },
-  actionButtonsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 24,
-  },
-  analyticsButton: {
-    backgroundColor: '#6366F1',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+  headerActionButton: {
+    padding: 8,
+    minWidth: 44,
     minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
-  analyticsButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  createButton: {
-    backgroundColor: '#2563EB', // Primary Blue
-    borderRadius: 8, // Button: 8px
-    paddingVertical: 12, // Button: 12px vertical
-    paddingHorizontal: 24, // Button: 24px horizontal
-    minHeight: 44, // Button: 44px touch target
-  },
-  createButtonText: {
-    color: '#fff',
-    fontSize: 16, // Button: 16px
-    fontWeight: '500', // Medium
+  headerPrimaryButton: {
+    padding: 8,
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
   },
   loadingContainer: {
     flex: 1,
@@ -461,81 +533,220 @@ const styles = StyleSheet.create({
     fontSize: 16, // Button: 16px
     fontWeight: '500', // Medium
   },
-  balanceCard: {
-    backgroundColor: '#F9FAFB', // Gray-50
-    borderRadius: 12, // Card: 12px
-    padding: 16, // md: 16px
-    marginBottom: 24, // lg: 24px
+  balanceSection: {
+    padding: 16,
+    paddingBottom: 12,
   },
-  balanceCardHeader: {
+  balanceFlowCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    overflow: 'visible',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  netBalanceBanner: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16, // md: 16px
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    gap: 8,
+    backgroundColor: '#F9FAFB',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
-  balanceTitle: {
-    fontSize: 20, // H3: 20px
-    fontWeight: '600', // Semi-bold
-    color: '#111827', // Gray-900
+  netBalanceIndicator: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  balanceViewAll: {
-    fontSize: 14, // Body: 14px
-    color: '#2563EB', // Primary Blue
-    fontWeight: '500', // Medium
+  netBalanceIndicatorPositive: {
+    backgroundColor: '#D1FAE5',
   },
-  balanceRow: {
+  netBalanceIndicatorNegative: {
+    backgroundColor: '#FEE2E2',
+  },
+  netBalanceBannerText: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  netBalanceBannerAmount: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  netBalanceBannerAmountPositive: {
+    color: '#10B981',
+  },
+  netBalanceBannerAmountNegative: {
+    color: '#EF4444',
+  },
+  balanceFlowContainer: {
     flexDirection: 'row',
+    minHeight: 110,
+    position: 'relative',
+  },
+  balanceFlowSide: {
+    flex: 1,
+    padding: 16,
     justifyContent: 'space-between',
+  },
+  balanceFlowSideLeft: {
+    borderRightWidth: 1,
+    borderRightColor: '#F3F4F6',
+    backgroundColor: '#FEF2F2',
+  },
+  balanceFlowSideRight: {
+    backgroundColor: '#F0FDF4',
+  },
+  balanceFlowHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8, // sm: 8px
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
-  netBalanceRow: {
-    marginTop: 8, // sm: 8px
-    paddingTop: 8, // sm: 8px
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB', // Gray-200
+  balanceFlowIconContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
   },
-  balanceLabel: {
-    fontSize: 16, // Body: 16px
-    color: '#374151', // Gray-700
+  balanceFlowLabel: {
+    fontSize: 10,
+    color: '#6B7280',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
-  balanceAmount: {
-    fontSize: 20, // H3: 20px
-    fontWeight: '600', // Semi-bold
+  balanceFlowAmountRed: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#EF4444',
   },
-  balancePositive: {
-    color: '#10B981', // Green-500 (Success)
+  balanceFlowAmountGreen: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#10B981',
   },
-  balanceNegative: {
-    color: '#EF4444', // Red-500 (Danger)
+  balanceFlowDivider: {
+    width: 1,
+    backgroundColor: '#E5E7EB',
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 8,
+    zIndex: 10,
+  },
+  balanceFlowConnector: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#6366F1',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    left: -22.5,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#6366F1',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.4,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
+  },
+  navigationSection: {
+    marginBottom: 20,
   },
   navigationCards: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 24,
   },
   navCard: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    padding: 16,
+    padding: 14,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E5E7EB',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
+  },
+  navCardIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   navCardText: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#1F2937',
+    color: '#111827',
     marginLeft: 12,
+    letterSpacing: -0.2,
+  },
+  expensesSection: {
+    marginTop: 4,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 24, // H2: 24px
-    fontWeight: '600', // Semi-bold
-    color: '#111827', // Gray-900
-    marginBottom: 16, // md: 16px
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    letterSpacing: -0.3,
+  },
+  sectionHeaderButton: {
+    padding: 4,
   },
   emptyContainer: {
     alignItems: 'center',
@@ -566,12 +777,23 @@ const styles = StyleSheet.create({
     fontWeight: '500', // Medium
   },
   expenseCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12, // Card: 12px
-    padding: 16, // md: 16px
-    marginBottom: 16, // md: 16px
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
     borderWidth: 1,
-    borderColor: '#E5E7EB', // Gray-200
+    borderColor: '#E5E7EB',
   },
   expenseHeader: {
     flexDirection: 'row',
@@ -583,20 +805,23 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   expenseDescription: {
-    fontSize: 18, // H4: 18px
-    fontWeight: '500', // Medium
-    color: '#111827', // Gray-900
-    marginBottom: 4,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 6,
+    letterSpacing: -0.2,
   },
   expenseAmount: {
-    fontSize: 20, // H3: 20px
-    fontWeight: '600', // Semi-bold
-    color: '#111827', // Gray-900
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    letterSpacing: -0.3,
   },
   expenseCreator: {
-    fontSize: 14, // Body: 14px
-    color: '#6B7280', // Gray-500
-    marginBottom: 12, // md: 12px (3 * 4px)
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 12,
+    marginTop: 4,
   },
   splitsContainer: {
     marginTop: 8, // sm: 8px
@@ -606,6 +831,37 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 4, // xs: 4px
+  },
+  splitUserInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  splitAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#6366F1',
+    overflow: 'hidden',
+    backgroundColor: '#EEF2FF',
+  },
+  splitAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  splitAvatarPlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#6366F1',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  splitAvatarText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   splitUser: {
     fontSize: 14, // Body: 14px

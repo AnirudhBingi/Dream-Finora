@@ -23,7 +23,74 @@ export class ExpenseService {
     private financeService: FinanceService,
   ) {}
 
+  private transformExpense(expense: any) {
+    const { ExpenseSplit, User_Expense_createdByToUser, User_Expense_paidByToUser, Group, ...expenseBase } = expense;
+    
+    return {
+      ...expenseBase,
+      date: expense.date.toISOString(),
+      createdAt: expense.createdAt.toISOString(),
+      amount: expense.amount,
+      splits: (ExpenseSplit || []).map((split: any) => ({
+        id: split.id,
+        expenseId: split.expenseId,
+        userId: split.userId,
+        amount: split.amount,
+        isPaid: split.isPaid,
+        paidAt: split.paidAt?.toISOString(),
+        createdAt: split.createdAt.toISOString(),
+        user: {
+          id: split.User.id,
+          email: split.User.email,
+          profile: split.User.UserProfile
+            ? {
+                displayName: split.User.UserProfile.displayName,
+                avatarUrl: split.User.UserProfile.avatarUrl,
+              }
+            : null,
+        },
+      })),
+      createdByUser: User_Expense_createdByToUser
+        ? {
+            id: User_Expense_createdByToUser.id,
+            email: User_Expense_createdByToUser.email,
+            profile: User_Expense_createdByToUser.UserProfile
+              ? {
+                  displayName: User_Expense_createdByToUser.UserProfile.displayName,
+                  avatarUrl: User_Expense_createdByToUser.UserProfile.avatarUrl,
+                }
+              : null,
+          }
+        : {
+            id: expense.createdBy || '',
+            email: 'Unknown',
+            profile: null,
+          },
+      paidByUser: User_Expense_paidByToUser
+        ? {
+            id: User_Expense_paidByToUser.id,
+            email: User_Expense_paidByToUser.email,
+            profile: User_Expense_paidByToUser.UserProfile
+              ? {
+                  displayName: User_Expense_paidByToUser.UserProfile.displayName,
+                  avatarUrl: User_Expense_paidByToUser.UserProfile.avatarUrl,
+                }
+              : null,
+          }
+        : null,
+      group: Group
+        ? {
+            id: Group.id,
+            name: Group.name,
+            description: Group.description,
+            avatarUrl: Group.avatarUrl,
+          }
+        : null,
+    };
+  }
+
   async createExpense(userId: string, createExpenseDto: CreateExpenseDto) {
+    console.log('[ExpenseService] Creating expense with groupId:', createExpenseDto.groupId);
     const splitType = createExpenseDto.splitType || 'EQUAL';
     const paidBy = createExpenseDto.paidBy || userId; // Default to creator if not specified
 
@@ -183,18 +250,33 @@ export class ExpenseService {
             },
           },
         },
+        User_Expense_paidByToUser: {
+          select: {
+            id: true,
+            email: true,
+            UserProfile: {
+              select: {
+                displayName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        },
         Group: {
           select: {
             id: true,
             name: true,
             description: true,
+            avatarUrl: true,
           },
         },
       },
     });
 
+    console.log('[ExpenseService] Expense created with groupId:', expense.groupId, 'Group:', expense.Group);
+
     // Create notifications for all participants (except creator)
-    const creatorName = expense.User_Expense_createdByToUser.UserProfile?.displayName || expense.User_Expense_createdByToUser.email;
+    const creatorName = expense.User_Expense_createdByToUser?.UserProfile?.displayName || expense.User_Expense_createdByToUser?.email;
     const participantIds = expense.ExpenseSplit
       .map(split => split.userId)
       .filter(id => id !== userId); // Exclude creator
@@ -239,7 +321,7 @@ export class ExpenseService {
       }),
     );
 
-    return expense;
+    return this.transformExpense(expense);
   }
 
   async getExpenses(userId: string, limit: number = 50, offset: number = 0) {
@@ -299,6 +381,7 @@ export class ExpenseService {
             id: true,
             name: true,
             description: true,
+            avatarUrl: true,
           },
         },
       },
@@ -320,8 +403,11 @@ export class ExpenseService {
 
     console.log('[ExpenseService] Found expenses:', expenses.length, 'for user:', userId);
 
+    // Transform expenses to match frontend interface
+    const transformedExpenses = expenses.map(expense => this.transformExpense(expense));
+
     return {
-      expenses,
+      expenses: transformedExpenses,
       total,
       limit,
       offset,
@@ -384,6 +470,7 @@ export class ExpenseService {
             id: true,
             name: true,
             description: true,
+            avatarUrl: true,
           },
         },
       },
@@ -393,7 +480,7 @@ export class ExpenseService {
       throw new NotFoundException('Expense not found');
     }
 
-    return expense;
+    return this.transformExpense(expense);
   }
 
   async markSplitAsPaid(userId: string, expenseId: string, splitId: string) {
@@ -553,6 +640,7 @@ export class ExpenseService {
             id: true,
             name: true,
             description: true,
+            avatarUrl: true,
           },
         },
       },
@@ -859,6 +947,7 @@ export class ExpenseService {
             id: true,
             name: true,
             description: true,
+            avatarUrl: true,
           },
         },
       },
@@ -982,6 +1071,11 @@ export class ExpenseService {
       );
     }
 
+    // Check if this expense is linked to a ride
+    const linkedRide = await this.prisma.ride.findFirst({
+      where: { expenseId: expenseId },
+    });
+
     // Delete expense (cascade will handle splits and settlements)
     // Note: We use deleteMany to ensure we only delete if user is creator
     const result = await this.prisma.expense.deleteMany({
@@ -993,6 +1087,16 @@ export class ExpenseService {
 
     if (result.count === 0) {
       throw new NotFoundException('Expense not found or you do not have permission to delete it');
+    }
+
+    // If expense was linked to a ride, unlink it (ride will still exist but without expense)
+    if (linkedRide) {
+      await this.prisma.ride.update({
+        where: { id: linkedRide.id },
+        data: { expenseId: null },
+      }).catch(err => {
+        console.error(`[ExpenseService] Failed to unlink ride ${linkedRide.id} from deleted expense:`, err);
+      });
     }
 
     return { message: 'Expense deleted successfully' };
@@ -1044,65 +1148,156 @@ export class ExpenseService {
       },
     });
 
-    return history;
-  }
-
-  async getBalances(userId: string, primaryCurrency: string = 'USD') {
-    // Get all unpaid splits where user owes money
-    const owedSplits = await this.prisma.expenseSplit.findMany({
+    // Get settlements linked to this expense through splits
+    const expenseSplits = await this.prisma.expenseSplit.findMany({
       where: {
-        userId,
-        isPaid: false,
+        expenseId: expenseId,
       },
-      include: {
-        Expense: {
-          include: {
-            User_Expense_createdByToUser: {
-              select: {
-                id: true,
-                email: true,
-                UserProfile: {
-                  select: {
-                    displayName: true,
-                    avatarUrl: true,
-                  },
+      select: {
+        id: true,
+      },
+    });
+
+    const splitIds = expenseSplits.map(split => split.id);
+
+    if (splitIds.length > 0) {
+      const settlements = await this.prisma.settlement.findMany({
+        where: {
+          SettlementSplit: {
+            some: {
+              splitId: {
+                in: splitIds,
+              },
+            },
+          },
+        },
+        include: {
+          User_Settlement_payerIdToUser: {
+            select: {
+              id: true,
+              email: true,
+              UserProfile: {
+                select: {
+                  displayName: true,
+                  avatarUrl: true,
                 },
               },
             },
-            User_Expense_paidByToUser: {
-              select: {
-                id: true,
-                email: true,
-                UserProfile: {
-                  select: {
-                    displayName: true,
-                    avatarUrl: true,
-                  },
+          },
+          User_Settlement_payeeIdToUser: {
+            select: {
+              id: true,
+              email: true,
+              UserProfile: {
+                select: {
+                  displayName: true,
+                  avatarUrl: true,
                 },
               },
             },
           },
         },
-      },
-    });
-
-    // Get all unpaid splits where others owe the user (user paid for the expense)
-    const owedToUser = await this.prisma.expenseSplit.findMany({
-      where: {
-        Expense: {
-          OR: [
-            { paidBy: userId }, // User paid for the expense
-            { 
-              AND: [
-                { paidBy: null }, // Fallback: if paidBy is null, use createdBy (backward compatibility)
-                { createdBy: userId },
-              ],
-            },
-          ],
+        orderBy: {
+          createdAt: 'desc',
         },
-        userId: { not: userId },
-        isPaid: false,
-      },
+      });
+
+      // Convert settlements to history format
+      for (const settlement of settlements) {
+        const payerName = settlement.User_Settlement_payerIdToUser.UserProfile?.displayName || 
+                          settlement.User_Settlement_payerIdToUser.email;
+        const payeeName = settlement.User_Settlement_payeeIdToUser.UserProfile?.displayName || 
+                          settlement.User_Settlement_payeeIdToUser.email;
+        
+        history.push({
+          id: `settlement-${settlement.id}`,
+          expenseId: expenseId,
+          action: 'settled',
+          userId: settlement.payerId,
+          notes: `${payerName} settled ${settlement.amount} ${settlement.currency} with ${payeeName}${settlement.notes ? ` - ${settlement.notes}` : ''}`,
+          createdAt: settlement.createdAt,
+          User: settlement.User_Settlement_payerIdToUser,
+          changes: {
+            settlementId: settlement.id,
+            amount: settlement.amount,
+            currency: settlement.currency,
+            paymentMethod: settlement.paymentMethod,
+            payerId: settlement.payerId,
+            payeeId: settlement.payeeId,
+          },
+        } as any);
+      }
+    }
+
+    // Sort by createdAt descending
+    history.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return history;
+  }
+
+  async getBalances(userId: string, primaryCurrency: string = 'USD') {
+    try {
+      // Get all unpaid splits where user owes money
+      const owedSplits = await this.prisma.expenseSplit.findMany({
+        where: {
+          userId,
+          isPaid: false,
+        },
+        include: {
+          Expense: {
+            include: {
+              User_Expense_createdByToUser: {
+                select: {
+                  id: true,
+                  email: true,
+                  UserProfile: {
+                    select: {
+                      displayName: true,
+                      avatarUrl: true,
+                    },
+                  },
+                },
+              },
+              User_Expense_paidByToUser: {
+                select: {
+                  id: true,
+                  email: true,
+                  UserProfile: {
+                    select: {
+                      displayName: true,
+                      avatarUrl: true,
+                    },
+                  },
+                },
+              },
+              Group: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      // Get all unpaid splits where others owe the user (user paid for the expense)
+      const owedToUser = await this.prisma.expenseSplit.findMany({
+        where: {
+          Expense: {
+            OR: [
+              { paidBy: userId }, // User paid for the expense
+              { 
+                AND: [
+                  { paidBy: null }, // Fallback: if paidBy is null, use createdBy (backward compatibility)
+                  { createdBy: userId },
+                ],
+              },
+            ],
+          },
+          userId: { not: userId },
+          isPaid: false,
+        },
       include: {
         User: {
           select: {
@@ -1130,15 +1325,30 @@ export class ExpenseService {
                 },
               },
             },
+            Group: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
           },
         },
       },
     });
 
     // Convert all amounts to primary currency
+    // Filter out splits with missing expenses (orphaned splits)
     const convertSplits = async (splits: any[]) => {
+      const validSplits = splits.filter(split => {
+        if (!split.Expense) {
+          console.warn(`[ExpenseService] Skipping orphaned split ${split.id} - expense not found`);
+          return false;
+        }
+        return true;
+      });
+
       return Promise.all(
-        splits.map(async (split) => {
+        validSplits.map(async (split) => {
           const expenseCurrency = split.Expense.currency || 'USD';
           const convertedAmount = await this.currencyService.convertAmount(
             split.amount,
@@ -1159,20 +1369,55 @@ export class ExpenseService {
     const convertedOwedSplits = await convertSplits(owedSplits);
     const convertedOwedToUser = await convertSplits(owedToUser);
 
+    // Log if we filtered out any orphaned splits
+    const filteredOwedCount = owedSplits.length - convertedOwedSplits.length;
+    const filteredOwedToCount = owedToUser.length - convertedOwedToUser.length;
+    if (filteredOwedCount > 0 || filteredOwedToCount > 0) {
+      console.warn(`[ExpenseService] Filtered out ${filteredOwedCount + filteredOwedToCount} orphaned splits (missing expenses)`);
+    }
+
     // Calculate totals in primary currency (exclude splits where user owes themselves)
     // Use paidBy if available, otherwise fallback to createdBy for backward compatibility
+    // Filter out any splits that lost their expense during conversion
     const totalOwed = convertedOwedSplits
       .filter((split) => {
+        if (!split.Expense) return false; // Skip if expense is missing
         const payerId = split.Expense.paidBy || split.Expense.createdBy;
         return payerId !== userId; // Skip if user owes themselves
       })
       .reduce((sum, split) => sum + split.convertedAmount, 0);
-    const totalOwedToUser = convertedOwedToUser.reduce((sum, split) => sum + split.convertedAmount, 0);
+    const totalOwedToUser = convertedOwedToUser
+      .filter((split) => !!split.Expense) // Skip if expense is missing
+      .reduce((sum, split) => sum + split.convertedAmount, 0);
     const netBalance = totalOwedToUser - totalOwed;
 
+    // Check if expense is linked to a ride
+    // Filter out any splits that might have lost their expense during conversion
+    const validOwedSplits = convertedOwedSplits.filter(s => s.Expense);
+    const validOwedToUserSplits = convertedOwedToUser.filter(s => s.Expense);
+    const expenseIds = [...new Set([...validOwedSplits, ...validOwedToUserSplits].map(s => s.Expense.id))];
+    const ridesByExpenseId = new Map<string, any>();
+    if (expenseIds.length > 0) {
+      const rides = await this.prisma.ride.findMany({
+        where: { expenseId: { in: expenseIds } },
+        select: { id: true, expenseId: true },
+      });
+      rides.forEach(ride => {
+        if (ride.expenseId) {
+          ridesByExpenseId.set(ride.expenseId, ride);
+        }
+      });
+    }
+
     // Group by user (exclude cases where user owes themselves)
-    const owedByUser = new Map<string, { user: any; amount: number; originalAmount: number; originalCurrency: string; splits: any[] }>();
+    // Breakdown structure: { byGroup: { [groupId]: { groupName, amount } }, rideshare: number, individual: number }
+    const owedByUser = new Map<string, { user: any; amount: number; originalAmount: number; originalCurrency: string; splits: any[]; breakdown: { byGroup: Map<string, { groupName: string; amount: number }>; rideshare: number; individual: number } }>();
     convertedOwedSplits.forEach((split) => {
+      // Skip if expense is missing (shouldn't happen after filtering, but defensive check)
+      if (!split.Expense) {
+        console.warn('[ExpenseService] Skipping split with missing expense:', split.id);
+        return;
+      }
       // Use paidBy if available, otherwise fallback to createdBy for backward compatibility
       const creditorId = split.Expense.paidBy || split.Expense.createdBy;
       // Skip if user owes themselves
@@ -1182,38 +1427,109 @@ export class ExpenseService {
       if (!owedByUser.has(creditorId)) {
         // Use paidByUser if available, otherwise use createdByUser
         const creditorUser = split.Expense.User_Expense_paidByToUser || split.Expense.User_Expense_createdByToUser;
+        if (!creditorUser) {
+          console.error('[ExpenseService] Missing creditor user for expense:', split.Expense.id, 'creditorId:', creditorId);
+          return; // Skip if user data is missing
+        }
         owedByUser.set(creditorId, {
           user: creditorUser,
           amount: 0,
           originalAmount: 0,
           originalCurrency: split.originalCurrency,
           splits: [],
+          breakdown: { byGroup: new Map(), rideshare: 0, individual: 0 },
         });
       }
       const entry = owedByUser.get(creditorId)!;
       entry.amount += split.convertedAmount;
       entry.originalAmount += split.originalAmount;
       entry.splits.push(split);
+      
+      // Categorize by source with actual group names
+      const isRideshare = ridesByExpenseId.has(split.Expense.id);
+      const groupId = split.Expense.groupId;
+      const groupName = split.Expense.Group?.name;
+      
+      if (isRideshare) {
+        entry.breakdown.rideshare += split.convertedAmount;
+      } else if (groupId && groupName) {
+        // Group expense - track by group ID and name
+        if (!entry.breakdown.byGroup.has(groupId)) {
+          entry.breakdown.byGroup.set(groupId, { groupName, amount: 0 });
+        }
+        const groupEntry = entry.breakdown.byGroup.get(groupId)!;
+        groupEntry.amount += split.convertedAmount;
+      } else {
+        // Individual (non-group) expense
+        entry.breakdown.individual += split.convertedAmount;
+      }
     });
 
-    const owedToUserByUser = new Map<string, { user: any; amount: number; originalAmount: number; originalCurrency: string; splits: any[] }>();
+    const owedToUserByUser = new Map<string, { user: any; amount: number; originalAmount: number; originalCurrency: string; splits: any[]; breakdown: { byGroup: Map<string, { groupName: string; amount: number }>; rideshare: number; individual: number } }>();
     convertedOwedToUser.forEach((split) => {
+      // Skip if expense is missing (shouldn't happen after filtering, but defensive check)
+      if (!split.Expense) {
+        console.warn('[ExpenseService] Skipping split with missing expense:', split.id);
+        return;
+      }
       const debtorId = split.userId;
+      if (!debtorId) {
+        console.warn('[ExpenseService] Missing debtorId for split:', split.id);
+        return; // Skip if debtorId is missing
+      }
       if (!owedToUserByUser.has(debtorId)) {
+        if (!split.User) {
+          console.error('[ExpenseService] Missing User for split:', split.id, 'debtorId:', debtorId);
+          return; // Skip if user data is missing
+        }
         owedToUserByUser.set(debtorId, {
           user: split.User,
           amount: 0,
           originalAmount: 0,
           originalCurrency: split.originalCurrency,
           splits: [],
+          breakdown: { byGroup: new Map(), rideshare: 0, individual: 0 },
         });
       }
       const entry = owedToUserByUser.get(debtorId)!;
       entry.amount += split.convertedAmount;
       entry.originalAmount += split.originalAmount;
       entry.splits.push(split);
+      
+      // Categorize by source with actual group names
+      const isRideshare = ridesByExpenseId.has(split.Expense.id);
+      const groupId = split.Expense.groupId;
+      const groupName = split.Expense.Group?.name;
+      
+      if (isRideshare) {
+        entry.breakdown.rideshare += split.convertedAmount;
+      } else if (groupId && groupName) {
+        // Group expense - track by group ID and name
+        if (!entry.breakdown.byGroup.has(groupId)) {
+          entry.breakdown.byGroup.set(groupId, { groupName, amount: 0 });
+        }
+        const groupEntry = entry.breakdown.byGroup.get(groupId)!;
+        groupEntry.amount += split.convertedAmount;
+      } else {
+        // Individual (non-group) expense
+        entry.breakdown.individual += split.convertedAmount;
+      }
+      
+      // Debug logging for duplicate amounts
+      if (split.convertedAmount === 60.833333333333336) {
+        console.log('[ExpenseService] Found 60.83 split:', {
+          splitId: split.id,
+          expenseId: split.Expense?.id,
+          expenseDescription: split.Expense?.description,
+          debtorId,
+          debtorEmail: split.User?.email,
+          amount: split.convertedAmount,
+          originalAmount: split.originalAmount,
+        });
+      }
     });
 
+    // Log detailed balance information for debugging
     console.log('[ExpenseService] Balance results:', {
       totalOwed,
       totalOwedToUser,
@@ -1221,22 +1537,102 @@ export class ExpenseService {
       primaryCurrency,
       owedByUserCount: owedByUser.size,
       owedToUserCount: owedToUserByUser.size,
+      owedByUserDetails: Array.from(owedByUser.entries()).map(([id, data]) => ({
+        userId: id,
+        userName: data.user?.UserProfile?.displayName || data.user?.email || 'Unknown',
+        amount: data.amount,
+        splitCount: data.splits.length,
+        splitIds: data.splits.map(s => s.id),
+      })),
+      owedToUserDetails: Array.from(owedToUserByUser.entries()).map(([id, data]) => ({
+        userId: id,
+        userName: data.user?.UserProfile?.displayName || data.user?.email || 'Unknown',
+        amount: data.amount,
+        splitCount: data.splits.length,
+        splitIds: data.splits.map(s => s.id),
+      })),
     });
 
+    // Round all amounts to 2 decimal places before returning
     return {
-      totalOwed,
-      totalOwedToUser,
-      netBalance,
+      totalOwed: Math.round(totalOwed * 100) / 100,
+      totalOwedToUser: Math.round(totalOwedToUser * 100) / 100,
+      netBalance: Math.round(netBalance * 100) / 100,
       primaryCurrency,
-      owedByUser: Array.from(owedByUser.values()),
-      owedToUser: Array.from(owedToUserByUser.values()),
+      owedByUser: Array.from(owedByUser.values()).map(item => ({
+        ...item,
+        user: {
+          id: item.user.id,
+          email: item.user.email,
+          profile: item.user.UserProfile
+            ? {
+                displayName: item.user.UserProfile.displayName,
+                avatarUrl: item.user.UserProfile.avatarUrl,
+              }
+            : null,
+        },
+        amount: Math.round(item.amount * 100) / 100,
+        originalAmount: Math.round(item.originalAmount * 100) / 100,
+        breakdown: {
+          byGroup: Array.from(item.breakdown.byGroup.entries()).map(([groupId, groupData]) => ({
+            groupId,
+            groupName: groupData.groupName,
+            amount: Math.round(groupData.amount * 100) / 100,
+          })),
+          rideshare: Math.round(item.breakdown.rideshare * 100) / 100,
+          individual: Math.round(item.breakdown.individual * 100) / 100,
+        },
+      })),
+      owedToUser: Array.from(owedToUserByUser.values()).map(item => ({
+        ...item,
+        user: {
+          id: item.user.id,
+          email: item.user.email,
+          profile: item.user.UserProfile
+            ? {
+                displayName: item.user.UserProfile.displayName,
+                avatarUrl: item.user.UserProfile.avatarUrl,
+              }
+            : null,
+        },
+        amount: Math.round(item.amount * 100) / 100,
+        originalAmount: Math.round(item.originalAmount * 100) / 100,
+        breakdown: {
+          byGroup: Array.from(item.breakdown.byGroup.entries()).map(([groupId, groupData]) => ({
+            groupId,
+            groupName: groupData.groupName,
+            amount: Math.round(groupData.amount * 100) / 100,
+          })),
+          rideshare: Math.round(item.breakdown.rideshare * 100) / 100,
+          individual: Math.round(item.breakdown.individual * 100) / 100,
+        },
+      })),
     };
+    } catch (error) {
+      console.error('[ExpenseService] Error in getBalances:', error);
+      // If it's a known error, re-throw it
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      // For unexpected errors, wrap them to avoid exposing internal details
+      throw new BadRequestException('Failed to calculate balances. Please try again later.');
+    }
   }
 
   async createSettlement(userId: string, createSettlementDto: CreateSettlementDto) {
-    // Validate payer is the current user
-    const payerId = userId;
     const payeeId = createSettlementDto.payeeId;
+    
+    // Determine payer: use provided payerId, or default to current user
+    // If payeeId is current user (user is receiving), payerId must be provided (the friend paying)
+    // If payeeId is someone else (user is paying), payerId defaults to current user
+    let payerId: string;
+    
+    if (createSettlementDto.payerId) {
+      payerId = createSettlementDto.payerId;
+    } else {
+      // Default to current user as payer
+      payerId = userId;
+    }
 
     if (payerId === payeeId) {
       throw new BadRequestException('Cannot settle with yourself');
@@ -1253,19 +1649,106 @@ export class ExpenseService {
     }
 
     // Find outstanding splits between payer and payee
-    // Payer owes payee: splits where payer is the user and payee created the expense
-    const outstandingSplits = await this.prisma.expenseSplit.findMany({
+    // payeeId = the person receiving payment (the one who is owed)
+    // payerId = the current user (the one making the payment)
+    // 
+    // Settlement direction: If payee is receiving payment, it means payer owes payee
+    // So we need to find splits where:
+    // - payer (current user) is the debtor (userId = payerId)
+    // - payee paid for the expense (paidBy = payeeId)
+    //
+    // OR if the settlement is in the opposite direction (payee owes payer):
+    // - payee is the debtor (userId = payeeId)  
+    // - payer paid for the expense (paidBy = payerId)
+    
+    // Get current balances to determine which direction has outstanding debt
+    const balances = await this.getBalances(payerId);
+    const owedToPayee = balances.owedToUser.find(item => item?.user?.id === payeeId);
+    const owedByPayee = balances.owedByUser.find(item => item?.user?.id === payeeId);
+    
+    // Build base where clause for expense filtering
+    const expenseWhereClause: any = {
+      OR: [
+        { paidBy: payeeId }, // Payee paid for the expense
+        { 
+          AND: [
+            { paidBy: null },
+            { createdBy: payeeId },
+          ],
+        },
+      ],
+    };
+
+    // If groupId is provided, filter to only expenses within that group
+    if (createSettlementDto.groupId) {
+      expenseWhereClause.groupId = createSettlementDto.groupId;
+    }
+
+    // Find splits in BOTH directions - we'll settle the direction that has outstanding debt
+    const splitsPayerOwesPayee = await this.prisma.expenseSplit.findMany({
       where: {
-        userId: payerId,
+        userId: payerId, // Payer is the debtor
         isPaid: false,
-        Expense: {
-          createdBy: payeeId,
-        },
+        Expense: expenseWhereClause,
       },
-        include: {
-          Expense: true,
-        },
+      include: {
+        Expense: true,
+      },
     });
+
+    // Build base where clause for the opposite direction
+    const expenseWhereClauseOpposite: any = {
+      OR: [
+        { paidBy: payerId }, // Payer paid for the expense
+        { 
+          AND: [
+            { paidBy: null },
+            { createdBy: payerId },
+          ],
+        },
+      ],
+    };
+
+    // If groupId is provided, filter to only expenses within that group
+    if (createSettlementDto.groupId) {
+      expenseWhereClauseOpposite.groupId = createSettlementDto.groupId;
+    }
+
+    const splitsPayeeOwesPayer = await this.prisma.expenseSplit.findMany({
+      where: {
+        userId: payeeId, // Payee is the debtor
+        isPaid: false,
+        Expense: expenseWhereClauseOpposite,
+      },
+      include: {
+        Expense: true,
+      },
+    });
+
+    // Determine which direction to settle based on which has outstanding debt
+    // If payee is receiving payment, we settle payer's debt to payee
+    // If payer is receiving payment (negative net), we settle payee's debt to payer
+    const netBalance = (owedToPayee?.amount || 0) - (owedByPayee?.amount || 0);
+    
+    // If net balance is negative, payer owes payee (settle payer's debt)
+    // If net balance is positive, payee owes payer (settle payee's debt)
+    // But since payeeId is "the one receiving payment", we should settle in the direction where payee is owed
+    // So we settle payer's debt to payee (splitsPayerOwesPayee)
+    // UNLESS the amount is negative or the net balance suggests the opposite direction
+    
+    // Actually, let's use the split direction that matches the settlement amount
+    // If we're settling with payee as receiver, we settle what payer owes payee
+    let outstandingSplits = splitsPayerOwesPayee;
+    
+    // But if there are no splits in that direction, check the other direction
+    // This handles edge cases where the balance calculation might be off
+    if (splitsPayerOwesPayee.length === 0 && splitsPayeeOwesPayer.length > 0) {
+      // If payer has no debt to payee, but payee has debt to payer,
+      // this might be a reverse settlement (payee paying payer)
+      // But since payeeId is the receiver, this shouldn't happen unless there's a bug
+      console.warn('[ExpenseService] Settlement direction mismatch: payeeId is receiver but no splits found in that direction');
+      outstandingSplits = splitsPayeeOwesPayer;
+    }
 
     // If specific split IDs are provided, filter to only those
     let splitsToSettle = outstandingSplits;
@@ -1278,56 +1761,92 @@ export class ExpenseService {
       }
     }
 
-    // Calculate total amount owed
-    const totalOwed = splitsToSettle.reduce((sum, split) => sum + split.amount, 0);
+    // Calculate total amount owed (round to 2 decimal places to avoid floating point issues)
+    const totalOwed = Math.round(splitsToSettle.reduce((sum, split) => sum + split.amount, 0) * 100) / 100;
+    const settlementAmount = Math.round(createSettlementDto.amount * 100) / 100;
 
     // Validate settlement amount (should be <= total owed, but allow partial settlements)
-    if (createSettlementDto.amount > totalOwed) {
+    if (settlementAmount > totalOwed + 0.01) { // Add small tolerance for floating point errors
       throw new BadRequestException(
-        `Settlement amount (${createSettlementDto.amount}) exceeds total owed (${totalOwed})`,
+        `Settlement amount (${settlementAmount.toFixed(2)}) exceeds total owed (${totalOwed.toFixed(2)})`,
+      );
+    }
+    
+    if (totalOwed === 0) {
+      throw new BadRequestException(
+        'No outstanding balance found with this user. The balance may have already been settled.',
       );
     }
 
-    // If amount is less than total, we need to settle splits proportionally
-    // For simplicity, we'll settle splits in order until we reach the amount
-    let remainingAmount = createSettlementDto.amount;
-    const splitsToMarkAsPaid: { splitId: string; amount: number }[] = [];
+    // Handle partial settlements: settle splits proportionally until we reach the amount
+    let remainingAmount = settlementAmount;
+    const splitsToFullyPay: string[] = []; // Splits that will be fully paid
+    const splitsToPartiallyPay: Array<{ splitId: string; paidAmount: number; remainingAmount: number }> = []; // Splits with partial payment
 
     for (const split of splitsToSettle) {
-      if (remainingAmount <= 0) break;
+      if (remainingAmount <= 0.01) break; // Small tolerance for floating point errors
 
       const amountToSettle = Math.min(split.amount, remainingAmount);
-      splitsToMarkAsPaid.push({
-        splitId: split.id,
-        amount: amountToSettle,
-      });
-      remainingAmount -= amountToSettle;
+      // Round to 2 decimal places
+      const roundedAmount = Math.round(amountToSettle * 100) / 100;
+      const splitAmount = Math.round(split.amount * 100) / 100;
+      
+      if (roundedAmount >= splitAmount - 0.01) {
+        // Split is fully covered
+        splitsToFullyPay.push(split.id);
+        remainingAmount -= splitAmount;
+      } else {
+        // Split is partially covered - we'll create a new split with the remaining amount
+        const remainingSplitAmount = Math.round((splitAmount - roundedAmount) * 100) / 100;
+        splitsToPartiallyPay.push({
+          splitId: split.id,
+          paidAmount: roundedAmount,
+          remainingAmount: remainingSplitAmount,
+        });
+        remainingAmount -= roundedAmount;
+      }
     }
 
-    // For now, we'll only mark splits as fully paid if the settlement covers the full amount
-    // TODO: Handle partial settlements (requires adding partial payment tracking)
-    if (createSettlementDto.amount < totalOwed) {
-      throw new BadRequestException(
-        'Partial settlements are not yet supported. Please settle the full amount.',
-      );
-    }
-
-    // Create settlement record and mark splits as paid in a transaction
+    // Create settlement record and handle splits (fully paid, partially paid, or create new splits) in a transaction
     const settlement = await this.prisma.$transaction(async (tx) => {
-      // Create settlement
+      // For partially paid splits, create new splits with the remaining amount
+      const newSplitIds: string[] = [];
+      for (const partialSplit of splitsToPartiallyPay) {
+        const originalSplit = await tx.expenseSplit.findUnique({
+          where: { id: partialSplit.splitId },
+          include: { Expense: true },
+        });
+        
+        if (originalSplit) {
+          // Create a new split with the remaining amount
+          const newSplit = await tx.expenseSplit.create({
+            data: {
+              id: randomUUID(),
+              expenseId: originalSplit.expenseId,
+              userId: originalSplit.userId,
+              amount: partialSplit.remainingAmount,
+              isPaid: false,
+            },
+          });
+          newSplitIds.push(newSplit.id);
+        }
+      }
+
+      // Create settlement with all splits that were paid (fully or partially)
+      const allPaidSplitIds = [...splitsToFullyPay, ...splitsToPartiallyPay.map(s => s.splitId)];
       const settlement = await tx.settlement.create({
         data: {
           id: randomUUID(),
           payerId,
           payeeId,
-          amount: createSettlementDto.amount,
+          amount: settlementAmount, // Use rounded amount
           currency: createSettlementDto.currency || 'USD',
           paymentMethod: createSettlementDto.paymentMethod,
           notes: createSettlementDto.notes,
           SettlementSplit: {
-            create: splitsToSettle.map((split) => ({
+            create: allPaidSplitIds.map((splitId) => ({
               id: randomUUID(),
-              splitId: split.id,
+              splitId: splitId,
             })),
           },
         },
@@ -1368,16 +1887,31 @@ export class ExpenseService {
         },
       });
 
-      // Mark all splits as paid
-      await tx.expenseSplit.updateMany({
-        where: {
-          id: { in: splitsToSettle.map((s) => s.id) },
-        },
-        data: {
-          isPaid: true,
-          paidAt: new Date(),
-        },
-      });
+      // Mark fully paid splits as paid
+      if (splitsToFullyPay.length > 0) {
+        await tx.expenseSplit.updateMany({
+          where: {
+            id: { in: splitsToFullyPay },
+          },
+          data: {
+            isPaid: true,
+            paidAt: new Date(),
+          },
+        });
+      }
+
+      // For partially paid splits, mark the original split as paid (the remaining amount is in the new split)
+      if (splitsToPartiallyPay.length > 0) {
+        await tx.expenseSplit.updateMany({
+          where: {
+            id: { in: splitsToPartiallyPay.map(s => s.splitId) },
+          },
+          data: {
+            isPaid: true,
+            paidAt: new Date(),
+          },
+        });
+      }
 
       return settlement;
     });

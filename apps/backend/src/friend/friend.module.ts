@@ -4,9 +4,10 @@ import { FriendService } from './friend.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { NotificationModule } from '../notification/notification.module';
 import { SharedModule } from '../shared/shared.module';
+import { TrustScoreModule } from '../trust-score/trust-score.module';
 
 @Module({
-  imports: [PrismaModule, NotificationModule, SharedModule],
+  imports: [PrismaModule, NotificationModule, SharedModule, TrustScoreModule],
   controllers: [FriendController],
   providers: [FriendService],
   exports: [FriendService],

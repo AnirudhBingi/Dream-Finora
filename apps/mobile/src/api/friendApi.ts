@@ -32,6 +32,10 @@ export interface SearchUser {
     avatarUrl: string | null;
   } | null;
   friendStatus?: 'none' | 'pending' | 'accepted' | 'blocked';
+  trustScore?: {
+    score: number;
+  } | null;
+  trustScoreVisibility?: 'public' | 'friends' | 'private';
 }
 
 export interface SendFriendRequestDto {

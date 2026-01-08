@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsBoolean } from 'class-validator';
 
 export class CreateGroupDto {
   @IsString()
@@ -12,5 +12,17 @@ export class CreateGroupDto {
   @IsArray()
   @IsString({ each: true })
   memberIds?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  allowMemberEditing?: boolean;
+
+  @IsOptional()
+  @IsString()
+  icon?: string;
+
+  @IsOptional()
+  @IsString()
+  avatarUrl?: string;
 }
 

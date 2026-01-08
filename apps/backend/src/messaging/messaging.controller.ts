@@ -10,6 +10,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { MessagingService } from './messaging.service';
 import { SendMessageDto } from './dto/send-message.dto';
@@ -41,6 +42,9 @@ export class MessagingController {
     @Param('chatId') chatId: string,
     @Body() sendMessageDto: SendMessageDto,
   ) {
+    if (!sendMessageDto.content) {
+      throw new BadRequestException('Message content is required');
+    }
     return this.messagingService.sendMessage(user.userId, chatId, sendMessageDto.content);
   }
 
@@ -87,6 +91,15 @@ export class MessagingController {
     @Param('messageId') messageId: string,
   ) {
     return this.messagingService.markMessageAsRead(user.userId, chatId, messageId);
+  }
+
+  @Post('conversations/group/:groupId')
+  @HttpCode(HttpStatus.CREATED)
+  async createGroupChat(
+    @CurrentUser() user: { userId: string },
+    @Param('groupId') groupId: string,
+  ) {
+    return this.messagingService.createOrGetGroupChat(user.userId, groupId);
   }
 }
 

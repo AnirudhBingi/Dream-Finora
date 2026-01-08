@@ -22,11 +22,14 @@ import {
   Message,
 } from '../api/messagingApi';
 import { useAuth } from '../auth/authContext';
-import { getAvatarUrl } from '../utils/avatar';
+import { Avatar } from '../components/Avatar';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Header } from '../components/Header';
+import { getUnreadCount } from '../api/notificationApi';
+import { setBadgeCount } from '../services/pushNotifications';
 
 export default function MessageThreadScreen({ route, navigation }: any) {
-  const { chatId, otherUser } = route?.params || {};
+  const { chatId, otherUser, group } = route?.params || {};
   const { token, user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageText, setMessageText] = useState('');
@@ -64,7 +67,7 @@ export default function MessageThreadScreen({ route, navigation }: any) {
     return () => clearInterval(interval);
   }, [token, chatId]);
 
-  // Mark messages as read when viewing
+  // Mark messages as read when viewing and update notification badge
   useEffect(() => {
     if (!token || !messages.length) return;
 
@@ -73,14 +76,26 @@ export default function MessageThreadScreen({ route, navigation }: any) {
       (msg) => msg.senderId !== user?.id && !msg.readAt,
     );
 
-    unreadMessages.forEach(async (msg) => {
-      try {
-        await markMessageAsRead(token, chatId, msg.id);
-      } catch (err) {
-        // Silently fail
-        console.error('Failed to mark message as read:', err);
-      }
-    });
+    if (unreadMessages.length > 0) {
+      // Mark all unread messages as read
+      Promise.all(
+        unreadMessages.map(async (msg) => {
+          try {
+            await markMessageAsRead(token, chatId, msg.id);
+          } catch (err) {
+            console.error('Failed to mark message as read:', err);
+          }
+        })
+      ).then(async () => {
+        // Update notification badge count after marking messages as read
+        try {
+          const unreadCount = await getUnreadCount(token);
+          await setBadgeCount(unreadCount);
+        } catch (err) {
+          console.error('Failed to update badge count:', err);
+        }
+      });
+    }
   }, [messages, token, chatId, user?.id]);
 
   const handleSend = async () => {
@@ -218,9 +233,6 @@ export default function MessageThreadScreen({ route, navigation }: any) {
     const isEdited = !!item.editedAt;
     const senderName =
       item.sender?.profile?.displayName || item.sender?.email || 'Unknown';
-    const avatarUrl = item.sender?.profile?.avatarUrl
-      ? getAvatarUrl(item.sender?.profile?.avatarUrl || '')
-      : null;
 
     return (
       <TouchableOpacity
@@ -234,15 +246,13 @@ export default function MessageThreadScreen({ route, navigation }: any) {
       >
         {!isOwn && (
           <View style={styles.avatarContainer}>
-            {avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarText}>
-                  {senderName.charAt(0).toUpperCase()}
-                </Text>
-              </View>
-            )}
+            <Avatar
+              avatarUrl={item.sender?.profile?.avatarUrl}
+              displayName={senderName}
+              size={36}
+              borderWidth={2}
+              borderColor="#FFFFFF"
+            />
           </View>
         )}
         <View
@@ -252,7 +262,7 @@ export default function MessageThreadScreen({ route, navigation }: any) {
             isDeleted && styles.deletedMessageBubble,
           ]}
         >
-          {!isOwn && (
+          {!isOwn && group && (
             <Text style={styles.senderName}>{senderName}</Text>
           )}
           {isDeleted ? (
@@ -288,9 +298,9 @@ export default function MessageThreadScreen({ route, navigation }: any) {
             {isOwn && !isDeleted && (
               <View style={styles.readReceiptContainer}>
                 {item.readAt ? (
-                  <MaterialIcons name="done-all" size={14} color="#2563EB" />
+                  <MaterialIcons name="done-all" size={14} color="#FFFFFF" />
                 ) : (
-                  <MaterialIcons name="done" size={14} color="#9CA3AF" />
+                  <MaterialIcons name="done" size={14} color="#FFFFFF" style={{ opacity: 0.7 }} />
                 )}
               </View>
             )}
@@ -300,33 +310,35 @@ export default function MessageThreadScreen({ route, navigation }: any) {
     );
   };
 
-  const displayName =
-    otherUser?.profile?.displayName || otherUser?.email || 'Unknown User';
+  // Get display name - group chat or direct chat
+  const displayName = group
+    ? group.name
+    : (otherUser?.profile?.displayName || (otherUser?.email ? otherUser.email.split('@')[0].charAt(0).toUpperCase() + otherUser.email.split('@')[0].slice(1) : 'Unknown User'));
+
+  const handleBack = () => {
+    if (navigation?.goBack) {
+      navigation.goBack();
+    }
+  };
+
+  const handleNavigateToProfile = () => {
+    if (otherUser?.id && navigation?.navigate) {
+      navigation.navigate('userProfile', { userId: otherUser.id });
+    }
+  };
 
   if (loading && messages.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-          >
-            <Text style={styles.backButtonText}>← Back</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => {
-              if (otherUser?.id) {
-                navigation.navigate('userProfile', { userId: otherUser.id });
-              }
-            }}
-            activeOpacity={0.7}
-            style={styles.headerTitleContainer}
-          >
-            <Text style={styles.headerTitle}>{displayName}</Text>
-          </TouchableOpacity>
-        </View>
+        <Header
+          title={displayName}
+          onBack={handleBack}
+          showProfile={false}
+          showNotifications={false}
+          showSettings={false}
+        />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#007AFF" />
+          <ActivityIndicator size="large" color="#6366F1" />
         </View>
       </SafeAreaView>
     );
@@ -334,25 +346,13 @@ export default function MessageThreadScreen({ route, navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        >
-          <Text style={styles.backButtonText}>← Back</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => {
-            if (otherUser?.id) {
-              navigation.navigate('userProfile', { userId: otherUser.id });
-            }
-          }}
-          activeOpacity={0.7}
-          style={styles.headerTitleContainer}
-        >
-          <Text style={styles.headerTitle}>{displayName}</Text>
-        </TouchableOpacity>
-      </View>
+      <Header
+        title={displayName}
+        onBack={handleBack}
+        showProfile={false}
+        showNotifications={false}
+        showSettings={false}
+      />
       {error && (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
@@ -377,38 +377,42 @@ export default function MessageThreadScreen({ route, navigation }: any) {
         <View style={styles.inputContainer}>
           {editingMessageId && (
             <View style={styles.editIndicator}>
-              <MaterialIcons name="edit" size={16} color="#2563EB" />
+              <MaterialIcons name="edit" size={16} color="#6366F1" />
               <Text style={styles.editIndicatorText}>Editing message</Text>
               <TouchableOpacity onPress={handleEditCancel} style={styles.cancelEditButton}>
-                <MaterialIcons name="close" size={16} color="#6B7280" />
+                <MaterialIcons name="close" size={18} color="#6B7280" />
               </TouchableOpacity>
             </View>
           )}
-          <TextInput
-            style={styles.input}
-            placeholder={editingMessageId ? 'Edit message...' : 'Type a message...'}
-            value={messageText}
-            onChangeText={setMessageText}
-            multiline
-            maxLength={1000}
-            editable={!sending}
-          />
-          <TouchableOpacity
-            style={[
-              styles.sendButton,
-              (!messageText.trim() || sending) && styles.sendButtonDisabled,
-            ]}
-            onPress={handleSend}
-            disabled={!messageText.trim() || sending}
-          >
-            {sending ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : editingMessageId ? (
-              <MaterialIcons name="check" size={20} color="#FFFFFF" />
-            ) : (
-              <Text style={styles.sendButtonText}>Send</Text>
-            )}
-          </TouchableOpacity>
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.input}
+              placeholder={editingMessageId ? 'Edit message...' : 'Type a message...'}
+              placeholderTextColor="#9CA3AF"
+              value={messageText}
+              onChangeText={setMessageText}
+              multiline
+              maxLength={1000}
+              editable={!sending}
+            />
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                (!messageText.trim() || sending) && styles.sendButtonDisabled,
+              ]}
+              onPress={handleSend}
+              disabled={!messageText.trim() || sending}
+              activeOpacity={0.7}
+            >
+              {sending ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : editingMessageId ? (
+                <MaterialIcons name="check" size={20} color="#FFFFFF" />
+              ) : (
+                <MaterialIcons name="send" size={20} color="#FFFFFF" />
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -418,33 +422,7 @@ export default function MessageThreadScreen({ route, navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-    marginTop: 16,
-  },
-  backButton: {
-    marginRight: 12,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#007AFF',
-  },
-  headerTitleContainer: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#2563EB',
+    backgroundColor: '#F9FAFB',
   },
   loadingContainer: {
     flex: 1,
@@ -469,7 +447,7 @@ const styles = StyleSheet.create({
   },
   messageContainer: {
     flexDirection: 'row',
-    marginVertical: 4,
+    marginVertical: 6,
     alignItems: 'flex-end',
   },
   ownMessageContainer: {
@@ -480,101 +458,118 @@ const styles = StyleSheet.create({
   },
   avatarContainer: {
     marginRight: 8,
-    marginBottom: 4,
-  },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-  },
-  avatarPlaceholder: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#E0E0E0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666666',
+    marginBottom: 2,
   },
   messageBubble: {
     maxWidth: '75%',
-    padding: 12,
-    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
   },
   ownMessageBubble: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#6366F1',
     borderBottomRightRadius: 4,
   },
   otherMessageBubble: {
     backgroundColor: '#FFFFFF',
     borderBottomLeftRadius: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
   },
   senderName: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#666666',
+    color: '#6B7280',
     marginBottom: 4,
+    letterSpacing: -0.1,
   },
   messageText: {
-    fontSize: 16,
+    fontSize: 15,
     lineHeight: 20,
+    letterSpacing: -0.1,
   },
   ownMessageText: {
     color: '#FFFFFF',
   },
   otherMessageText: {
-    color: '#000000',
+    color: '#111827',
   },
   messageTime: {
     fontSize: 11,
     marginTop: 4,
+    fontWeight: '400',
   },
   ownMessageTime: {
     color: '#FFFFFF',
-    opacity: 0.8,
+    opacity: 0.85,
   },
   otherMessageTime: {
-    color: '#666666',
+    color: '#6B7280',
   },
   inputContainer: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     padding: 12,
+    paddingBottom: Platform.OS === 'ios' ? 12 : 12,
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
-    alignItems: 'flex-end',
+    borderTopColor: '#E5E7EB',
   },
   input: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 20,
+    borderColor: '#E5E7EB',
+    borderRadius: 24,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    marginRight: 8,
     maxHeight: 100,
-    fontSize: 16,
+    fontSize: 15,
+    color: '#111827',
+    backgroundColor: '#F9FAFB',
+    minHeight: 44,
   },
   sendButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#6366F1',
     paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingVertical: 12,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    minWidth: 60,
+    minWidth: 64,
+    minHeight: 44,
+    marginTop: 8,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#6366F1',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   sendButtonDisabled: {
-    backgroundColor: '#CCCCCC',
+    backgroundColor: '#D1D5DB',
+    ...Platform.select({
+      ios: {
+        shadowOpacity: 0,
+      },
+      android: {
+        elevation: 0,
+      },
+    }),
   },
   sendButtonText: {
     color: '#FFFFFF',
@@ -598,19 +593,26 @@ const styles = StyleSheet.create({
   readReceiptContainer: {
     marginLeft: 4,
   },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+  },
   editIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#EFF6FF',
+    gap: 8,
+    backgroundColor: '#EEF2FF',
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingVertical: 8,
+    borderRadius: 12,
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E0E7FF',
   },
   editIndicatorText: {
-    fontSize: 12,
-    color: '#2563EB',
+    fontSize: 13,
+    color: '#6366F1',
     fontWeight: '500',
     flex: 1,
   },

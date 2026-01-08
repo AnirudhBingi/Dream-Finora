@@ -532,6 +532,39 @@ See `DEVELOPMENT_ROADMAP.md` for detailed day-by-day plan (50 days to production
 
 ---
 
+## Component Architecture
+
+### Reusable Components
+
+**Avatar Component** (`apps/mobile/src/components/Avatar.tsx`)
+- Standardized user profile picture rendering across the entire application
+- Handles URL processing, image loading, and fallback to colored initials
+- Used across all screens for consistent avatar display
+- See: `docs/AVATAR_RENDERING_PATTERN.md`
+
+**Key Features:**
+- Automatic URL processing via `getAvatarUrl` utility
+- Graceful fallback to colored initials circle when image unavailable
+- Consistent color generation per user (hash-based)
+- Configurable size, borders, and styling
+- Error handling with automatic fallback
+
+**Utility Functions:**
+- `getAvatarUrl` (`apps/mobile/src/utils/avatar.ts`) - Centralized URL processing
+  - Handles relative paths (prepends API base URL)
+  - Handles absolute URLs (returns as-is)
+  - Returns null for invalid/missing URLs
+
+**Best Practices:**
+1. Always use Avatar component for user profile pictures
+2. Never create custom avatar rendering logic
+3. Always provide displayName fallback (email if displayName missing)
+4. Use standard sizes: 32px (small/chips), 48px (default), 64px (large/profile)
+5. Component handles null/undefined gracefully
+
+**Screens Updated (2025-01-28):**
+- FriendsListScreen, BalanceSummaryScreen, BillchopFriendsScreen, ParticipantPicker
+
 ## Next Steps
 
 1. Set up monorepo structure

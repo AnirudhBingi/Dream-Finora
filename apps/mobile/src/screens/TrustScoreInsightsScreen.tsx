@@ -14,12 +14,21 @@ import { useAuth } from '../auth/authContext';
 import { getTrustScoreInsights, TrustScoreInsights } from '../api/trustScoreApi';
 import { LineChart } from 'react-native-chart-kit';
 import { Dimensions } from 'react-native';
+import { Header } from '../components/Header';
 
 interface TrustScoreInsightsScreenProps {
   onBack: () => void;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
-export function TrustScoreInsightsScreen({ onBack }: TrustScoreInsightsScreenProps) {
+export function TrustScoreInsightsScreen({ 
+  onBack,
+  onNavigateToProfile,
+  onNavigateToNotifications,
+  onNavigateToSettings,
+}: TrustScoreInsightsScreenProps) {
   const { token } = useAuth();
   const [insights, setInsights] = useState<TrustScoreInsights | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,6 +70,13 @@ export function TrustScoreInsightsScreen({ onBack }: TrustScoreInsightsScreenPro
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <Header
+          title="Trust Score Insights"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2563EB" />
           <Text style={styles.loadingText}>Loading insights...</Text>
@@ -72,13 +88,13 @@ export function TrustScoreInsightsScreen({ onBack }: TrustScoreInsightsScreenPro
   if (error || !insights) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Trust Score Insights</Text>
-          <View style={styles.placeholder} />
-        </View>
+        <Header
+          title="Trust Score Insights"
+          onBack={onBack}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToNotifications={onNavigateToNotifications}
+          onNavigateToSettings={onNavigateToSettings}
+        />
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error || 'Failed to load insights'}</Text>
           <TouchableOpacity style={styles.retryButton} onPress={loadInsights}>
@@ -102,14 +118,13 @@ export function TrustScoreInsightsScreen({ onBack }: TrustScoreInsightsScreenPro
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-          <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Trust Score Insights</Text>
-        <View style={styles.placeholder} />
-      </View>
-
+      <Header
+        title="Trust Score Insights"
+        onBack={onBack}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToNotifications={onNavigateToNotifications}
+        onNavigateToSettings={onNavigateToSettings}
+      />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
@@ -271,32 +286,6 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: '#6B7280',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  backButton: {
-    padding: 8,
-    minWidth: 40,
-    minHeight: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#111827',
-    flex: 1,
-    marginLeft: 8,
-  },
-  placeholder: {
-    width: 40,
   },
   errorContainer: {
     padding: 16,

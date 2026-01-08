@@ -49,8 +49,10 @@ model BudgetTracking {
 model Chat {
   id              String            @id
   type            String            @default("direct")
+  groupId         String?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime
+  Group           Group?            @relation(fields: [groupId], references: [id], onDelete: Cascade)
   ChatParticipant ChatParticipant[]
   Message         Message[]
 }
@@ -68,22 +70,45 @@ model ChatParticipant {
 }
 
 model Chore {
-  id                          String            @id
-  groupId                     String?
-  createdBy                   String
-  title                       String
-  description                 String?
-  points                      Int               @default(10)
-  status                      String            @default("pending")
-  assignedTo                  String?
-  dueDate                     DateTime?
-  createdAt                   DateTime          @default(now())
-  completedAt                 DateTime?
-  User_Chore_assignedToToUser User?             @relation("Chore_assignedToToUser", fields: [assignedTo], references: [id])
-  User_Chore_createdByToUser  User              @relation("Chore_createdByToUser", fields: [createdBy], references: [id], onDelete: Cascade)
-  Group                       Group?            @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  ChoreCompletion             ChoreCompletion[]
-  ChoreHistory                ChoreHistory[]
+  id                                        String            @id
+  groupId                                   String?
+  friendId                                  String?
+  createdBy                                 String
+  title                                     String
+  description                               String?
+  category                                  String?
+  points                                    Int               @default(10)
+  status                                    String            @default("pending")
+  assignedTo                                String?
+  assignmentType                            String            @default("single") // 'single', 'multiple', 'open'
+  dueDate                                   DateTime?
+  createdAt                                 DateTime          @default(now())
+  completedAt                               DateTime?
+  // Recurring chore fields
+  isRecurring                               Boolean           @default(false)
+  recurrencePattern                         String? // 'daily', 'weekly', 'monthly', 'custom'
+  recurrenceConfig                          Json? // Custom schedule config: { daysOfWeek: [1,3,5], interval: 2, etc. }
+  parentChoreId                             String? // For recurring instances, points to the template chore
+  nextOccurrenceDate                        DateTime? // When the next occurrence should be generated
+  recurrenceEndDate                         DateTime? // When to stop generating occurrences
+  recurrenceCount                           Int? // How many occurrences to generate (null = infinite)
+  occurrencesGenerated                      Int               @default(0) // Track how many occurrences have been created
+  User_Chore_assignedToToUser               User?             @relation("Chore_assignedToToUser", fields: [assignedTo], references: [id])
+  User_Chore_createdByToUser                User              @relation("Chore_createdByToUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  User_Chore_friendIdToUser                 User?             @relation("Chore_friendIdToUser", fields: [friendId], references: [id])
+  Group                                     Group?            @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  Chore_Chore_parentChoreIdToChore          Chore?            @relation("ChoreRecurrence", fields: [parentChoreId], references: [id], onDelete: Cascade)
+  Chore_Chore_parentChoreIdToChore_children Chore[]           @relation("ChoreRecurrence")
+  ChoreCompletion                           ChoreCompletion[]
+  ChoreHistory                              ChoreHistory[]
+  ChoreAssignment                           ChoreAssignment[]
+  ChoreReminder                             ChoreReminder[]
+  ChoreRotation                             ChoreRotation[]
+  reminderEnabled                           Boolean           @default(true)
+  reminderHoursBefore                       Int? // e.g., 24 for 24 hours before due date
+  // Rotation fields
+  rotationEnabled                           Boolean           @default(false)
+  rotationType                              String? // 'round-robin', 'fairness-based', 'random'
 }
 
 model ChoreCompletion {
@@ -110,6 +135,57 @@ model ChoreHistory {
 
   @@index([choreId, createdAt])
   @@index([choreId])
+}
+
+model ChoreAssignment {
+  id           String    @id @default(uuid())
+  choreId      String
+  userId       String
+  assignedAt   DateTime  @default(now())
+  completedAt  DateTime?
+  pointsEarned Int?
+  onTime       Boolean?
+  Chore        Chore     @relation(fields: [choreId], references: [id], onDelete: Cascade)
+  User         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([choreId, userId])
+  @@index([choreId])
+  @@index([userId])
+  @@index([choreId, completedAt])
+}
+
+model ChoreReminder {
+  id           String    @id @default(uuid())
+  choreId      String
+  userId       String
+  reminderAt   DateTime
+  sent         Boolean   @default(false)
+  sentAt       DateTime?
+  reminderType String    @default("due_date") // 'due_date', 'overdue'
+  Chore        Chore     @relation(fields: [choreId], references: [id], onDelete: Cascade)
+  User         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([choreId, userId, reminderType])
+  @@index([choreId, reminderAt])
+  @@index([userId, reminderAt])
+  @@index([sent, reminderAt])
+  @@index([reminderAt])
+}
+
+model ChoreRotation {
+  id             String    @id @default(uuid())
+  choreId        String
+  userId         String
+  rotationOrder  Int       @default(0)
+  lastAssignedAt DateTime?
+  skipUntil      DateTime? // Skip user until date (e.g., vacation)
+  Chore          Chore     @relation(fields: [choreId], references: [id], onDelete: Cascade)
+  User           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([choreId, userId])
+  @@index([choreId])
+  @@index([userId])
+  @@index([choreId, rotationOrder])
 }
 
 model Expense {
@@ -260,16 +336,20 @@ model GoalContribution {
 }
 
 model Group {
-  id          String        @id
-  name        String
-  description String?
-  createdBy   String
-  createdAt   DateTime      @default(now())
-  Chore       Chore[]
-  Expense     Expense[]
-  User        User          @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-  GroupMember GroupMember[]
-  GroupInvitation GroupInvitation[]
+  id                 String            @id
+  name               String
+  description        String?
+  icon               String?           @default("group")
+  avatarUrl          String?
+  allowMemberEditing Boolean           @default(false)
+  createdBy          String
+  createdAt          DateTime          @default(now())
+  Chore              Chore[]
+  Expense            Expense[]
+  User               User              @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  GroupMember        GroupMember[]
+  GroupInvitation    GroupInvitation[]
+  Chat               Chat[]
 }
 
 model GroupMember {
@@ -285,21 +365,21 @@ model GroupMember {
 }
 
 model GroupInvitation {
-  id          String    @id
-  groupId     String
-  invitedBy   String
-  email       String?
+  id           String    @id
+  groupId      String
+  invitedBy    String
+  email        String?
   mobileNumber String?
-  userId      String?   // If user exists in system
-  token       String    @unique
-  status      String    @default("pending") // pending, accepted, declined, expired
-  expiresAt   DateTime
-  acceptedAt  DateTime?
-  declinedAt  DateTime?
-  createdAt   DateTime  @default(now())
-  Group       Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  Inviter     User      @relation("GroupInvitationInviter", fields: [invitedBy], references: [id], onDelete: Cascade)
-  Invitee     User?     @relation("GroupInvitationInvitee", fields: [userId], references: [id], onDelete: SetNull)
+  userId       String? // If user exists in system
+  token        String    @unique
+  status       String    @default("pending") // pending, accepted, declined, expired
+  expiresAt    DateTime
+  acceptedAt   DateTime?
+  declinedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  Group        Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  Inviter      User      @relation("GroupInvitationInviter", fields: [invitedBy], references: [id], onDelete: Cascade)
+  Invitee      User?     @relation("GroupInvitationInvitee", fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([groupId, status])
   @@index([email])
@@ -309,16 +389,16 @@ model GroupInvitation {
 }
 
 model UserInvitation {
-  id          String    @id
-  invitedBy   String
-  email       String?
+  id           String    @id
+  invitedBy    String
+  email        String?
   mobileNumber String?
-  token       String    @unique
-  status      String    @default("pending") // pending, accepted, expired
-  expiresAt   DateTime
-  acceptedAt  DateTime?
-  createdAt   DateTime  @default(now())
-  Inviter     User      @relation("UserInvitationInviter", fields: [invitedBy], references: [id], onDelete: Cascade)
+  token        String    @unique
+  status       String    @default("pending") // pending, accepted, expired
+  expiresAt    DateTime
+  acceptedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  Inviter      User      @relation("UserInvitationInviter", fields: [invitedBy], references: [id], onDelete: Cascade)
 
   @@index([email])
   @@index([mobileNumber])
@@ -510,45 +590,49 @@ model TrustScoreHistory {
 }
 
 model User {
-  id                                  String               @id
-  email                               String               @unique
-  mobileNumber                        String?              @unique
-  password                            String
-  createdAt                           DateTime             @default(now())
-  passwordResetToken                  String?
-  passwordResetExpires                DateTime?
-  emailVerified                       Boolean              @default(false)
-  emailVerificationToken              String?
-  updatedAt                           DateTime
-  Budget                              Budget[]
-  ChatParticipant                     ChatParticipant[]
-  Chore_Chore_assignedToToUser        Chore[]              @relation("Chore_assignedToToUser")
-  Chore_Chore_createdByToUser         Chore[]              @relation("Chore_createdByToUser")
-  ChoreCompletion                     ChoreCompletion[]
-  ChoreHistory                        ChoreHistory[]
-  Expense_Expense_createdByToUser     Expense[]            @relation("Expense_createdByToUser")
-  Expense_Expense_paidByToUser        Expense[]            @relation("Expense_paidByToUser")
-  ExpenseHistory                      ExpenseHistory[]
-  ExpenseSplit                        ExpenseSplit[]
-  FinanceAccount                      FinanceAccount[]
-  FinanceTransaction                  FinanceTransaction[]
-  FinancialGoal                       FinancialGoal[]
-  Friend_Friend_friendIdToUser        Friend[]             @relation("Friend_friendIdToUser")
-  Friend_Friend_userIdToUser          Friend[]             @relation("Friend_userIdToUser")
-  Group                               Group[]
-  GroupMember                         GroupMember[]
-  GroupInvitation_GroupInvitationInviter GroupInvitation[] @relation("GroupInvitationInviter")
-  GroupInvitation_GroupInvitationInvitee GroupInvitation[] @relation("GroupInvitationInvitee")
-  UserInvitation_UserInvitationInviter UserInvitation[] @relation("UserInvitationInviter")
-  Listing                             Listing[]
-  Message                             Message[]
-  Notification                        Notification[]
-  Ride                                Ride[]
-  RideParticipant                     RideParticipant[]
-  Settlement_Settlement_payeeIdToUser Settlement[]         @relation("Settlement_payeeIdToUser")
-  Settlement_Settlement_payerIdToUser Settlement[]         @relation("Settlement_payerIdToUser")
-  TrustScore                          TrustScore?
-  UserProfile                         UserProfile?
+  id                                     String               @id
+  email                                  String               @unique
+  mobileNumber                           String?              @unique
+  password                               String
+  createdAt                              DateTime             @default(now())
+  passwordResetToken                     String?
+  passwordResetExpires                   DateTime?
+  emailVerified                          Boolean              @default(false)
+  emailVerificationToken                 String?
+  updatedAt                              DateTime
+  Budget                                 Budget[]
+  ChatParticipant                        ChatParticipant[]
+  Chore_Chore_assignedToToUser           Chore[]              @relation("Chore_assignedToToUser")
+  Chore_Chore_createdByToUser            Chore[]              @relation("Chore_createdByToUser")
+  Chore_Chore_friendIdToUser             Chore[]              @relation("Chore_friendIdToUser")
+  ChoreCompletion                        ChoreCompletion[]
+  ChoreHistory                           ChoreHistory[]
+  ChoreAssignment                        ChoreAssignment[]
+  ChoreReminder                          ChoreReminder[]
+  ChoreRotation                          ChoreRotation[]
+  Expense_Expense_createdByToUser        Expense[]            @relation("Expense_createdByToUser")
+  Expense_Expense_paidByToUser           Expense[]            @relation("Expense_paidByToUser")
+  ExpenseHistory                         ExpenseHistory[]
+  ExpenseSplit                           ExpenseSplit[]
+  FinanceAccount                         FinanceAccount[]
+  FinanceTransaction                     FinanceTransaction[]
+  FinancialGoal                          FinancialGoal[]
+  Friend_Friend_friendIdToUser           Friend[]             @relation("Friend_friendIdToUser")
+  Friend_Friend_userIdToUser             Friend[]             @relation("Friend_userIdToUser")
+  Group                                  Group[]
+  GroupMember                            GroupMember[]
+  GroupInvitation_GroupInvitationInviter GroupInvitation[]    @relation("GroupInvitationInviter")
+  GroupInvitation_GroupInvitationInvitee GroupInvitation[]    @relation("GroupInvitationInvitee")
+  UserInvitation_UserInvitationInviter   UserInvitation[]     @relation("UserInvitationInviter")
+  Listing                                Listing[]
+  Message                                Message[]
+  Notification                           Notification[]
+  Ride                                   Ride[]
+  RideParticipant                        RideParticipant[]
+  Settlement_Settlement_payeeIdToUser    Settlement[]         @relation("Settlement_payeeIdToUser")
+  Settlement_Settlement_payerIdToUser    Settlement[]         @relation("Settlement_payerIdToUser")
+  TrustScore                             TrustScore?
+  UserProfile                            UserProfile?
 }
 
 model UserProfile {

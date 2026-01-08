@@ -8,5 +8,9 @@ export class UpdateGroupDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsOptional()
+  @IsString()
+  avatarUrl?: string;
 }
 
