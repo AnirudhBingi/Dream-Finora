@@ -1,8 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { View, ActivityIndicator, StyleSheet, Platform, Alert } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Alert } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { ScreenContainer } from './src/components/ScreenContainer';
 import { RootScreenRenderer } from './src/components/RootScreenRenderer';
 import { AuthProvider, useAuth } from './src/auth/authContext';
 import { LoginScreen } from './src/screens/LoginScreen';
@@ -13,6 +12,7 @@ import { ProfileScreen } from './src/screens/ProfileScreen';
 import { UserProfileScreen } from './src/screens/UserProfileScreen';
 import { EditProfileScreen } from './src/screens/EditProfileScreen';
 import { TrustScoreInsightsScreen } from './src/screens/TrustScoreInsightsScreen';
+import { FinScoreLeaderboardScreen } from './src/screens/FinScoreLeaderboardScreen';
 import { ExpenseListScreen } from './src/screens/ExpenseListScreen';
 import { CreateExpenseScreen } from './src/screens/CreateExpenseScreen';
 import { EditExpenseScreen } from './src/screens/EditExpenseScreen';
@@ -25,6 +25,7 @@ import { SettleUpScreen } from './src/screens/SettleUpScreen';
 import { GroupListScreen } from './src/screens/GroupListScreen';
 import { CreateGroupScreen } from './src/screens/CreateGroupScreen';
 import { GroupDetailScreen } from './src/screens/GroupDetailScreen';
+import { GroupFeedScreen } from './src/screens/GroupFeedScreen';
 import { GroupSettingsScreen } from './src/screens/GroupSettingsScreen';
 import { AddGroupMemberScreen } from './src/screens/AddGroupMemberScreen';
 import { GroupInvitationScreen } from './src/screens/GroupInvitationScreen';
@@ -41,11 +42,19 @@ import { ChoreHistoryScreen } from './src/screens/ChoreHistoryScreen';
 import { ChoreStatsScreen } from './src/screens/ChoreStatsScreen';
 import { RideListScreen } from './src/screens/RideListScreen';
 import { CreateRideScreen } from './src/screens/CreateRideScreen';
+import { EditRideScreen } from './src/screens/EditRideScreen';
+import { EditFavoriteRideScreen } from './src/screens/EditFavoriteRideScreen';
 import { RideDetailScreen } from './src/screens/RideDetailScreen';
-import { SpaceVListScreen } from './src/screens/SpaceVListScreen';
+import { RideAnalyticsScreen } from './src/screens/RideAnalyticsScreen';
+import { RideHistoryScreen } from './src/screens/RideHistoryScreen';
+import { RideFavorite } from './src/api/rideApi';
+import { FavoritesScreen } from './src/screens/FavoritesScreen';
 import { CreateSpaceVScreen } from './src/screens/CreateSpaceVScreen';
 import { SpaceVDetailScreen } from './src/screens/SpaceVDetailScreen';
 import { EditSpaceVScreen } from './src/screens/EditSpaceVScreen';
+import { UnifiedFeedScreen } from './src/screens/UnifiedFeedScreen';
+import { CreatePostScreen } from './src/screens/CreatePostScreen';
+import { PostDetailScreen } from './src/screens/PostDetailScreen';
 import ConversationListScreen from './src/screens/ConversationListScreen';
 import MessageThreadScreen from './src/screens/MessageThreadScreen';
 import { NewConversationScreen } from './src/screens/NewConversationScreen';
@@ -72,9 +81,7 @@ import { CreateLoanScreen } from './src/screens/CreateLoanScreen';
 import { LoanDetailScreen } from './src/screens/LoanDetailScreen';
 import { RecordLoanPaymentScreen } from './src/screens/RecordLoanPaymentScreen';
 import { FinancialAdvisorScreen } from './src/screens/FinancialAdvisorScreen';
-import { NavigationProvider, useNavigation, ScreenName } from './src/navigation/NavigationStack';
 import { SwipeableScreen } from './src/components/SwipeableScreen';
-import { ScreenWrapper } from './src/components/ScreenWrapper';
 import { AddContributionScreen } from './src/screens/AddContributionScreen';
 import { useNavigationHistory } from './src/navigation/useNavigationHistory';
 import {
@@ -84,75 +91,88 @@ import {
 } from './src/services/pushNotifications';
 import { getUnreadCount } from './src/api/notificationApi';
 
+type ScreenName =
+  | 'home'
+  | 'profile'
+  | 'editProfile'
+  | 'expenses'
+  | 'createExpense'
+  | 'editExpense'
+  | 'expenseDetail'
+  | 'expenseHistory'
+  | 'activity'
+  | 'balanceSummary'
+  | 'settleUp'
+  | 'groups'
+  | 'createGroup'
+  | 'groupDetail'
+  | 'groupFeed'
+  | 'groupSettings'
+  | 'groupInvitation'
+  | 'addGroupMember'
+  | 'finance'
+  | 'addTransaction'
+  | 'editTransaction'
+  | 'editAccount'
+  | 'financeHistory'
+  | 'budgets'
+  | 'createBudget'
+  | 'editBudget'
+  | 'goals'
+  | 'createGoal'
+  | 'editGoal'
+  | 'goalDetail'
+  | 'addContribution'
+  | 'loans'
+  | 'createLoan'
+  | 'loanDetail'
+  | 'recordLoanPayment'
+  | 'advisor'
+  | 'chores'
+  | 'createChore'
+  | 'choreDetail'
+  | 'editChore'
+  | 'choreHistory'
+  | 'choreStats'
+  | 'rides'
+  | 'createRide'
+  | 'editRide'
+  | 'editFavoriteRide'
+  | 'rideDetail'
+  | 'rideAnalytics'
+  | 'rideHistory'
+  | 'favorites'
+  | 'createSpaceV'
+  | 'editSpaceV'
+  | 'spacevDetail'
+  | 'feed'
+  | 'createPost'
+  | 'postDetail'
+  | 'conversations'
+  | 'newConversation'
+  | 'messageThread'
+  | 'analytics'
+  | 'billchopAnalytics'
+  | 'billchopFriends'
+  | 'billchopGroups'
+  | 'friends'
+  | 'friendSearch'
+  | 'friendExpenseList'
+  | 'userProfile'
+  | 'trustScoreInsights'
+  | 'leaderboard'
+  | 'notifications'
+  | 'settings'
+  | 'accountSettings';
+
 function AppContent() {
   const navHistory = useNavigationHistory();
   const { isAuthenticated, isLoading, token } = useAuth();
-  const authContext = useAuth();
   const [showRegister, setShowRegister] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   
   // Sync navigation history with currentScreen state
-  const [currentScreen, setCurrentScreen] = useState<
-    | 'home'
-    | 'profile'
-    | 'editProfile'
-    | 'expenses'
-    | 'createExpense'
-    | 'editExpense'
-    | 'expenseDetail'
-    | 'expenseHistory'
-    | 'activity'
-    | 'balanceSummary'
-    | 'settleUp'
-    | 'groups'
-    | 'createGroup'
-    | 'groupDetail'
-    | 'groupSettings'
-    | 'addGroupMember'
-    | 'groupInvitation'
-    | 'finance'
-    | 'addTransaction'
-    | 'editTransaction'
-    | 'editAccount'
-    | 'financeHistory'
-    | 'budgets'
-    | 'createBudget'
-    | 'editBudget'
-    | 'goals'
-    | 'createGoal'
-    | 'editGoal'
-    | 'goalDetail'
-    | 'addContribution'
-    | 'loans'
-    | 'createLoan'
-    | 'loanDetail'
-    | 'recordLoanPayment'
-    | 'advisor'
-    | 'chores'
-    | 'createChore'
-    | 'choreDetail'
-    | 'editChore'
-    | 'choreHistory'
-    | 'choreStats'
-    | 'rides'
-    | 'createRide'
-    | 'rideDetail'
-    | 'spacev'
-    | 'createSpaceV'
-    | 'spacevDetail'
-    | 'editSpaceV'
-    | 'conversations'
-    | 'newConversation'
-    | 'messageThread'
-    | 'analytics'
-    | 'billchopAnalytics'
-    | 'friends'
-    | 'friendSearch'
-    | 'userProfile'
-    | 'notifications'
-    | 'settings'
-    | 'accountSettings'
-  >('home');
+  const [currentScreen, setCurrentScreen] = useState<ScreenName>('home');
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedInvitationToken, setSelectedInvitationToken] = useState<string | null>(null);
@@ -161,6 +181,7 @@ function AppContent() {
   const [selectedChoreId, setSelectedChoreId] = useState<string | null>(null);
   const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
   const [selectedSpaceVId, setSelectedSpaceVId] = useState<string | null>(null);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [selectedOtherUser, setSelectedOtherUser] = useState<any | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<any | null>(null);
@@ -193,6 +214,98 @@ function AppContent() {
   const previousScreenNodeRef = useRef<React.ReactNode>(null);
   const currentScreenNodeRef = useRef<React.ReactNode>(null);
   const lastScreenNameRef = useRef<string>(currentScreen);
+  
+  // Favorite ride selection
+  const [selectedFavorite, setSelectedFavorite] = useState<RideFavorite | null>(null);
+  const selectedFavoriteRef = useRef<RideFavorite | null>(null);
+
+  // Helper to navigate with history tracking
+  const navigate = useCallback((screen: ScreenName, params?: Record<string, any>) => {
+    // Capture current state as params for history
+    const currentState = {
+      selectedContext,
+      selectedTransactionType,
+      selectedGroupId,
+      selectedChoreId,
+      selectedRideId,
+      selectedSpaceVId,
+      selectedPostId,
+      selectedChatId,
+      selectedOtherUser,
+      selectedPayeeId,
+      selectedPayeeName,
+      selectedSettlementAmount,
+      selectedSettlementGroupId,
+      selectedExpenseId,
+      selectedFriendId,
+      selectedFriendName,
+      selectedBudgetId,
+      selectedGoalId,
+      selectedLoanId,
+      selectedTransactionId,
+      selectedAccountId,
+      selectedUserId,
+      selectedInvitationToken,
+      goalPrefill,
+      contributionAmount,
+      loanPaymentAmount,
+      expenseRefreshKey,
+      groupRefreshKey,
+      financeRefreshKey,
+      spacevRefreshKey,
+      choreRefreshKey,
+      rideRefreshKey,
+      budgetRefreshKey,
+      goalRefreshKey,
+      loanRefreshKey,
+    };
+    
+    // Push current screen to history before navigating (if it's not already the last entry)
+    const lastHistoryEntry = navHistory.history[navHistory.history.length - 1];
+    if (!lastHistoryEntry || lastHistoryEntry.screen !== currentScreen) {
+      navHistory.push(currentScreen, currentState);
+    }
+    
+    // Push the new screen to history
+    navHistory.push(screen, params || {});
+    
+    // Update to new screen
+    setCurrentScreen(screen);
+    
+    // Update relevant state from params
+    if (params) {
+      if (params.selectedContext !== undefined) setSelectedContext(params.selectedContext);
+      if (params.selectedTransactionType !== undefined) setSelectedTransactionType(params.selectedTransactionType);
+      if (params.selectedGroupId !== undefined) {
+        // If explicitly set to null, clear it; otherwise set it
+        setSelectedGroupId(params.selectedGroupId === null ? null : params.selectedGroupId);
+      }
+      if (params.selectedChoreId !== undefined) setSelectedChoreId(params.selectedChoreId);
+      if (params.selectedRideId !== undefined) setSelectedRideId(params.selectedRideId);
+      if (params.selectedSpaceVId !== undefined) setSelectedSpaceVId(params.selectedSpaceVId);
+      if (params.selectedPostId !== undefined) setSelectedPostId(params.selectedPostId);
+      if (params.selectedChatId !== undefined) setSelectedChatId(params.selectedChatId);
+      if (params.selectedOtherUser !== undefined) setSelectedOtherUser(params.selectedOtherUser);
+      if (params.selectedGroup !== undefined) setSelectedGroup(params.selectedGroup);
+      if (params.selectedPayeeId !== undefined) setSelectedPayeeId(params.selectedPayeeId);
+      if (params.selectedPayeeName !== undefined) setSelectedPayeeName(params.selectedPayeeName);
+      if (params.selectedSettlementAmount !== undefined) setSelectedSettlementAmount(params.selectedSettlementAmount);
+      if (params.selectedSettlementGroupId !== undefined) setSelectedSettlementGroupId(params.selectedSettlementGroupId);
+      if (params.selectedExpenseId !== undefined) setSelectedExpenseId(params.selectedExpenseId);
+      if (params.selectedFriendId !== undefined) setSelectedFriendId(params.selectedFriendId);
+      if (params.selectedFriendName !== undefined) setSelectedFriendName(params.selectedFriendName);
+      if (params.selectedBudgetId !== undefined) setSelectedBudgetId(params.selectedBudgetId);
+      if (params.selectedGoalId !== undefined) setSelectedGoalId(params.selectedGoalId);
+      if (params.selectedLoanId !== undefined) setSelectedLoanId(params.selectedLoanId);
+      if (params.selectedTransactionId !== undefined) setSelectedTransactionId(params.selectedTransactionId);
+      if (params.selectedAccountId !== undefined) setSelectedAccountId(params.selectedAccountId);
+      if (params.selectedUserId !== undefined) setSelectedUserId(params.selectedUserId);
+      if (params.selectedInvitationToken !== undefined) setSelectedInvitationToken(params.selectedInvitationToken);
+      if (params.goalPrefill !== undefined) setGoalPrefill(params.goalPrefill);
+      if (params.contributionAmount !== undefined) setContributionAmount(params.contributionAmount);
+      if (params.loanPaymentAmount !== undefined) setLoanPaymentAmount(params.loanPaymentAmount);
+    }
+  }, [navHistory, currentScreen, selectedContext, selectedTransactionType, selectedGroupId, selectedChoreId, selectedRideId, selectedSpaceVId, selectedPostId, selectedChatId, selectedOtherUser, selectedPayeeId, selectedPayeeName, selectedSettlementAmount, selectedExpenseId, selectedFriendId, selectedFriendName, selectedBudgetId, selectedGoalId, selectedLoanId, selectedTransactionId, selectedAccountId, selectedUserId, selectedInvitationToken, goalPrefill, contributionAmount, loanPaymentAmount, expenseRefreshKey, groupRefreshKey, financeRefreshKey, spacevRefreshKey, choreRefreshKey, rideRefreshKey, budgetRefreshKey, goalRefreshKey, loanRefreshKey]);
 
   // Set up push notifications when authenticated
   useEffect(() => {
@@ -272,91 +385,6 @@ function AppContent() {
     // When currentScreen changes, the previous screen is what we had before
     // But we need to capture it BEFORE the change, so we do it in wrapScreen
   }, [currentScreen]);
-
-  // Helper to navigate with history tracking
-  const navigate = useCallback((screen: ScreenName, params?: Record<string, any>) => {
-    // Capture current state as params for history
-    const currentState = {
-      selectedContext,
-      selectedTransactionType,
-      selectedGroupId,
-      selectedChoreId,
-      selectedRideId,
-      selectedSpaceVId,
-      selectedChatId,
-      selectedOtherUser,
-      selectedPayeeId,
-      selectedPayeeName,
-      selectedSettlementAmount,
-      selectedSettlementGroupId,
-      selectedExpenseId,
-      selectedFriendId,
-      selectedFriendName,
-      selectedBudgetId,
-      selectedGoalId,
-      selectedLoanId,
-      selectedTransactionId,
-      selectedAccountId,
-      selectedUserId,
-      selectedInvitationToken,
-      goalPrefill,
-      contributionAmount,
-      loanPaymentAmount,
-      expenseRefreshKey,
-      groupRefreshKey,
-      financeRefreshKey,
-      spacevRefreshKey,
-      choreRefreshKey,
-      rideRefreshKey,
-      budgetRefreshKey,
-      goalRefreshKey,
-      loanRefreshKey,
-    };
-    
-    // Push current screen to history before navigating (if it's not already the last entry)
-    const lastHistoryEntry = navHistory.history[navHistory.history.length - 1];
-    if (!lastHistoryEntry || lastHistoryEntry.screen !== currentScreen) {
-      navHistory.push(currentScreen, currentState);
-    }
-    
-    // Push the new screen to history
-    navHistory.push(screen, params || {});
-    
-    // Update to new screen
-    setCurrentScreen(screen);
-    
-    // Update relevant state from params
-    if (params) {
-      if (params.selectedContext !== undefined) setSelectedContext(params.selectedContext);
-      if (params.selectedTransactionType !== undefined) setSelectedTransactionType(params.selectedTransactionType);
-      if (params.selectedGroupId !== undefined) {
-        // If explicitly set to null, clear it; otherwise set it
-        setSelectedGroupId(params.selectedGroupId === null ? null : params.selectedGroupId);
-      }
-      if (params.selectedChoreId !== undefined) setSelectedChoreId(params.selectedChoreId);
-      if (params.selectedRideId !== undefined) setSelectedRideId(params.selectedRideId);
-      if (params.selectedSpaceVId !== undefined) setSelectedSpaceVId(params.selectedSpaceVId);
-      if (params.selectedChatId !== undefined) setSelectedChatId(params.selectedChatId);
-      if (params.selectedOtherUser !== undefined) setSelectedOtherUser(params.selectedOtherUser);
-      if (params.selectedGroup !== undefined) setSelectedGroup(params.selectedGroup);
-      if (params.selectedPayeeId !== undefined) setSelectedPayeeId(params.selectedPayeeId);
-      if (params.selectedPayeeName !== undefined) setSelectedPayeeName(params.selectedPayeeName);
-      if (params.selectedSettlementAmount !== undefined) setSelectedSettlementAmount(params.selectedSettlementAmount);
-      if (params.selectedSettlementGroupId !== undefined) setSelectedSettlementGroupId(params.selectedSettlementGroupId);
-      if (params.selectedExpenseId !== undefined) setSelectedExpenseId(params.selectedExpenseId);
-      if (params.selectedFriendId !== undefined) setSelectedFriendId(params.selectedFriendId);
-      if (params.selectedFriendName !== undefined) setSelectedFriendName(params.selectedFriendName);
-      if (params.selectedBudgetId !== undefined) setSelectedBudgetId(params.selectedBudgetId);
-      if (params.selectedGoalId !== undefined) setSelectedGoalId(params.selectedGoalId);
-      if (params.selectedLoanId !== undefined) setSelectedLoanId(params.selectedLoanId);
-      if (params.selectedTransactionId !== undefined) setSelectedTransactionId(params.selectedTransactionId);
-      if (params.selectedAccountId !== undefined) setSelectedAccountId(params.selectedAccountId);
-      if (params.selectedUserId !== undefined) setSelectedUserId(params.selectedUserId);
-      if (params.goalPrefill !== undefined) setGoalPrefill(params.goalPrefill);
-      if (params.contributionAmount !== undefined) setContributionAmount(params.contributionAmount);
-      if (params.loanPaymentAmount !== undefined) setLoanPaymentAmount(params.loanPaymentAmount);
-    }
-  }, [navHistory, currentScreen, selectedContext, selectedTransactionType, selectedGroupId, selectedChoreId, selectedRideId, selectedSpaceVId, selectedChatId, selectedOtherUser, selectedPayeeId, selectedPayeeName, selectedSettlementAmount, selectedExpenseId, selectedFriendId, selectedFriendName, selectedBudgetId, selectedGoalId, selectedLoanId, selectedTransactionId, selectedAccountId, selectedUserId, selectedInvitationToken, goalPrefill, contributionAmount, loanPaymentAmount, expenseRefreshKey, groupRefreshKey, financeRefreshKey, spacevRefreshKey, choreRefreshKey, rideRefreshKey, budgetRefreshKey, goalRefreshKey, loanRefreshKey]);
   
   // Helper to go back using history
   const goBack = useCallback(() => {
@@ -372,7 +400,7 @@ function AppContent() {
     navHistory.pop();
     
     // Restore previous screen
-    setCurrentScreen(prev.screen);
+    setCurrentScreen(prev.screen as typeof currentScreen);
     
     // Restore state from params if available
     if (prev.params) {
@@ -446,6 +474,7 @@ function AppContent() {
         selectedTransactionId,
         selectedAccountId,
         selectedUserId,
+        selectedInvitationToken,
         goalPrefill,
         contributionAmount,
         loanPaymentAmount,
@@ -474,7 +503,7 @@ function AppContent() {
     
     // Update screen
     setCurrentScreen(screen);
-  }, [navHistory, currentScreen, selectedContext, selectedTransactionType, selectedGroupId, selectedChoreId, selectedRideId, selectedSpaceVId, selectedChatId, selectedOtherUser, selectedPayeeId, selectedPayeeName, selectedSettlementAmount, selectedExpenseId, selectedFriendId, selectedFriendName, selectedBudgetId, selectedGoalId, selectedLoanId, selectedTransactionId, selectedAccountId, goalPrefill, contributionAmount, loanPaymentAmount, expenseRefreshKey, groupRefreshKey, financeRefreshKey, spacevRefreshKey, choreRefreshKey, rideRefreshKey, budgetRefreshKey, goalRefreshKey, loanRefreshKey]);
+  }, [navHistory, currentScreen, selectedContext, selectedTransactionType, selectedGroupId, selectedChoreId, selectedRideId, selectedSpaceVId, selectedChatId, selectedOtherUser, selectedPayeeId, selectedPayeeName, selectedSettlementAmount, selectedExpenseId, selectedFriendId, selectedFriendName, selectedBudgetId, selectedGoalId, selectedLoanId, selectedTransactionId, selectedAccountId, selectedUserId, selectedInvitationToken, goalPrefill, contributionAmount, loanPaymentAmount, expenseRefreshKey, groupRefreshKey, financeRefreshKey, spacevRefreshKey, choreRefreshKey, rideRefreshKey, budgetRefreshKey, goalRefreshKey, loanRefreshKey]);
 
   // Helper to get previous screen name from navigation history
   const getPreviousScreenName = useCallback((): string | null => {
@@ -485,8 +514,8 @@ function AppContent() {
     return null;
   }, [navHistory]);
 
-  // Helper to wrap any screen with swipe-to-go-back functionality AND smooth transitions
-  // This ensures consistent swipe behavior and smooth transitions across ALL screens
+  // Helper to wrap any screen with swipe-to-go-back functionality
+  // RootScreenRenderer handles transitions for all screens
   const wrapScreen = useCallback((screen: React.ReactNode, enableSwipe: boolean = true, screenName?: string) => {
     const targetScreenName = screenName || currentScreen;
     
@@ -499,21 +528,10 @@ function AppContent() {
     // Store current screen node
     currentScreenNodeRef.current = screen;
 
-    // Wrap with transition container for smooth fade animations
-    const screenWithTransition = (
-      <ScreenContainer
-        key={`screen-${targetScreenName}`}
-        isActive={targetScreenName === currentScreen}
-        duration={250}
-      >
-        {screen}
-      </ScreenContainer>
-    );
-
     // Don't wrap login/register screens, home screen, or tab screens (they have bottom nav)
-    const tabScreens = ['home', 'expenses', 'chores', 'spacev', 'rides'];
+    const tabScreens = ['home', 'expenses', 'chores', 'feed', 'rides'];
     if (!enableSwipe || tabScreens.includes(targetScreenName) || !navHistory.canGoBack()) {
-      return screenWithTransition;
+      return screen;
     }
 
     // Use the previous screen node from ref
@@ -526,7 +544,7 @@ function AppContent() {
         canGoBack={navHistory.canGoBack}
         enabled={enableSwipe}
       >
-        {screenWithTransition}
+        {screen}
       </SwipeableScreen>
     );
   }, [goBack, navHistory, currentScreen]);
@@ -537,8 +555,6 @@ function AppContent() {
     const screens: Array<{ name: string; component: React.ReactNode; key: string; requiresBottomNav?: boolean }> = [];
 
     // Tab screens (always available)
-    const tabScreens = ['home', 'expenses', 'chores', 'spacev', 'rides'];
-    
     screens.push({
       name: 'home',
       key: `home-${expenseRefreshKey}`,
@@ -554,12 +570,13 @@ function AppContent() {
           onNavigateToFinance={() => setCurrentScreenWithHistory('finance')}
           onNavigateToChores={() => navigate('chores', { selectedGroupId: null })}
           onNavigateToRides={() => setCurrentScreenWithHistory('rides')}
-          onNavigateToSpaceV={() => setCurrentScreenWithHistory('spacev')}
+          onNavigateToSpaceV={() => setCurrentScreenWithHistory('feed')}
           onNavigateToMessages={() => setCurrentScreenWithHistory('conversations')}
           onNavigateToAnalytics={() => setCurrentScreenWithHistory('analytics')}
           onNavigateToActivity={() => setCurrentScreenWithHistory('activity')}
           onNavigateToFriends={() => setCurrentScreenWithHistory('friends')}
           onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToLeaderboard={() => setCurrentScreenWithHistory('leaderboard')}
         />
       ),
     });
@@ -629,16 +646,32 @@ function AppContent() {
       ),
     });
 
+    // Unified Feed Screen (replaces SpaceV list for social feed)
     screens.push({
-      name: 'spacev',
-      key: `spacev-${spacevRefreshKey}`,
+      name: 'feed',
+      key: `feed-${spacevRefreshKey}`,
       requiresBottomNav: true,
       component: (
-        <SpaceVListScreen
-          key={`spacev-${spacevRefreshKey}`}
-          onCreateSpaceV={() => setCurrentScreenWithHistory('createSpaceV')}
-          onViewSpaceV={(spacevId) => {
-            navigate('spacevDetail', { selectedSpaceVId: spacevId });
+        <UnifiedFeedScreen
+          key={`feed-${spacevRefreshKey}`}
+          onCreatePost={() => setCurrentScreenWithHistory('createPost')}
+          onCreateListing={() => setCurrentScreenWithHistory('createSpaceV')}
+          onViewPost={(postId) => {
+            navigate('postDetail', { selectedPostId: postId });
+          }}
+          onViewListing={(listingId) => {
+            navigate('spacevDetail', { selectedSpaceVId: listingId });
+          }}
+          onEditListing={(listingId) => {
+            navigate('editSpaceV', { selectedSpaceVId: listingId });
+          }}
+          onNavigateToUserProfile={(userId) => navigate('userProfile', { selectedUserId: userId })}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToMessage={(chatId: string, otherUser: any) => {
+            navigate('messageThread', {
+              selectedChatId: chatId,
+              selectedOtherUser: otherUser,
+            });
           }}
           onBack={goBack}
         />
@@ -656,6 +689,13 @@ function AppContent() {
           onCreateRide={() => setCurrentScreenWithHistory('createRide')}
           onViewRide={(rideId) => {
             navigate('rideDetail', { selectedRideId: rideId });
+          }}
+          onViewAnalytics={() => setCurrentScreenWithHistory('rideAnalytics')}
+          onViewHistory={() => setCurrentScreenWithHistory('rideHistory')}
+          onEditFavorite={(favorite) => {
+            selectedFavoriteRef.current = favorite; // Set ref immediately for synchronous access
+            setSelectedFavorite(favorite);
+            setCurrentScreenWithHistory('editFavoriteRide');
           }}
           onBack={goBack}
           onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
@@ -703,8 +743,8 @@ function AppContent() {
             onEdit={(expenseId) => {
               navigate('editExpense', { selectedExpenseId: expenseId });
             }}
-            onViewHistory={() => navigate('expenseHistory', { selectedExpenseId })}
             onNavigateToUserProfile={(userId) => navigate('userProfile', { selectedUserId: userId })}
+            onNavigateToRide={(rideId) => navigate('rideDetail', { selectedRideId: rideId })}
             onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
             onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
             onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
@@ -725,6 +765,8 @@ function AppContent() {
           <ExpenseHistoryScreen
             expenseId={selectedExpenseId || undefined}
             onBack={goBack}
+            onNavigateToExpense={(expenseId) => navigate('expenseDetail', { selectedExpenseId: expenseId })}
+            onNavigateToRide={(rideId) => navigate('rideDetail', { selectedRideId: rideId })}
             onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
             onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
             onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
@@ -770,6 +812,7 @@ function AppContent() {
             onViewChore={(choreId) => navigate('choreDetail', { selectedChoreId: choreId })}
             onViewAllChores={() => navigate('chores', { selectedGroupId: selectedGroupId })}
             onBack={goBack} 
+            onViewFeed={(groupId) => navigate('groupFeed', { selectedGroupId: groupId })}
             onSettings={(groupId) => {
               navigate('groupSettings', { selectedGroupId: groupId });
             }}
@@ -804,6 +847,34 @@ function AppContent() {
           />,
           true,
           'groupDetail'
+        ),
+      });
+    }
+
+    if (selectedGroupId) {
+      screens.push({
+        name: 'groupFeed',
+        key: `groupFeed-${selectedGroupId}-${spacevRefreshKey}`,
+        component: wrapScreen(
+          <GroupFeedScreen
+            groupId={selectedGroupId}
+            onCreatePost={() => navigate('createPost', { selectedGroupId })}
+            onCreateListing={() => navigate('createSpaceV', { selectedGroupId })}
+            onViewPost={(postId) => navigate('postDetail', { selectedPostId: postId })}
+            onViewListing={(listingId) => navigate('spacevDetail', { selectedSpaceVId: listingId })}
+            onEditListing={(listingId) => navigate('editSpaceV', { selectedSpaceVId: listingId })}
+            onNavigateToMessage={(chatId: string, otherUser: any) => {
+              navigate('messageThread', {
+                selectedChatId: chatId,
+                selectedOtherUser: otherUser,
+              });
+            }}
+            onNavigateToUserProfile={(userId) => navigate('userProfile', { selectedUserId: userId })}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onBack={goBack}
+          />,
+          true,
+          'groupFeed'
         ),
       });
     }
@@ -958,6 +1029,7 @@ function AppContent() {
               setRideRefreshKey(prev => prev + 1);
             }}
             onNavigateToEdit={(rideId) => navigate('editRide', { selectedRideId: rideId })}
+            onNavigateToExpense={(expenseId) => navigate('expenseDetail', { selectedExpenseId: expenseId })}
             onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
             onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
             onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
@@ -967,6 +1039,91 @@ function AppContent() {
         ),
       });
     }
+
+    if (selectedRideId) {
+      screens.push({
+        name: 'editRide',
+        key: `editRide-${selectedRideId}`,
+        component: wrapScreen(
+          <EditRideScreen
+            key={`edit-ride-${selectedRideId}`}
+            rideId={selectedRideId}
+            onBack={goBack}
+            onSuccess={() => {
+              setRideRefreshKey(prev => prev + 1);
+              goBack();
+            }}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
+          />,
+          true,
+          'editRide'
+        ),
+      });
+    }
+
+    if (currentScreen === 'editFavoriteRide') {
+      const favoriteToEdit = selectedFavorite || selectedFavoriteRef.current;
+      if (favoriteToEdit) {
+        screens.push({
+          name: 'editFavoriteRide',
+          key: `editFavoriteRide-${favoriteToEdit.id}`,
+          component: wrapScreen(
+            <EditFavoriteRideScreen
+              key={`edit-favorite-${favoriteToEdit.id}`}
+              favorite={favoriteToEdit}
+              onBack={goBack}
+              onSuccess={() => {
+                setRideRefreshKey(prev => prev + 1);
+                setSelectedFavorite(null);
+                selectedFavoriteRef.current = null;
+                goBack();
+              }}
+              onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+              onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+              onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
+            />,
+            true,
+            'editFavoriteRide'
+          ),
+        });
+      }
+    }
+
+    screens.push({
+      name: 'rideHistory',
+      key: 'rideHistory',
+      component: wrapScreen(
+        <RideHistoryScreen
+          onBack={goBack}
+          onViewRide={(rideId) => {
+            navigate('rideDetail', { selectedRideId: rideId });
+          }}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
+        />,
+        true,
+        'rideHistory'
+      ),
+    });
+
+    screens.push({
+      name: 'rideAnalytics',
+      key: 'rideAnalytics',
+      component: wrapScreen(
+        <RideAnalyticsScreen
+          onBack={goBack}
+          onNavigateToRide={(rideId) => navigate('rideDetail', { selectedRideId: rideId })}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
+        />,
+        true,
+        'rideAnalytics'
+      ),
+    });
 
     if (selectedSpaceVId) {
       screens.push({
@@ -996,6 +1153,31 @@ function AppContent() {
           />,
           true,
           'spacevDetail'
+        ),
+      });
+    }
+
+    if (selectedPostId) {
+      screens.push({
+        name: 'postDetail',
+        key: `postDetail-${selectedPostId}-${spacevRefreshKey}`,
+        component: wrapScreen(
+          <PostDetailScreen
+            postId={selectedPostId}
+            onBack={goBack}
+            onRefresh={() => {
+              setSpacevRefreshKey(prev => prev + 1);
+            }}
+            onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+            onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+            onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
+            onNavigateToUserProfile={(userId) => {
+              setSelectedUserId(userId);
+              setCurrentScreenWithHistory('userProfile');
+            }}
+          />,
+          true,
+          'postDetail'
         ),
       });
     }
@@ -1275,7 +1457,7 @@ function AppContent() {
       name: 'trustScoreInsights',
       key: 'trustScoreInsights',
       component: wrapScreen(
-        <TrustScoreInsightsScreen 
+        <TrustScoreInsightsScreen
           onBack={goBack}
           onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
           onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
@@ -1283,6 +1465,25 @@ function AppContent() {
         />,
         true,
         'trustScoreInsights'
+      ),
+    });
+
+    screens.push({
+      name: 'leaderboard',
+      key: 'leaderboard',
+      component: wrapScreen(
+        <FinScoreLeaderboardScreen
+          onBack={goBack}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
+          onViewUserProfile={(userId) => {
+            setSelectedUserId(userId);
+            setCurrentScreenWithHistory('userProfile');
+          }}
+        />,
+        true,
+        'leaderboard'
       ),
     });
 
@@ -1295,7 +1496,13 @@ function AppContent() {
         onEdit={() => navigate('editProfile')}
         onBack={goBack}
         onSettings={() => navigate('settings')}
+        onEditListing={(listingId) => navigate('editSpaceV', { selectedSpaceVId: listingId })}
+        onViewListing={(listingId) => navigate('spacevDetail', { selectedSpaceVId: listingId })}
+        onViewPost={(postId) => navigate('postDetail', { selectedPostId: postId })}
         onViewTrustScoreInsights={() => navigate('trustScoreInsights')}
+        onViewLeaderboard={() => navigate('leaderboard')}
+        onNavigateToFriends={() => setCurrentScreenWithHistory('friends')}
+        onNavigateToGroups={() => setCurrentScreenWithHistory('groups')}
         onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
         onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
         onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
@@ -1868,7 +2075,10 @@ function AppContent() {
       key: 'createSpaceV',
       component: wrapScreen(
         <CreateSpaceVScreen
-          onBack={goBack}
+          groupId={explicitGroupId}
+          onBack={() => {
+            goBack();
+          }}
           onSuccess={() => {
             setSpacevRefreshKey(prev => prev + 1);
             goBack();
@@ -1879,6 +2089,27 @@ function AppContent() {
         />,
         true,
         'createSpaceV'
+      ),
+    });
+
+    // Post screens
+    screens.push({
+      name: 'createPost',
+      key: 'createPost',
+      component: wrapScreen(
+        <CreatePostScreen
+          groupId={explicitGroupId}
+          onBack={goBack}
+          onSuccess={() => {
+            setSpacevRefreshKey(prev => prev + 1); // Refresh feed
+            goBack();
+          }}
+          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
+          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
+        />,
+        true,
+        'createPost'
       ),
     });
 
@@ -1906,8 +2137,9 @@ function AppContent() {
       name: 'analytics',
       key: 'analytics',
       component: wrapScreen(
-        <AnalyticsScreen 
+        <AnalyticsScreen
           onBack={goBack}
+          onViewRideAnalytics={() => setCurrentScreenWithHistory('rideAnalytics')}
           onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
           onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
           onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
@@ -1970,13 +2202,11 @@ function AppContent() {
               Alert.alert('Info', 'Message feature coming soon');
             }}
             onNavigateToMutualFriends={(userId) => {
-              // Could navigate to mutual friends screen
-              Alert.alert('Info', 'Mutual friends feature coming soon');
+              setCurrentScreenWithHistory('friends');
             }}
-            onNavigateToListings={(userId) => {
-              // Navigate to user's listings
-              Alert.alert('Info', 'User listings feature coming soon');
-            }}
+            onViewListing={(listingId) => navigate('spacevDetail', { selectedSpaceVId: listingId })}
+            onViewPost={(postId) => navigate('postDetail', { selectedPostId: postId })}
+            onNavigateToGroups={() => setCurrentScreenWithHistory('groups')}
             onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
             onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
             onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
@@ -1986,6 +2216,19 @@ function AppContent() {
         ),
       });
     }
+
+    screens.push({
+      name: 'favorites',
+      key: 'favorites',
+      component: wrapScreen(
+        <FavoritesScreen
+          onBack={goBack}
+          onNavigateToListing={(listingId) => navigate('spacevDetail', { selectedSpaceVId: listingId })}
+        />,
+        true,
+        'favorites'
+      ),
+    });
 
     screens.push({
       name: 'notifications',
@@ -2023,10 +2266,7 @@ function AppContent() {
       component: wrapScreen(
         <SettingsScreen
           onBack={goBack}
-          onNavigateToAccount={() => setCurrentScreenWithHistory('accountSettings')}
           onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
-          onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
-          onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
         />,
         true,
         'settings'
@@ -2061,6 +2301,7 @@ function AppContent() {
     goalRefreshKey,
     loanRefreshKey,
     selectedGroupId,
+    selectedPostId,
       selectedPayeeId,
       selectedPayeeName,
       selectedSettlementAmount,
@@ -2069,6 +2310,7 @@ function AppContent() {
     selectedChoreId,
     selectedRideId,
     selectedSpaceVId,
+    selectedPostId,
     selectedChatId,
     selectedOtherUser,
     selectedFriendId,
@@ -2098,7 +2340,7 @@ function AppContent() {
       }}
       onNavigateToExpenses={() => setCurrentScreenWithHistory('expenses')}
       onNavigateToChores={() => setCurrentScreenWithHistory('chores')}
-      onNavigateToSpaceV={() => setCurrentScreenWithHistory('spacev')}
+      onNavigateToSpaceV={() => setCurrentScreenWithHistory('feed')}
       onNavigateToRides={() => setCurrentScreenWithHistory('rides')}
     />
   );
@@ -2144,9 +2386,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <NavigationProvider>
-          <AppContent />
-        </NavigationProvider>
+        <AppContent />
         <StatusBar style="dark" translucent={false} />
       </AuthProvider>
     </SafeAreaProvider>

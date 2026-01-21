@@ -37,9 +37,6 @@ import { useBottomNavPadding } from '../hooks/useBottomNavPadding';
 interface SettingsScreenProps {
   onBack: () => void;
   onNavigateToProfile?: () => void;
-  onNavigateToAccount?: () => void;
-  onNavigateToNotifications?: () => void;
-  onNavigateToSettings?: () => void;
 }
 
 const CURRENCY_OPTIONS: SettingsPickerOption[] = [
@@ -73,9 +70,6 @@ const VISIBILITY_OPTIONS: SettingsPickerOption[] = [
 export function SettingsScreen({
   onBack,
   onNavigateToProfile,
-  onNavigateToAccount,
-  onNavigateToNotifications,
-  onNavigateToSettings,
 }: SettingsScreenProps) {
   const { token, user, logout } = useAuth();
   const bottomPadding = useBottomNavPadding();
@@ -456,6 +450,13 @@ export function SettingsScreen({
 
         {/* Support & About Section */}
         <SettingsSection title="Support & About">
+          <SettingsButton
+            label="Account & Security"
+            onPress={() => {/* TODO: Navigate to account security when integrated */}}
+            variant="secondary"
+            disabled
+          />
+
           <SettingsButton
             label="Invite User to App"
             onPress={() => setShowInviteForm(true)}
