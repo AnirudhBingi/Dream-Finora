@@ -1,4 +1,11 @@
-import { IsString, IsOptional, MaxLength, Length, IsBoolean, IsIn } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  MaxLength,
+  Length,
+  IsBoolean,
+  IsIn,
+} from 'class-validator';
 
 export class UpdateProfileDto {
   @IsOptional()
@@ -60,6 +67,23 @@ export class UpdateProfileDto {
   @IsString()
   @IsIn(['public', 'friends', 'private'])
   trustScoreVisibility?: string;
+
+  // Theme & Appearance settings
+  @IsOptional()
+  @IsString()
+  @IsIn(['light', 'dark', 'system'])
+  theme?: string;
+
+  @IsOptional()
+  @IsString()
+  language?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['small', 'medium', 'large'])
+  fontSize?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  highContrast?: boolean;
 }
-
-

@@ -201,11 +201,15 @@ model Expense {
   category                     String?
   paidBy                       String?
   splitType                    SplitType        @default(EQUAL)
+  rideId                       String? // Link to Ride if this expense was created from a ride
   User_Expense_createdByToUser User             @relation("Expense_createdByToUser", fields: [createdBy], references: [id], onDelete: Cascade)
   Group                        Group?           @relation(fields: [groupId], references: [id])
   User_Expense_paidByToUser    User?            @relation("Expense_paidByToUser", fields: [paidBy], references: [id])
+  Ride                         Ride?            @relation(fields: [rideId], references: [id], onDelete: SetNull)
   ExpenseHistory               ExpenseHistory[]
   ExpenseSplit                 ExpenseSplit[]
+
+  @@index([rideId])
 }
 
 model ExpenseHistory {
@@ -342,13 +346,17 @@ model Group {
   icon               String?           @default("group")
   avatarUrl          String?
   allowMemberEditing Boolean           @default(false)
+  visibility         GroupVisibility   @default(private)
   createdBy          String
   createdAt          DateTime          @default(now())
   Chore              Chore[]
   Expense            Expense[]
+  Listing            Listing[]
+  Post               Post[]
   User               User              @relation(fields: [createdBy], references: [id], onDelete: Cascade)
   GroupMember        GroupMember[]
   GroupInvitation    GroupInvitation[]
+  GroupJoinRequest   GroupJoinRequest[]
   Chat               Chat[]
 }
 
@@ -388,6 +396,24 @@ model GroupInvitation {
   @@index([userId, status])
 }
 
+model GroupJoinRequest {
+  id        String                  @id
+  groupId   String
+  userId    String
+  status    GroupJoinRequestStatus  @default(pending)
+  handledBy String?
+  handledAt DateTime?
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+  Group     Group                   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  User      User                    @relation("GroupJoinRequestUser", fields: [userId], references: [id], onDelete: Cascade)
+  Handler   User?                   @relation("GroupJoinRequestHandler", fields: [handledBy], references: [id], onDelete: SetNull)
+
+  @@unique([groupId, userId])
+  @@index([groupId, status])
+  @@index([userId, status])
+}
+
 model UserInvitation {
   id           String    @id
   invitedBy    String
@@ -407,21 +433,27 @@ model UserInvitation {
 }
 
 model Listing {
-  id          String   @id
-  userId      String
-  type        String
-  title       String
-  description String
-  location    String?
-  price       Float?
-  currency    String?  @default("USD")
-  status      String   @default("active")
-  images      String[]
-  views       Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime
-  metadata    Json?
-  User        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String            @id
+  userId          String
+  groupId         String?
+  type            String
+  title           String
+  description     String
+  location        String?
+  price           Float?
+  currency        String?           @default("USD")
+  status          String            @default("active")
+  images          String[]
+  views           Int               @default(0)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime
+  metadata        Json?
+  User            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Group           Group?            @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  ListingComment  ListingComment[]
+  ListingFavorite ListingFavorite[]
+
+  @@index([groupId, createdAt])
 }
 
 model ListingComment {
@@ -431,9 +463,12 @@ model ListingComment {
   content   String
   createdAt DateTime @default(now())
   updatedAt DateTime
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([listingId, createdAt])
   @@index([listingId])
+  @@index([userId])
 }
 
 model ListingFavorite {
@@ -441,9 +476,79 @@ model ListingFavorite {
   userId    String
   listingId String
   createdAt DateTime @default(now())
+  Listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, listingId])
   @@index([listingId])
+  @@index([userId])
+}
+
+model Post {
+  id            String        @id
+  userId        String
+  groupId       String?
+  content       String?
+  images        String[]
+  location      String?
+  hashtags      String[]
+  likesCount    Int           @default(0)
+  commentsCount Int           @default(0)
+  sharesCount   Int           @default(0)
+  viewsCount    Int           @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime
+  deletedAt     DateTime?
+  User          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Group         Group?        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  PostLike      PostLike[]
+  PostComment   PostComment[]
+  PostShare     PostShare[]
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@index([hashtags])
+  @@index([groupId, createdAt])
+}
+
+model PostLike {
+  id        String   @id
+  userId    String
+  postId    String
+  createdAt DateTime @default(now())
+  Post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@index([postId])
+  @@index([userId])
+}
+
+model PostComment {
+  id        String   @id
+  postId    String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  deletedAt DateTime?
+  Post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+  @@index([postId])
+}
+
+model PostShare {
+  id        String   @id
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+  Post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@index([postId])
   @@index([userId])
 }
 
@@ -531,6 +636,7 @@ model Ride {
   expenseId       String?
   User            User              @relation(fields: [driverId], references: [id], onDelete: Cascade)
   RideParticipant RideParticipant[]
+  Expense         Expense[]         @relation // Bidirectional: Expense.rideId → Ride.id
 }
 
 model RideParticipant {
@@ -543,6 +649,23 @@ model RideParticipant {
   User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([rideId, userId])
+}
+
+model RideFavorite {
+  id            String   @id
+  userId        String
+  name          String // e.g., "School run with John"
+  passengerIds  String[] // Array of user IDs to charge
+  chargePerMile Float?
+  chargePerRide Float?
+  origin        String?
+  destination   String?
+  groupId       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  User          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Settlement {
@@ -589,6 +712,22 @@ model TrustScoreHistory {
   TrustScore   TrustScore @relation(fields: [trustScoreId], references: [id], onDelete: Cascade)
 }
 
+model TrustScoreRankHistory {
+  id         String   @id
+  userId     String
+  category   String   @default("overall")
+  rank       Int
+  totalUsers Int
+  period     String   @default("all-time")
+  date       DateTime
+  createdAt  DateTime @default(now())
+  User       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+  @@index([category, period, date])
+  @@unique([userId, category, period, date])
+}
+
 model User {
   id                                     String               @id
   email                                  String               @unique
@@ -623,15 +762,25 @@ model User {
   GroupMember                            GroupMember[]
   GroupInvitation_GroupInvitationInviter GroupInvitation[]    @relation("GroupInvitationInviter")
   GroupInvitation_GroupInvitationInvitee GroupInvitation[]    @relation("GroupInvitationInvitee")
+  GroupJoinRequest_GroupJoinRequestUser  GroupJoinRequest[]   @relation("GroupJoinRequestUser")
+  GroupJoinRequest_GroupJoinRequestHandler GroupJoinRequest[] @relation("GroupJoinRequestHandler")
   UserInvitation_UserInvitationInviter   UserInvitation[]     @relation("UserInvitationInviter")
   Listing                                Listing[]
+  ListingComment                         ListingComment[]
+  ListingFavorite                        ListingFavorite[]
+  Post                                   Post[]
+  PostLike                               PostLike[]
+  PostComment                            PostComment[]
+  PostShare                              PostShare[]
   Message                                Message[]
   Notification                           Notification[]
   Ride                                   Ride[]
   RideParticipant                        RideParticipant[]
+  RideFavorite                           RideFavorite[]
   Settlement_Settlement_payeeIdToUser    Settlement[]         @relation("Settlement_payeeIdToUser")
   Settlement_Settlement_payerIdToUser    Settlement[]         @relation("Settlement_payerIdToUser")
   TrustScore                             TrustScore?
+  TrustScoreRankHistory                  TrustScoreRankHistory[]
   UserProfile                            UserProfile?
 }
 
@@ -653,12 +802,28 @@ model UserProfile {
   pushNotifications    Boolean  @default(true)
   profileVisibility    String   @default("public")
   trustScoreVisibility String   @default("public")
+  theme                String   @default("system")
+  language             String   @default("en")
+  fontSize             String   @default("medium")
+  highContrast         Boolean  @default(false)
   User                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum GroupMemberRole {
   ADMIN
   MEMBER
+}
+
+enum GroupVisibility {
+  public
+  private
+}
+
+enum GroupJoinRequestStatus {
+  pending
+  approved
+  declined
+  cancelled
 }
 
 enum SplitType {
