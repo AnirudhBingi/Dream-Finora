@@ -1,10 +1,20 @@
-import React from 'react';
-import { View, Text, Image, StyleSheet, ViewStyle, TextStyle } from 'react-native';
-import { getAvatarUrl } from '../utils/avatar';
+import React, { useMemo } from "react";
+import {
+  View,
+  Text,
+  Image,
+  StyleSheet,
+  ViewStyle,
+  TextStyle,
+} from "react-native";
+import { getAvatarUrl } from "../utils/avatar";
+import { useTheme } from "../theme";
 
 interface AvatarProps {
-  avatarUrl: string | null | undefined;
-  displayName: string;
+  avatarUrl?: string | null;
+  displayName?: string;
+  uri?: string;
+  name?: string;
   size?: number;
   style?: ViewStyle;
   textStyle?: TextStyle;
@@ -14,15 +24,17 @@ interface AvatarProps {
 
 /**
  * Reusable Avatar component that displays user profile pictures with initials fallback.
- * 
+ *
  * Pattern (inspired by Facebook/Instagram):
  * - If avatarUrl exists and is valid, display the image
  * - If avatarUrl is missing or fails to load, show initials in a colored circle
  * - Always use getAvatarUrl utility to process the URL properly
  * - Consistent sizing, colors, and styling across the app
- * 
+ *
  * @param avatarUrl - The raw avatar URL from the API (can be relative or absolute)
  * @param displayName - User's display name or email (used for initials fallback)
+ * @param uri - Alias for avatarUrl (legacy prop)
+ * @param name - Alias for displayName (legacy prop)
  * @param size - Size of the avatar in pixels (default: 48)
  * @param style - Additional styles for the container
  * @param textStyle - Additional styles for the initials text
@@ -32,17 +44,24 @@ interface AvatarProps {
 export function Avatar({
   avatarUrl,
   displayName,
+  uri,
+  name,
   size = 48,
   style,
   textStyle,
-  borderColor = 'transparent',
+  borderColor = "transparent",
   borderWidth = 0,
 }: AvatarProps) {
-  const processedAvatarUrl = getAvatarUrl(avatarUrl || null);
-  const initials = displayName
-    .split(' ')
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const resolvedAvatarUrl = avatarUrl ?? uri ?? null;
+  const resolvedDisplayName = displayName ?? name ?? "Unknown";
+  const processedAvatarUrl = getAvatarUrl(resolvedAvatarUrl);
+  const safeDisplayName = resolvedDisplayName || "Unknown";
+  const initials = safeDisplayName
+    .split(" ")
     .map((n) => n.charAt(0))
-    .join('')
+    .join("")
     .toUpperCase()
     .slice(0, 2);
 
@@ -59,7 +78,10 @@ export function Avatar({
       {processedAvatarUrl ? (
         <Image
           source={{ uri: processedAvatarUrl }}
-          style={[styles.image, { width: size, height: size, borderRadius: size / 2 }]}
+          style={[
+            styles.image,
+            { width: size, height: size, borderRadius: size / 2 },
+          ]}
           resizeMode="cover"
           onError={() => {
             // Silently fail - will show initials as fallback
@@ -74,7 +96,10 @@ export function Avatar({
               width: size,
               height: size,
               borderRadius: size / 2,
-              backgroundColor: getInitialsBackgroundColor(displayName),
+              backgroundColor: getInitialsBackgroundColor(
+                safeDisplayName,
+                theme,
+              ),
             },
           ]}
         >
@@ -83,7 +108,7 @@ export function Avatar({
               styles.initials,
               {
                 fontSize: size * 0.4,
-                fontWeight: '700' as const,
+                fontWeight: "700" as const,
               },
               textStyle,
             ]}
@@ -100,46 +125,49 @@ export function Avatar({
  * Generate a consistent background color for initials based on the display name.
  * This ensures the same user always gets the same color (like Facebook/Instagram).
  */
-function getInitialsBackgroundColor(displayName: string): string {
+function getInitialsBackgroundColor(
+  displayName: string,
+  theme: ReturnType<typeof useTheme>["theme"],
+): string {
   // Use a simple hash function to generate consistent colors
   let hash = 0;
   for (let i = 0; i < displayName.length; i++) {
     hash = displayName.charCodeAt(i) + ((hash << 5) - hash);
   }
-  
-  // Generate a color from the hash (using indigo/purple palette)
-  const hue = Math.abs(hash) % 360;
-  // Use a more vibrant color palette
+
+  // Use theme colors for consistent palette, with intentional design colors for avatar variety
+  // Purple, Pink, and Teal are intentional design choices for avatar initials variety
+  // These specific hex values provide visual diversity while maintaining brand consistency
   const colors = [
-    '#6366F1', // Indigo
-    '#8B5CF6', // Purple
-    '#EC4899', // Pink
-    '#F59E0B', // Amber
-    '#10B981', // Green
-    '#3B82F6', // Blue
-    '#EF4444', // Red
-    '#14B8A6', // Teal
+    theme.colors.primary, // Indigo
+    "#8B5CF6", // Purple - Intentional design value for avatar variety
+    "#EC4899", // Pink - Intentional design value for avatar variety
+    theme.colors.warning, // Amber
+    theme.colors.success, // Green
+    theme.colors.blue, // Blue
+    theme.colors.error, // Red
+    "#14B8A6", // Teal - Intentional design value for avatar variety
   ];
-  
+
   return colors[Math.abs(hash) % colors.length];
 }
 
-const styles = StyleSheet.create({
-  container: {
-    overflow: 'hidden',
-    backgroundColor: '#F3F4F6',
-  },
-  image: {
-    width: '100%',
-    height: '100%',
-  },
-  placeholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  initials: {
-    color: '#FFFFFF',
-    textAlign: 'center',
-  },
-});
-
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    container: {
+      overflow: "hidden",
+      backgroundColor: theme.colors.backgroundTertiary,
+    },
+    image: {
+      width: "100%",
+      height: "100%",
+    },
+    placeholder: {
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    initials: {
+      color: theme.colors.textInverse,
+      textAlign: "center",
+    },
+  });

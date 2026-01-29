@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from "react";
 import {
   TouchableOpacity,
   Text,
@@ -6,10 +6,11 @@ import {
   View,
   Platform,
   ViewStyle,
-} from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+} from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useTheme } from "../theme";
 
-export type SocialProvider = 'google' | 'apple';
+export type SocialProvider = "google" | "apple";
 
 interface SocialSignInButtonProps {
   provider: SocialProvider;
@@ -24,33 +25,35 @@ export function SocialSignInButton({
   disabled = false,
   style,
 }: SocialSignInButtonProps) {
-  const isApple = provider === 'apple';
-  const isIOS = Platform.OS === 'ios';
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const isApple = provider === "apple";
+  const isIOS = Platform.OS === "ios";
 
   // Apple button styling: black on iOS, white with border on Android
   const getButtonStyle = (): ViewStyle => {
     const baseStyle: ViewStyle = {
       height: 52,
       borderRadius: 12,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
       paddingHorizontal: 16,
       borderWidth: 1,
     };
 
     if (isApple) {
       if (isIOS) {
-        baseStyle.backgroundColor = '#000000';
-        baseStyle.borderColor = '#000000';
+        baseStyle.backgroundColor = theme.colors.black;
+        baseStyle.borderColor = theme.colors.black;
       } else {
-        baseStyle.backgroundColor = '#FFFFFF';
-        baseStyle.borderColor = '#E5E7EB';
+        baseStyle.backgroundColor = theme.colors.background;
+        baseStyle.borderColor = theme.colors.border;
       }
     } else {
       // Google
-      baseStyle.backgroundColor = '#FFFFFF';
-      baseStyle.borderColor = '#E5E7EB';
+      baseStyle.backgroundColor = theme.colors.background;
+      baseStyle.borderColor = theme.colors.border;
     }
 
     if (disabled) {
@@ -62,23 +65,23 @@ export function SocialSignInButton({
 
   const getTextStyle = () => {
     if (isApple && isIOS) {
-      return { color: '#FFFFFF' };
+      return { color: theme.colors.textInverse };
     }
-    return { color: '#111827' };
+    return { color: theme.colors.textPrimary };
   };
 
   const getIcon = () => {
     if (isApple) {
-      return '🍎'; // Using emoji for now, can be replaced with SVG/PNG icon
+      return "🍎"; // Using emoji for now, can be replaced with SVG/PNG icon
     }
-    return 'G'; // Using letter for now, can be replaced with Google logo SVG/PNG
+    return "G"; // Using letter for now, can be replaced with Google logo SVG/PNG
   };
 
   const getText = () => {
     if (isApple) {
-      return 'Continue with Apple';
+      return "Continue with Apple";
     }
-    return 'Continue with Google';
+    return "Continue with Google";
   };
 
   return (
@@ -96,20 +99,20 @@ export function SocialSignInButton({
   );
 }
 
-const styles = StyleSheet.create({
-  iconContainer: {
-    marginRight: 12,
-    width: 20,
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconText: {
-    fontSize: 18,
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-});
-
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    iconContainer: {
+      marginRight: theme.spacing.md,
+      width: 20,
+      height: 20,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    iconText: {
+      fontSize: theme.typography.fontSize.lg,
+    },
+    buttonText: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+  });

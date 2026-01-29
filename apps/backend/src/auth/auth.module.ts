@@ -11,7 +11,8 @@ import { JwtStrategy } from './jwt.strategy';
     PrismaModule,
     PassportModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'dreamfinora_dev_secret_change_in_production',
+      secret:
+        process.env.JWT_SECRET || 'dreamfinora_dev_secret_change_in_production',
       signOptions: { expiresIn: '7d' },
     }),
   ],
@@ -20,4 +21,3 @@ import { JwtStrategy } from './jwt.strategy';
   exports: [AuthService],
 })
 export class AuthModule {}
-

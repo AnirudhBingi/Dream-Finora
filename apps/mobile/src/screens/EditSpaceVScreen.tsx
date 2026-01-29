@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -9,10 +9,10 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { pickMultipleImages } from '../utils/imagePicker';
-import { useAuth } from '../auth/authContext';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { pickMultipleImages } from "../utils/imagePicker";
+import { useAuth } from "../auth/authContext";
 import {
   getListingById,
   updateListing,
@@ -27,11 +27,15 @@ import {
   ItemMetadata,
   EventMetadata,
   RideMetadata,
-} from '../api/listingApi';
-import { DatePicker } from '../components/DatePicker';
-import { MaterialIcons } from '@expo/vector-icons';
-import { getApiBaseUrl } from '../api/getApiBaseUrl';
-import { Header } from '../components/Header';
+} from "../api/listingApi";
+import { DatePicker } from "../components/DatePicker";
+import { MaterialIcons } from "@expo/vector-icons";
+import { getApiBaseUrl } from "../api/getApiBaseUrl";
+import { Header } from "../components/Header";
+import { useDataFetch } from "../hooks/useDataFetch";
+import { useAsyncOperation } from "../hooks/useAsyncOperation";
+import { ErrorState } from "../components/ErrorState";
+import { useTheme } from "../theme";
 
 interface EditSpaceVScreenProps {
   spacevId: string;
@@ -42,71 +46,150 @@ interface EditSpaceVScreenProps {
   onNavigateToSettings?: () => void;
 }
 
-export function EditSpaceVScreen({ 
-  spacevId, 
-  onBack, 
+export function EditSpaceVScreen({
+  spacevId,
+  onBack,
   onSuccess,
   onNavigateToProfile,
   onNavigateToNotifications,
   onNavigateToSettings,
 }: EditSpaceVScreenProps) {
   const { token } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [listing, setListing] = useState<Listing | null>(null);
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [type, setType] = useState<ListingType>(ListingType.ROOMMATE);
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [location, setLocation] = useState('');
-  const [price, setPrice] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [location, setLocation] = useState("");
+  const [price, setPrice] = useState("");
   const [imageUris, setImageUris] = useState<string[]>([]);
-  const [itemCategories, setItemCategories] = useState<string[]>([]);
-  const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [isAutoDetected, setIsAutoDetected] = useState(false);
-  const categorySuggestTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const categorySuggestTimeoutRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const categoryScrollViewRef = useRef<ScrollView>(null);
   const categoryChipRefs = useRef<Record<string, any>>({});
 
   // Type-specific state
   const [lookingFor, setLookingFor] = useState<boolean>(true);
-  const [budget, setBudget] = useState('');
-  const [moveInDate, setMoveInDate] = useState('');
-  const [duration, setDuration] = useState<string>('long-term');
+  const [budget, setBudget] = useState("");
+  const [moveInDate, setMoveInDate] = useState("");
+  const [duration, setDuration] = useState<string>("long-term");
   const [smoking, setSmoking] = useState<boolean | undefined>(undefined);
   const [pets, setPets] = useState<boolean | undefined>(undefined);
-  const [gender, setGender] = useState('');
-  const [ageRange, setAgeRange] = useState('');
-  const [bedrooms, setBedrooms] = useState('');
-  const [bathrooms, setBathrooms] = useState('');
-  const [availableFrom, setAvailableFrom] = useState('');
-  const [leaseDuration, setLeaseDuration] = useState('');
-  const [utilitiesIncluded, setUtilitiesIncluded] = useState<boolean | undefined>(undefined);
+  const [gender, setGender] = useState("");
+  const [ageRange, setAgeRange] = useState("");
+  const [bedrooms, setBedrooms] = useState("");
+  const [bathrooms, setBathrooms] = useState("");
+  const [availableFrom, setAvailableFrom] = useState("");
+  const [leaseDuration, setLeaseDuration] = useState("");
+  const [utilitiesIncluded, setUtilitiesIncluded] = useState<
+    boolean | undefined
+  >(undefined);
   const [furnished, setFurnished] = useState<boolean | undefined>(undefined);
-  const [condition, setCondition] = useState<string>('used');
-  const [category, setCategory] = useState('');
-  const [brand, setBrand] = useState('');
-  const [eventDate, setEventDate] = useState('');
-  const [eventTime, setEventTime] = useState('');
-  const [maxAttendees, setMaxAttendees] = useState('');
-  const [eventType, setEventType] = useState('');
+  const [condition, setCondition] = useState<string>("used");
+  const [category, setCategory] = useState("");
+  const [brand, setBrand] = useState("");
+  const [eventDate, setEventDate] = useState("");
+  const [eventTime, setEventTime] = useState("");
+  const [maxAttendees, setMaxAttendees] = useState("");
+  const [eventType, setEventType] = useState("");
   const [isPublic, setIsPublic] = useState<boolean>(true);
-  const [origin, setOrigin] = useState('');
-  const [destination, setDestination] = useState('');
-  const [rideDate, setRideDate] = useState('');
-  const [rideTime, setRideTime] = useState('');
-  const [availableSeats, setAvailableSeats] = useState('');
-  const [vehicleType, setVehicleType] = useState('');
-  const [pricePerPerson, setPricePerPerson] = useState('');
+  const [origin, setOrigin] = useState("");
+  const [destination, setDestination] = useState("");
+  const [rideDate, setRideDate] = useState("");
+  const [rideTime, setRideTime] = useState("");
+  const [availableSeats, setAvailableSeats] = useState("");
+  const [vehicleType, setVehicleType] = useState("");
+  const [pricePerPerson, setPricePerPerson] = useState("");
 
-  useEffect(() => {
-    loadListing();
-  }, [token, spacevId]);
+  // Fetch listing data
+  const {
+    data: listing,
+    loading,
+    error,
+    refetch,
+  } = useDataFetch<Listing | null>({
+    fetchFn: async () => {
+      if (!token) throw new Error("Not authenticated");
+      const listingData = await getListingById(token, spacevId);
 
-  useEffect(() => {
-    if (type === ListingType.ITEM && token) {
-      loadItemCategories();
-    }
-  }, [token, type]);
+      setType(listingData.type);
+      setTitle(listingData.title);
+      setDescription(listingData.description);
+      setLocation(listingData.location || "");
+      setPrice(listingData.price?.toString() || "");
+
+      // Load existing images
+      if (listingData.images && listingData.images.length > 0) {
+        const imageUrls = listingData.images.map((img) =>
+          img.startsWith("http") ? img : `${getApiBaseUrl()}${img}`,
+        );
+        setImageUris(imageUrls);
+      }
+
+      // Load metadata
+      const metadata = listingData.metadata as any;
+      if (metadata) {
+        if (listingData.type === ListingType.ROOMMATE) {
+          const m = metadata as RoommateMetadata;
+          setLookingFor(m.lookingFor ?? true);
+          setBudget(m.budget?.toString() || "");
+          setMoveInDate(m.moveInDate || "");
+          setDuration(m.duration || "long-term");
+          setSmoking(m.preferences?.smoking);
+          setPets(m.preferences?.pets);
+          setGender(m.preferences?.gender || "");
+          setAgeRange(m.preferences?.ageRange || "");
+        } else if (listingData.type === ListingType.ACCOMMODATION) {
+          const m = metadata as AccommodationMetadata;
+          setBedrooms(m.bedrooms?.toString() || "");
+          setBathrooms(m.bathrooms?.toString() || "");
+          setAvailableFrom(m.availableFrom || "");
+          setLeaseDuration(m.leaseDuration || "");
+          setUtilitiesIncluded(m.utilitiesIncluded);
+          setFurnished(m.furnished);
+        } else if (listingData.type === ListingType.ITEM) {
+          const m = metadata as ItemMetadata;
+          setCondition(m.condition || "used");
+          setCategory(m.category || "");
+          setBrand(m.brand || "");
+        } else if (listingData.type === ListingType.EVENT) {
+          const m = metadata as EventMetadata;
+          setEventDate(m.eventDate || "");
+          setEventTime(m.eventTime || "");
+          setMaxAttendees(m.maxAttendees?.toString() || "");
+          setEventType(m.eventType || "");
+          setIsPublic(m.isPublic ?? true);
+        } else if (listingData.type === ListingType.RIDE) {
+          const m = metadata as RideMetadata;
+          setOrigin(m.origin || "");
+          setDestination(m.destination || "");
+          setRideDate(m.rideDate || "");
+          setRideTime(m.rideTime || "");
+          setAvailableSeats(m.availableSeats?.toString() || "");
+          setVehicleType(m.vehicleType || "");
+          setPricePerPerson(m.pricePerPerson?.toString() || "");
+        }
+      }
+
+      return listingData;
+    },
+    immediate: true,
+    deps: [token, spacevId],
+  });
+
+  // Fetch item categories (conditional, only for ITEM type)
+  const { data: itemCategories, loading: categoriesLoading } = useDataFetch<
+    string[]
+  >({
+    fetchFn: async () => {
+      if (!token || type !== ListingType.ITEM) return [];
+      return getItemCategories(token);
+    },
+    immediate: type === ListingType.ITEM,
+    deps: [token, type],
+  });
 
   useEffect(() => {
     if (type !== ListingType.ITEM || !title.trim() || !token) return;
@@ -127,7 +210,7 @@ export function EditSpaceVScreen({
           }, 100);
         }
       } catch (err) {
-        console.error('Failed to suggest category:', err);
+        console.error("Failed to suggest category:", err);
       }
     }, 500);
 
@@ -138,94 +221,13 @@ export function EditSpaceVScreen({
     };
   }, [title, type, token]);
 
-  async function loadListing() {
-    if (!token) return;
-
-    try {
-      setLoading(true);
-      const listingData = await getListingById(token, spacevId);
-      setListing(listingData);
-      setType(listingData.type);
-      setTitle(listingData.title);
-      setDescription(listingData.description);
-      setLocation(listingData.location || '');
-      setPrice(listingData.price?.toString() || '');
-      
-      // Load existing images
-      if (listingData.images && listingData.images.length > 0) {
-        const imageUrls = listingData.images.map(img =>
-          img.startsWith('http') ? img : `${getApiBaseUrl()}${img}`
-        );
-        setImageUris(imageUrls);
-      }
-
-      // Load metadata
-      const metadata = listingData.metadata as any;
-      if (metadata) {
-        if (listingData.type === ListingType.ROOMMATE) {
-          const m = metadata as RoommateMetadata;
-          setLookingFor(m.lookingFor ?? true);
-          setBudget(m.budget?.toString() || '');
-          setMoveInDate(m.moveInDate || '');
-          setDuration(m.duration || 'long-term');
-          setSmoking(m.preferences?.smoking);
-          setPets(m.preferences?.pets);
-          setGender(m.preferences?.gender || '');
-          setAgeRange(m.preferences?.ageRange || '');
-        } else if (listingData.type === ListingType.ACCOMMODATION) {
-          const m = metadata as AccommodationMetadata;
-          setBedrooms(m.bedrooms?.toString() || '');
-          setBathrooms(m.bathrooms?.toString() || '');
-          setAvailableFrom(m.availableFrom || '');
-          setLeaseDuration(m.leaseDuration || '');
-          setUtilitiesIncluded(m.utilitiesIncluded);
-          setFurnished(m.furnished);
-        } else if (listingData.type === ListingType.ITEM) {
-          const m = metadata as ItemMetadata;
-          setCondition(m.condition || 'used');
-          setCategory(m.category || '');
-          setBrand(m.brand || '');
-        } else if (listingData.type === ListingType.EVENT) {
-          const m = metadata as EventMetadata;
-          setEventDate(m.eventDate || '');
-          setEventTime(m.eventTime || '');
-          setMaxAttendees(m.maxAttendees?.toString() || '');
-          setEventType(m.eventType || '');
-          setIsPublic(m.isPublic ?? true);
-        } else if (listingData.type === ListingType.RIDE) {
-          const m = metadata as RideMetadata;
-          setOrigin(m.origin || '');
-          setDestination(m.destination || '');
-          setRideDate(m.rideDate || '');
-          setRideTime(m.rideTime || '');
-          setAvailableSeats(m.availableSeats?.toString() || '');
-          setVehicleType(m.vehicleType || '');
-          setPricePerPerson(m.pricePerPerson?.toString() || '');
-        }
-      }
-    } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to load SpaceV listing');
-      onBack();
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadItemCategories() {
-    if (!token) return;
-    try {
-      setCategoriesLoading(true);
-      const categories = await getItemCategories(token);
-      setItemCategories(categories);
-    } catch (err) {
-      console.error('Failed to load item categories:', err);
-    } finally {
-      setCategoriesLoading(false);
-    }
-  }
-
   function scrollToCategory(cat: string) {
-    if (!categoryScrollViewRef.current || !itemCategories.length) return;
+    if (
+      !categoryScrollViewRef.current ||
+      !itemCategories ||
+      !itemCategories.length
+    )
+      return;
     const categoryIndex = itemCategories.indexOf(cat);
     if (categoryIndex === -1) return;
     requestAnimationFrame(() => {
@@ -245,27 +247,23 @@ export function EditSpaceVScreen({
     scrollToCategory(cat);
   }
 
-  async function handleSave() {
-    if (!token || !listing) return;
+  const { execute: handleSave, loading: saving } = useAsyncOperation({
+    operationFn: async () => {
+      if (!token || !listing)
+        throw new Error("Not authenticated or listing not loaded");
 
-    if (!title.trim()) {
-      Alert.alert('Error', 'Please enter a title');
-      return;
-    }
+      if (!title.trim()) {
+        throw new Error("Please enter a title");
+      }
 
-    if (!description.trim()) {
-      Alert.alert('Error', 'Please enter a description');
-      return;
-    }
+      if (!description.trim()) {
+        throw new Error("Please enter a description");
+      }
 
-    const priceNum = price ? parseFloat(price) : undefined;
-    if (price && (isNaN(priceNum!) || priceNum! < 0)) {
-      Alert.alert('Error', 'Please enter a valid price');
-      return;
-    }
-
-    try {
-      setSaving(true);
+      const priceNum = price ? parseFloat(price) : undefined;
+      if (price && (isNaN(priceNum!) || priceNum! < 0)) {
+        throw new Error("Please enter a valid price");
+      }
 
       // Build type-specific metadata (same as CreateListingScreen)
       let metadata: any = {};
@@ -288,7 +286,8 @@ export function EditSpaceVScreen({
           bathrooms: bathrooms ? parseFloat(bathrooms) : undefined,
           availableFrom: availableFrom || undefined,
           leaseDuration: leaseDuration || undefined,
-          utilitiesIncluded: utilitiesIncluded !== undefined ? utilitiesIncluded : undefined,
+          utilitiesIncluded:
+            utilitiesIncluded !== undefined ? utilitiesIncluded : undefined,
           furnished: furnished !== undefined ? furnished : undefined,
         };
       } else if (type === ListingType.ITEM) {
@@ -313,7 +312,9 @@ export function EditSpaceVScreen({
           rideTime: rideTime || undefined,
           availableSeats: availableSeats ? parseInt(availableSeats) : undefined,
           vehicleType: vehicleType || undefined,
-          pricePerPerson: pricePerPerson ? parseFloat(pricePerPerson) : undefined,
+          pricePerPerson: pricePerPerson
+            ? parseFloat(pricePerPerson)
+            : undefined,
         };
       }
 
@@ -323,18 +324,20 @@ export function EditSpaceVScreen({
         description: description.trim(),
         location: location.trim() || undefined,
         price: priceNum,
-        currency: listing.currency || 'USD',
+        currency: listing.currency || "USD",
         metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
       };
 
       // Filter out new local images (file://) from existing URLs
-      const existingImages = imageUris.filter(uri => !uri.startsWith('file://'));
-      const newImages = imageUris.filter(uri => uri.startsWith('file://'));
-      
-      updateData.images = existingImages.map(img => {
+      const existingImages = imageUris.filter(
+        (uri) => !uri.startsWith("file://"),
+      );
+      const newImages = imageUris.filter((uri) => uri.startsWith("file://"));
+
+      updateData.images = existingImages.map((img) => {
         // Convert back to relative path if needed
         if (img.startsWith(getApiBaseUrl())) {
-          return img.replace(getApiBaseUrl(), '');
+          return img.replace(getApiBaseUrl(), "");
         }
         return img;
       });
@@ -346,20 +349,25 @@ export function EditSpaceVScreen({
         try {
           await uploadListingImages(token, spacevId, newImages);
         } catch (err) {
-          console.error('Failed to upload new images:', err);
-          Alert.alert('Warning', 'SpaceV listing updated but some image uploads failed');
+          console.error("Failed to upload new images:", err);
+          Alert.alert(
+            "Warning",
+            "SpaceV listing updated but some image uploads failed",
+          );
         }
       }
 
-      Alert.alert('Success', 'SpaceV listing updated successfully!', [
-        { text: 'OK', onPress: onSuccess },
+      return updateData;
+    },
+    onSuccess: () => {
+      Alert.alert("Success", "SpaceV listing updated successfully!", [
+        { text: "OK", onPress: onSuccess },
       ]);
-    } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to update SpaceV listing');
-    } finally {
-      setSaving(false);
-    }
-  }
+    },
+    onError: (errorMessage) => {
+      Alert.alert("Error", errorMessage);
+    },
+  });
 
   async function pickImages() {
     try {
@@ -368,7 +376,7 @@ export function EditSpaceVScreen({
         setImageUris([...imageUris, ...newUris]);
       }
     } catch (err) {
-      Alert.alert('Error', 'Failed to pick images');
+      Alert.alert("Error", "Failed to pick images");
     }
   }
 
@@ -378,11 +386,11 @@ export function EditSpaceVScreen({
 
   function getListingTypeLabel(listingType: ListingType): string {
     const labels: Record<ListingType, string> = {
-      [ListingType.ROOMMATE]: 'Roommate',
-      [ListingType.ACCOMMODATION]: 'Accommodation',
-      [ListingType.ITEM]: 'Item',
-      [ListingType.EVENT]: 'Event',
-      [ListingType.RIDE]: 'Ride',
+      [ListingType.ROOMMATE]: "Roommate",
+      [ListingType.ACCOMMODATION]: "Accommodation",
+      [ListingType.ITEM]: "Item",
+      [ListingType.EVENT]: "Event",
+      [ListingType.RIDE]: "Ride",
     };
     return labels[listingType] || listingType;
   }
@@ -395,18 +403,34 @@ export function EditSpaceVScreen({
             <Text style={styles.label}>Looking For / Offering</Text>
             <View style={styles.toggleContainer}>
               <TouchableOpacity
-                style={[styles.toggleButton, lookingFor && styles.toggleButtonSelected]}
+                style={[
+                  styles.toggleButton,
+                  lookingFor && styles.toggleButtonSelected,
+                ]}
                 onPress={() => setLookingFor(true)}
               >
-                <Text style={[styles.toggleText, lookingFor && styles.toggleTextSelected]}>
+                <Text
+                  style={[
+                    styles.toggleText,
+                    lookingFor && styles.toggleTextSelected,
+                  ]}
+                >
                   Looking For
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.toggleButton, !lookingFor && styles.toggleButtonSelected]}
+                style={[
+                  styles.toggleButton,
+                  !lookingFor && styles.toggleButtonSelected,
+                ]}
                 onPress={() => setLookingFor(false)}
               >
-                <Text style={[styles.toggleText, !lookingFor && styles.toggleTextSelected]}>
+                <Text
+                  style={[
+                    styles.toggleText,
+                    !lookingFor && styles.toggleTextSelected,
+                  ]}
+                >
                   Offering
                 </Text>
               </TouchableOpacity>
@@ -441,18 +465,34 @@ export function EditSpaceVScreen({
             <Text style={styles.label}>Duration</Text>
             <View style={styles.toggleContainer}>
               <TouchableOpacity
-                style={[styles.toggleButton, duration === 'short-term' && styles.toggleButtonSelected]}
-                onPress={() => setDuration('short-term')}
+                style={[
+                  styles.toggleButton,
+                  duration === "short-term" && styles.toggleButtonSelected,
+                ]}
+                onPress={() => setDuration("short-term")}
               >
-                <Text style={[styles.toggleText, duration === 'short-term' && styles.toggleTextSelected]}>
+                <Text
+                  style={[
+                    styles.toggleText,
+                    duration === "short-term" && styles.toggleTextSelected,
+                  ]}
+                >
                   Short-term
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.toggleButton, duration === 'long-term' && styles.toggleButtonSelected]}
-                onPress={() => setDuration('long-term')}
+                style={[
+                  styles.toggleButton,
+                  duration === "long-term" && styles.toggleButtonSelected,
+                ]}
+                onPress={() => setDuration("long-term")}
               >
-                <Text style={[styles.toggleText, duration === 'long-term' && styles.toggleTextSelected]}>
+                <Text
+                  style={[
+                    styles.toggleText,
+                    duration === "long-term" && styles.toggleTextSelected,
+                  ]}
+                >
                   Long-term
                 </Text>
               </TouchableOpacity>
@@ -466,7 +506,12 @@ export function EditSpaceVScreen({
                 style={styles.checkboxRow}
                 onPress={() => setSmoking(smoking === true ? undefined : true)}
               >
-                <View style={[styles.checkbox, smoking === true && styles.checkboxChecked]}>
+                <View
+                  style={[
+                    styles.checkbox,
+                    smoking === true && styles.checkboxChecked,
+                  ]}
+                >
                   {smoking === true && <Text style={styles.checkmark}>✓</Text>}
                 </View>
                 <Text style={styles.checkboxLabel}>Smoking OK</Text>
@@ -475,7 +520,12 @@ export function EditSpaceVScreen({
                 style={styles.checkboxRow}
                 onPress={() => setPets(pets === true ? undefined : true)}
               >
-                <View style={[styles.checkbox, pets === true && styles.checkboxChecked]}>
+                <View
+                  style={[
+                    styles.checkbox,
+                    pets === true && styles.checkboxChecked,
+                  ]}
+                >
                   {pets === true && <Text style={styles.checkmark}>✓</Text>}
                 </View>
                 <Text style={styles.checkboxLabel}>Pets OK</Text>
@@ -550,8 +600,15 @@ export function EditSpaceVScreen({
                 style={styles.checkboxRow}
                 onPress={() => setUtilitiesIncluded(utilitiesIncluded !== true)}
               >
-                <View style={[styles.checkbox, utilitiesIncluded === true && styles.checkboxChecked]}>
-                  {utilitiesIncluded === true && <Text style={styles.checkmark}>✓</Text>}
+                <View
+                  style={[
+                    styles.checkbox,
+                    utilitiesIncluded === true && styles.checkboxChecked,
+                  ]}
+                >
+                  {utilitiesIncluded === true && (
+                    <Text style={styles.checkmark}>✓</Text>
+                  )}
                 </View>
                 <Text style={styles.checkboxLabel}>Utilities Included</Text>
               </TouchableOpacity>
@@ -559,8 +616,15 @@ export function EditSpaceVScreen({
                 style={styles.checkboxRow}
                 onPress={() => setFurnished(furnished !== true)}
               >
-                <View style={[styles.checkbox, furnished === true && styles.checkboxChecked]}>
-                  {furnished === true && <Text style={styles.checkmark}>✓</Text>}
+                <View
+                  style={[
+                    styles.checkbox,
+                    furnished === true && styles.checkboxChecked,
+                  ]}
+                >
+                  {furnished === true && (
+                    <Text style={styles.checkmark}>✓</Text>
+                  )}
                 </View>
                 <Text style={styles.checkboxLabel}>Furnished</Text>
               </TouchableOpacity>
@@ -581,14 +645,20 @@ export function EditSpaceVScreen({
               style={styles.conditionScroll}
               contentContainerStyle={styles.conditionContainer}
             >
-              {['new', 'like-new', 'used', 'fair', 'poor'].map((cond) => (
+              {["new", "like-new", "used", "fair", "poor"].map((cond) => (
                 <TouchableOpacity
                   key={cond}
-                  style={[styles.conditionChip, condition === cond && styles.conditionChipSelected]}
+                  style={[
+                    styles.conditionChip,
+                    condition === cond && styles.conditionChipSelected,
+                  ]}
                   onPress={() => setCondition(cond)}
                 >
                   <Text
-                    style={[styles.conditionChipText, condition === cond && styles.conditionChipTextSelected]}
+                    style={[
+                      styles.conditionChipText,
+                      condition === cond && styles.conditionChipTextSelected,
+                    ]}
                   >
                     {cond.charAt(0).toUpperCase() + cond.slice(1)}
                   </Text>
@@ -602,13 +672,17 @@ export function EditSpaceVScreen({
               <Text style={styles.label}>Category</Text>
               {isAutoDetected && category && (
                 <View style={styles.autoDetectedBadge}>
-                  <MaterialIcons name="auto-awesome" size={14} color="#10B981" />
+                  <MaterialIcons
+                    name="auto-awesome"
+                    size={14}
+                    color={theme.colors.success}
+                  />
                   <Text style={styles.autoDetectedText}>Auto-detected</Text>
                 </View>
               )}
             </View>
             {categoriesLoading ? (
-              <ActivityIndicator size="small" color="#2563EB" />
+              <ActivityIndicator size="small" color={theme.colors.blue} />
             ) : (
               <ScrollView
                 ref={categoryScrollViewRef}
@@ -617,7 +691,7 @@ export function EditSpaceVScreen({
                 style={styles.categoryScroll}
                 contentContainerStyle={styles.categoryContainer}
               >
-                {itemCategories.map((cat) => (
+                {(itemCategories || []).map((cat) => (
                   <TouchableOpacity
                     key={cat}
                     ref={(ref) => {
@@ -626,7 +700,9 @@ export function EditSpaceVScreen({
                     style={[
                       styles.categoryChip,
                       category === cat && styles.categoryChipSelected,
-                      isAutoDetected && category === cat && styles.categoryChipAutoDetected,
+                      isAutoDetected &&
+                        category === cat &&
+                        styles.categoryChipAutoDetected,
                     ]}
                     onPress={() => handleCategorySelect(cat)}
                     activeOpacity={0.7}
@@ -640,7 +716,12 @@ export function EditSpaceVScreen({
                       {cat}
                     </Text>
                     {isAutoDetected && category === cat && (
-                      <MaterialIcons name="check-circle" size={16} color="#fff" style={styles.checkIcon} />
+                      <MaterialIcons
+                        name="check-circle"
+                        size={16}
+                        color={theme.colors.white}
+                        style={styles.checkIcon}
+                      />
                     )}
                   </TouchableOpacity>
                 ))}
@@ -709,18 +790,34 @@ export function EditSpaceVScreen({
             <Text style={styles.label}>Visibility</Text>
             <View style={styles.toggleContainer}>
               <TouchableOpacity
-                style={[styles.toggleButton, isPublic && styles.toggleButtonSelected]}
+                style={[
+                  styles.toggleButton,
+                  isPublic && styles.toggleButtonSelected,
+                ]}
                 onPress={() => setIsPublic(true)}
               >
-                <Text style={[styles.toggleText, isPublic && styles.toggleTextSelected]}>
+                <Text
+                  style={[
+                    styles.toggleText,
+                    isPublic && styles.toggleTextSelected,
+                  ]}
+                >
                   Public
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.toggleButton, !isPublic && styles.toggleButtonSelected]}
+                style={[
+                  styles.toggleButton,
+                  !isPublic && styles.toggleButtonSelected,
+                ]}
                 onPress={() => setIsPublic(false)}
               >
-                <Text style={[styles.toggleText, !isPublic && styles.toggleTextSelected]}>
+                <Text
+                  style={[
+                    styles.toggleText,
+                    !isPublic && styles.toggleTextSelected,
+                  ]}
+                >
                   Private
                 </Text>
               </TouchableOpacity>
@@ -818,7 +915,7 @@ export function EditSpaceVScreen({
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <Header
           title="Edit Listing"
           onBack={onBack}
@@ -827,16 +924,16 @@ export function EditSpaceVScreen({
           onNavigateToSettings={onNavigateToSettings}
         />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
+          <ActivityIndicator size="large" color={theme.colors.primary} />
           <Text style={styles.loadingText}>Loading SpaceV listing...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  if (!listing) {
+  if (error || !listing) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <Header
           title="Edit Listing"
           onBack={onBack}
@@ -844,15 +941,13 @@ export function EditSpaceVScreen({
           onNavigateToNotifications={onNavigateToNotifications}
           onNavigateToSettings={onNavigateToSettings}
         />
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>SpaceV listing not found</Text>
-        </View>
+        <ErrorState message={error || "Listing not found"} onRetry={refetch} />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <Header
         title="Edit Listing"
         onBack={onBack}
@@ -860,7 +955,10 @@ export function EditSpaceVScreen({
         onNavigateToNotifications={onNavigateToNotifications}
         onNavigateToSettings={onNavigateToSettings}
       />
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+      >
         <View style={styles.content}>
           <View style={styles.header}>
             <TouchableOpacity
@@ -939,7 +1037,11 @@ export function EditSpaceVScreen({
                         style={styles.removeImageButton}
                         onPress={() => removeImage(index)}
                       >
-                        <MaterialIcons name="close" size={16} color="#fff" />
+                        <MaterialIcons
+                          name="close"
+                          size={16}
+                          color={theme.colors.white}
+                        />
                       </TouchableOpacity>
                     </View>
                   ))}
@@ -949,9 +1051,13 @@ export function EditSpaceVScreen({
                 style={styles.imageUploadButton}
                 onPress={pickImages}
               >
-                <MaterialIcons name="add-photo-alternate" size={24} color="#6B7280" />
+                <MaterialIcons
+                  name="add-photo-alternate"
+                  size={24}
+                  color={theme.colors.textSecondary}
+                />
                 <Text style={styles.imageUploadButtonText}>
-                  {imageUris.length > 0 ? 'Add More Images' : 'Add Images'}
+                  {imageUris.length > 0 ? "Add More Images" : "Add Images"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -960,11 +1066,11 @@ export function EditSpaceVScreen({
 
             <TouchableOpacity
               style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-              onPress={handleSave}
+              onPress={() => handleSave()}
               disabled={saving}
             >
               {saving ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={theme.colors.white} />
               ) : (
                 <Text style={styles.saveButtonText}>Save Changes</Text>
               )}
@@ -980,319 +1086,337 @@ export function EditSpaceVScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollContent: {
-    paddingBottom: 24,
-  },
-  content: {
-    paddingHorizontal: 24,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#6B7280',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#EF4444',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  form: {
-    marginTop: 8,
-  },
-  inputGroup: {
-    marginBottom: 24,
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#374151',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    padding: 12,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: '#111827',
-  },
-  textArea: {
-    minHeight: 100,
-    paddingTop: 12,
-  },
-  priceContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-  },
-  currencySymbol: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#374151',
-    marginRight: 8,
-  },
-  priceInput: {
-    flex: 1,
-    padding: 12,
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  imageScroll: {
-    marginBottom: 12,
-  },
-  imageContainer: {
-    paddingRight: 24,
-  },
-  imageWrapper: {
-    position: 'relative',
-    marginRight: 12,
-  },
-  imagePreview: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
-    backgroundColor: '#F3F4F6',
-  },
-  removeImageButton: {
-    position: 'absolute',
-    top: -8,
-    right: -8,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#EF4444',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  imageUploadButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderWidth: 2,
-    borderColor: '#D1D5DB',
-    borderStyle: 'dashed',
-    borderRadius: 8,
-    padding: 24,
-    minHeight: 100,
-  },
-  imageUploadButtonText: {
-    fontSize: 16,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  saveButton: {
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  saveButtonDisabled: {
-    opacity: 0.5,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  cancelButton: {
-    backgroundColor: 'transparent',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#2563EB',
-  },
-  cancelButtonText: {
-    color: '#2563EB',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  toggleContainer: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  toggleButton: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#F9FAFB',
-    alignItems: 'center',
-  },
-  toggleButtonSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  toggleText: {
-    fontSize: 16,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  toggleTextSelected: {
-    color: '#fff',
-  },
-  checkboxContainer: {
-    marginTop: 8,
-  },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderWidth: 2,
-    borderColor: '#D1D5DB',
-    borderRadius: 4,
-    marginRight: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-  },
-  checkboxChecked: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  checkmark: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  checkboxLabel: {
-    fontSize: 16,
-    color: '#374151',
-  },
-  marginTop: {
-    marginTop: 8,
-  },
-  conditionScroll: {
-    marginTop: 8,
-  },
-  conditionContainer: {
-    paddingRight: 24,
-  },
-  conditionChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  conditionChipSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  conditionChipText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  conditionChipTextSelected: {
-    color: '#fff',
-  },
-  categoryLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  autoDetectedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#D1FAE5',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  autoDetectedText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#10B981',
-  },
-  categoryScroll: {
-    marginHorizontal: -24,
-    paddingHorizontal: 24,
-  },
-  categoryContainer: {
-    gap: 8,
-  },
-  categoryChip: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    marginRight: 8,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  categoryChipSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  categoryChipAutoDetected: {
-    backgroundColor: '#10B981',
-    borderColor: '#10B981',
-    shadowColor: '#10B981',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  categoryChipText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  categoryChipTextSelected: {
-    color: '#FFFFFF',
-  },
-  checkIcon: {
-    marginLeft: 2,
-  },
-});
-
+function createStyles(theme: ReturnType<typeof useTheme>["theme"]) {
+  return StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    scrollContent: {
+      paddingBottom: 24,
+    },
+    content: {
+      paddingHorizontal: 24,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: theme.spacing.xl,
+    },
+    loadingText: {
+      marginTop: 16,
+      fontSize: 16,
+      color: theme.colors.gray500,
+    },
+    errorContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: theme.spacing.xl,
+    },
+    errorText: {
+      fontSize: 16,
+      color: theme.colors.error,
+      marginBottom: theme.spacing.base,
+      textAlign: "center",
+    },
+    form: {
+      marginTop: theme.spacing.sm,
+    },
+    inputGroup: {
+      marginBottom: 24,
+    },
+    label: {
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.textPrimary,
+      marginBottom: 4,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: theme.colors.borderDark,
+      borderRadius: 8,
+      padding: theme.spacing.md,
+      paddingHorizontal: 16,
+      fontSize: 16,
+      color: theme.colors.textPrimary,
+    },
+    textArea: {
+      minHeight: 100,
+      paddingTop: 12,
+    },
+    priceContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: theme.colors.borderDark,
+      borderRadius: 8,
+      paddingHorizontal: 16,
+    },
+    currencySymbol: {
+      fontSize: 20,
+      fontWeight: "600",
+      color: theme.colors.textPrimary,
+      marginRight: 8,
+    },
+    priceInput: {
+      flex: 1,
+      padding: theme.spacing.md,
+      fontSize: 20,
+      fontWeight: "600",
+      color: theme.colors.textPrimary,
+    },
+    imageScroll: {
+      marginBottom: 12,
+    },
+    imageContainer: {
+      paddingRight: 24,
+    },
+    imageWrapper: {
+      position: "relative",
+      marginRight: 12,
+    },
+    imagePreview: {
+      width: 100,
+      height: 100,
+      borderRadius: 8,
+      backgroundColor: theme.colors.backgroundTertiary,
+    },
+    removeImageButton: {
+      position: "absolute",
+      top: -8,
+      right: -8,
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: theme.colors.error,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    imageUploadButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      borderWidth: 2,
+      borderColor: theme.colors.borderDark,
+      borderStyle: "dashed",
+      borderRadius: 8,
+      padding: theme.spacing.xl,
+      minHeight: 100,
+    },
+    imageUploadButtonText: {
+      fontSize: 16,
+      color: theme.colors.gray500,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    saveButton: {
+      backgroundColor: theme.colors.blue,
+      borderRadius: 8,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: 24,
+      minHeight: 44,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 12,
+    },
+    saveButtonDisabled: {
+      opacity: 0.5,
+    },
+    saveButtonText: {
+      color: theme.colors.white,
+      fontSize: 16,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    cancelButton: {
+      backgroundColor: "transparent",
+      borderRadius: 8,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: 24,
+      minHeight: 44,
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: theme.colors.blue,
+    },
+    cancelButtonText: {
+      color: theme.colors.blue,
+      fontSize: 16,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    toggleContainer: {
+      flexDirection: "row",
+      gap: theme.spacing.md,
+    },
+    toggleButton: {
+      flex: 1,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: 16,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.colors.borderDark,
+      backgroundColor: theme.colors.backgroundSecondary,
+      alignItems: "center",
+    },
+    toggleButtonSelected: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    toggleText: {
+      fontSize: 16,
+      color: theme.colors.textPrimary,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    toggleTextSelected: {
+      color: theme.colors.white,
+    },
+    checkboxContainer: {
+      marginTop: theme.spacing.sm,
+    },
+    checkboxRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 12,
+    },
+    checkbox: {
+      width: 24,
+      height: 24,
+      borderWidth: 2,
+      borderColor: theme.colors.borderDark,
+      borderRadius: 4,
+      marginRight: 12,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: theme.colors.background,
+    },
+    checkboxChecked: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    checkmark: {
+      color: theme.colors.white,
+      fontSize: 16,
+      fontWeight: "bold",
+    },
+    checkboxLabel: {
+      fontSize: 16,
+      color: theme.colors.textPrimary,
+    },
+    marginTop: {
+      marginTop: theme.spacing.sm,
+    },
+    conditionScroll: {
+      marginTop: theme.spacing.sm,
+    },
+    conditionContainer: {
+      paddingRight: 24,
+    },
+    conditionChip: {
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+      borderRadius: 20,
+      backgroundColor: theme.colors.backgroundTertiary,
+      marginRight: 8,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    conditionChipSelected: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    conditionChipText: {
+      fontSize: 14,
+      color: theme.colors.textPrimary,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    conditionChipTextSelected: {
+      color: theme.colors.white,
+    },
+    categoryLabelRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 8,
+    },
+    autoDetectedBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: theme.colors.successBackground,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 12,
+    },
+    autoDetectedText: {
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.success,
+    },
+    categoryScroll: {
+      marginHorizontal: -24,
+      paddingHorizontal: 24,
+    },
+    categoryContainer: {
+      gap: 8,
+    },
+    categoryChip: {
+      backgroundColor: theme.colors.backgroundTertiary,
+      borderRadius: 20,
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+      marginRight: 8,
+      borderWidth: 2,
+      borderColor: "transparent",
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    categoryChipSelected: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    categoryChipAutoDetected: {
+      backgroundColor: theme.colors.success,
+      borderColor: theme.colors.success,
+      shadowColor: theme.colors.success,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    categoryChipText: {
+      fontSize: 14,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.textPrimary,
+    },
+    categoryChipTextSelected: {
+      color: theme.colors.white,
+    },
+    checkIcon: {
+      marginLeft: 2,
+    },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    },
+    backButton: {
+      padding: 8,
+    },
+    backButtonText: {
+      fontSize: 16,
+      fontWeight: "500",
+      color: theme.colors.textPrimary,
+    },
+    placeholder: {
+      width: 40,
+    },
+  });
+}

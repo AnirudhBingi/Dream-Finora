@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -7,15 +7,17 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
-import { useAuth } from '../auth/authContext';
-import { getLoanById, Loan, deleteLoan, updateLoan } from '../api/financeApi';
-import { getProfile } from '../api/profileApi';
-import { SkeletonDetailScreen } from '../components/SkeletonLoader';
-import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
-import { Header } from '../components/Header';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useAuth } from "../auth/authContext";
+import { getLoanById, Loan, deleteLoan, updateLoan } from "../api/financeApi";
+import { getProfile } from "../api/profileApi";
+import { SkeletonDetailScreen } from "../components/SkeletonLoader";
+import { ErrorState } from "../components/ErrorState";
+import { useDataFetch } from "../hooks/useDataFetch";
+import { Header } from "../components/Header";
+import { useTheme } from "../theme";
 
 interface LoanDetailScreenProps {
   loanId: string;
@@ -37,85 +39,79 @@ export function LoanDetailScreen({
   onNavigateToSettings,
 }: LoanDetailScreenProps) {
   const { token } = useAuth();
-  const [loan, setLoan] = useState<Loan | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [primaryCurrency, setPrimaryCurrency] = useState<string>('USD');
-  const [homeCountryCurrency, setHomeCountryCurrency] = useState<string>('USD');
+  const [primaryCurrency, setPrimaryCurrency] = useState<string>("USD");
+  const [homeCountryCurrency, setHomeCountryCurrency] = useState<string>("USD");
+
+  const {
+    data: loan,
+    loading,
+    error,
+    refresh,
+    refetch,
+  } = useDataFetch<Loan>({
+    fetchFn: async () => {
+      if (!token) throw new Error("No authentication token");
+      return getLoanById(token, loanId);
+    },
+    immediate: true,
+    deps: [token, loanId],
+  });
 
   useEffect(() => {
+    async function loadCurrencies() {
+      if (!token) return;
+      try {
+        const profile = await getProfile(token);
+        if (profile) {
+          setPrimaryCurrency(profile.primaryCurrency || "USD");
+          setHomeCountryCurrency(profile.homeCountryCurrency || "USD");
+        } else {
+          setPrimaryCurrency("USD");
+          setHomeCountryCurrency("USD");
+        }
+      } catch {
+        setPrimaryCurrency("USD");
+        setHomeCountryCurrency("USD");
+      }
+    }
     loadCurrencies();
   }, [token]);
 
-  useEffect(() => {
-    loadLoan();
-  }, [token, loanId]);
-
-  async function loadCurrencies() {
-    if (!token) return;
-
-    try {
-      const profile = await getProfile(token);
-      if (profile) {
-        setPrimaryCurrency(profile.primaryCurrency || 'USD');
-        setHomeCountryCurrency(profile.homeCountryCurrency || 'USD');
-      } else {
-        setPrimaryCurrency('USD');
-        setHomeCountryCurrency('USD');
-      }
-    } catch {
-      setPrimaryCurrency('USD');
-      setHomeCountryCurrency('USD');
-    }
-  }
-
-  async function loadLoan() {
-    if (!token) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await getLoanById(token, loanId);
-      setLoan(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load loan');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   function formatCurrency(amount: number | undefined | null): string {
     if (!loan || amount === undefined || amount === null || isNaN(amount)) {
-      return '$0.00';
+      return "$0.00";
     }
     const displayCurrency =
-      loan.context === 'local' ? primaryCurrency : homeCountryCurrency;
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
+      loan.context === "local" ? primaryCurrency : homeCountryCurrency;
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
       currency: displayCurrency,
     }).format(amount);
   }
 
   function formatDate(dateString: string | undefined | null): string {
-    if (!dateString) return '';
+    if (!dateString) return "";
     const date = new Date(dateString);
-    if (isNaN(date.getTime())) return '';
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined,
+    if (isNaN(date.getTime())) return "";
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year:
+        date.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
     });
   }
 
-  function getStatusLabel(status: Loan['status']): string {
+  function getStatusLabel(status: Loan["status"]): string {
     switch (status) {
-      case 'active':
-        return 'Active';
-      case 'completed':
-        return 'Completed';
-      case 'paused':
-        return 'Paused';
+      case "active":
+        return "Active";
+      case "completed":
+        return "Completed";
+      case "paused":
+        return "Paused";
       default:
         return status;
     }
@@ -124,41 +120,47 @@ export function LoanDetailScreen({
   async function handleMarkCompleted() {
     if (!token || !loan) return;
 
-    Alert.alert('Mark as completed', 'Are you sure this loan is fully paid off?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Yes, mark completed',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            setSaving(true);
-            const updated = await updateLoan(token, loan.id, { status: 'completed' });
-            setLoan(updated);
-            onLoanUpdated();
-          } catch (err) {
-            Alert.alert(
-              'Error',
-              err instanceof Error ? err.message : 'Failed to update loan status',
-            );
-          } finally {
-            setSaving(false);
-          }
+    Alert.alert(
+      "Mark as completed",
+      "Are you sure this loan is fully paid off?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Yes, mark completed",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setSaving(true);
+              await updateLoan(token, loan.id, { status: "completed" });
+              await refetch();
+              onLoanUpdated();
+            } catch (err) {
+              Alert.alert(
+                "Error",
+                err instanceof Error
+                  ? err.message
+                  : "Failed to update loan status",
+              );
+            } finally {
+              setSaving(false);
+            }
+          },
         },
-      },
-    ]);
+      ],
+    );
   }
 
   async function handleDelete() {
     if (!token || !loan) return;
 
     Alert.alert(
-      'Delete loan',
-      'Are you sure you want to delete this loan? This cannot be undone.',
+      "Delete loan",
+      "Are you sure you want to delete this loan? This cannot be undone.",
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Delete',
-          style: 'destructive',
+          text: "Delete",
+          style: "destructive",
           onPress: async () => {
             try {
               setSaving(true);
@@ -167,8 +169,8 @@ export function LoanDetailScreen({
               onBack();
             } catch (err) {
               Alert.alert(
-                'Error',
-                err instanceof Error ? err.message : 'Failed to delete loan',
+                "Error",
+                err instanceof Error ? err.message : "Failed to delete loan",
               );
             } finally {
               setSaving(false);
@@ -181,10 +183,18 @@ export function LoanDetailScreen({
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={onBack}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons
+              name="arrow-back"
+              size={24}
+              color={theme.colors.blue}
+            />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Loan Details</Text>
           <View style={styles.placeholder} />
@@ -196,15 +206,23 @@ export function LoanDetailScreen({
 
   if (!loan) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-            <MaterialIcons name="arrow-back" size={24} color="#2563EB" />
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={onBack}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons
+              name="arrow-back"
+              size={24}
+              color={theme.colors.blue}
+            />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Loan Details</Text>
           <View style={styles.placeholder} />
         </View>
-        <ErrorState message={error || 'Loan not found'} onRetry={loadLoan} />
+        <ErrorState message={error || "Loan not found"} onRetry={refetch} />
       </SafeAreaView>
     );
   }
@@ -212,7 +230,7 @@ export function LoanDetailScreen({
   const totalPaid = loan.principalAmount - loan.remainingAmount;
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <Header
         title="Loan Details"
         onBack={onBack}
@@ -220,9 +238,11 @@ export function LoanDetailScreen({
         onNavigateToNotifications={onNavigateToNotifications}
         onNavigateToSettings={onNavigateToSettings}
       />
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+      >
         <View style={styles.content}>
-
           {error && (
             <View style={styles.errorContainer}>
               <Text style={styles.errorText}>{error}</Text>
@@ -239,14 +259,16 @@ export function LoanDetailScreen({
               <View
                 style={[
                   styles.statusBadge,
-                  loan.status === 'active'
+                  loan.status === "active"
                     ? styles.statusBadgeActive
-                    : loan.status === 'completed'
-                    ? styles.statusBadgeCompleted
-                    : styles.statusBadgePaused,
+                    : loan.status === "completed"
+                      ? styles.statusBadgeCompleted
+                      : styles.statusBadgePaused,
                 ]}
               >
-                <Text style={styles.statusBadgeText}>{getStatusLabel(loan.status)}</Text>
+                <Text style={styles.statusBadgeText}>
+                  {getStatusLabel(loan.status)}
+                </Text>
               </View>
             </View>
 
@@ -268,11 +290,15 @@ export function LoanDetailScreen({
             <View style={styles.summaryRow}>
               <View style={styles.summaryColumn}>
                 <Text style={styles.summaryLabel}>Paid so far</Text>
-                <Text style={styles.summaryValue}>{formatCurrency(totalPaid)}</Text>
+                <Text style={styles.summaryValue}>
+                  {formatCurrency(totalPaid)}
+                </Text>
               </View>
               <View style={styles.summaryColumn}>
                 <Text style={styles.summaryLabel}>Interest Rate</Text>
-                <Text style={styles.summaryValue}>{loan.interestRate}% p.a.</Text>
+                <Text style={styles.summaryValue}>
+                  {loan.interestRate}% p.a.
+                </Text>
               </View>
             </View>
           </View>
@@ -292,15 +318,23 @@ export function LoanDetailScreen({
             </View>
             <View style={styles.metaRow}>
               <View style={styles.metaItem}>
-                <MaterialIcons name="event" size={16} color="#6B7280" />
+                <MaterialIcons
+                  name="event"
+                  size={16}
+                  color={theme.colors.textSecondary}
+                />
                 <Text style={styles.metaText}>
-                  Started {formatDate(loan.startDate) || 'N/A'}
+                  Started {formatDate(loan.startDate) || "N/A"}
                 </Text>
               </View>
               <View style={styles.metaItem}>
-                <MaterialIcons name="date-range" size={16} color="#6B7280" />
+                <MaterialIcons
+                  name="date-range"
+                  size={16}
+                  color={theme.colors.textSecondary}
+                />
                 <Text style={styles.metaText}>
-                  Next Payment {formatDate(loan.nextPaymentDate) || 'N/A'}
+                  Next Payment {formatDate(loan.nextPaymentDate) || "N/A"}
                 </Text>
               </View>
             </View>
@@ -316,7 +350,11 @@ export function LoanDetailScreen({
                 disabled={saving}
                 activeOpacity={0.7}
               >
-                <MaterialIcons name="add" size={18} color="#fff" />
+                <MaterialIcons
+                  name="add"
+                  size={18}
+                  color={theme.colors.white}
+                />
                 <Text style={styles.smallButtonText}>Record Payment</Text>
               </TouchableOpacity>
             </View>
@@ -329,8 +367,8 @@ export function LoanDetailScreen({
                       {formatCurrency(payment.amount)}
                     </Text>
                     <Text style={styles.paymentMeta}>
-                      {formatDate(payment.paymentDate)} • Principal{' '}
-                      {formatCurrency(payment.principalPaid)} • Interest{' '}
+                      {formatDate(payment.paymentDate)} • Principal{" "}
+                      {formatCurrency(payment.principalPaid)} • Interest{" "}
                       {formatCurrency(payment.interestPaid)}
                     </Text>
                     {payment.notes && (
@@ -343,21 +381,26 @@ export function LoanDetailScreen({
               ))
             ) : (
               <Text style={styles.emptyTextSmall}>
-                No payments recorded yet. Record your first EMI to start tracking.
+                No payments recorded yet. Record your first EMI to start
+                tracking.
               </Text>
             )}
           </View>
 
           {/* Actions */}
           <View style={styles.actionsRow}>
-            {loan.status === 'active' && (
+            {loan.status === "active" && (
               <TouchableOpacity
                 style={[styles.actionButton, styles.completeButton]}
                 onPress={handleMarkCompleted}
                 disabled={saving}
                 activeOpacity={0.7}
               >
-                <MaterialIcons name="check-circle" size={20} color="#047857" />
+                <MaterialIcons
+                  name="check-circle"
+                  size={20}
+                  color={theme.colors.success}
+                />
                 <Text style={styles.completeButtonText}>Mark as Completed</Text>
               </TouchableOpacity>
             )}
@@ -367,7 +410,11 @@ export function LoanDetailScreen({
               disabled={saving}
               activeOpacity={0.7}
             >
-              <MaterialIcons name="delete" size={20} color="#B91C1C" />
+              <MaterialIcons
+                name="delete"
+                size={20}
+                color={theme.colors.error}
+              />
               <Text style={styles.deleteButtonText}>Delete Loan</Text>
             </TouchableOpacity>
           </View>
@@ -377,227 +424,245 @@ export function LoanDetailScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollContent: {
-    paddingBottom: 24,
-  },
-  content: {
-    paddingHorizontal: 24,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-    gap: 16,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#6B7280',
-  },
-  errorContainer: {
-    marginBottom: 16,
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1,
-    borderColor: '#FCA5A5',
-  },
-  errorText: {
-    color: '#B91C1C',
-  },
-  summaryCard: {
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginBottom: 16,
-  },
-  summaryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  loanName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  loanLender: {
-    marginTop: 2,
-    fontSize: 13,
-    color: '#6B7280',
-  },
-  statusBadge: {
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-  },
-  statusBadgeActive: {
-    backgroundColor: '#DCFCE7',
-  },
-  statusBadgeCompleted: {
-    backgroundColor: '#E0F2FE',
-  },
-  statusBadgePaused: {
-    backgroundColor: '#FEF9C3',
-  },
-  statusBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  summaryColumn: {
-    flex: 1,
-  },
-  summaryLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  summaryValue: {
-    marginTop: 2,
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  card: {
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginBottom: 16,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 8,
-  },
-  emiRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 4,
-  },
-  emiItem: {
-    flex: 1,
-  },
-  emiLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  emiValue: {
-    marginTop: 2,
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  metaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  metaText: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  smallButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: '#2563EB',
-    gap: 4,
-  },
-  smallButtonText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  paymentRow: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  paymentAmount: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  paymentMeta: {
-    marginTop: 2,
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  paymentNotes: {
-    marginTop: 2,
-    fontSize: 12,
-    color: '#4B5563',
-  },
-  emptyTextSmall: {
-    fontSize: 13,
-    color: '#6B7280',
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 8,
-  },
-  actionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    gap: 6,
-  },
-  completeButton: {
-    borderColor: '#34D399',
-    backgroundColor: '#ECFDF5',
-  },
-  completeButtonText: {
-    color: '#047857',
-    fontWeight: '600',
-  },
-  deleteButton: {
-    borderColor: '#FCA5A5',
-    backgroundColor: '#FEF2F2',
-  },
-  deleteButtonText: {
-    color: '#B91C1C',
-    fontWeight: '600',
-  },
-});
-
-
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    scrollContent: {
+      paddingBottom: theme.spacing.xl,
+    },
+    content: {
+      paddingHorizontal: theme.spacing.xl,
+    },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    },
+    backButton: {
+      padding: 8,
+    },
+    headerTitle: {
+      flex: 1,
+      fontSize: 18,
+      fontWeight: "700",
+      color: theme.colors.textPrimary,
+      textAlign: "center",
+    },
+    placeholder: {
+      width: 40,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: theme.spacing.xl,
+      gap: theme.spacing.base,
+    },
+    loadingText: {
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.gray500,
+    },
+    errorContainer: {
+      marginBottom: theme.spacing.base,
+      padding: theme.spacing.md,
+      borderRadius: theme.spacing.sm,
+      backgroundColor: theme.colors.errorBackground,
+      borderWidth: 1,
+      borderColor: theme.colors.error,
+    },
+    errorText: {
+      color: theme.colors.error,
+    },
+    summaryCard: {
+      padding: theme.spacing.base,
+      borderRadius: theme.spacing.md,
+      backgroundColor: theme.colors.backgroundSecondary,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      marginBottom: theme.spacing.base,
+    },
+    summaryHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: theme.spacing.sm,
+    },
+    loanName: {
+      fontSize: theme.typography.fontSize.lg,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+    },
+    loanLender: {
+      marginTop: 2,
+      fontSize: 13,
+      color: theme.colors.gray500,
+    },
+    statusBadge: {
+      paddingVertical: theme.spacing.xs,
+      paddingHorizontal: 10,
+      borderRadius: 999,
+    },
+    statusBadgeActive: {
+      backgroundColor: theme.colors.successBackground,
+    },
+    statusBadgeCompleted: {
+      backgroundColor: theme.colors.blueBackground,
+    },
+    statusBadgePaused: {
+      backgroundColor: theme.colors.warningBackground,
+    },
+    statusBadgeText: {
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+    },
+    summaryRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginTop: theme.spacing.sm,
+    },
+    summaryColumn: {
+      flex: 1,
+    },
+    summaryLabel: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.gray500,
+    },
+    summaryValue: {
+      marginTop: 2,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+    },
+    card: {
+      padding: theme.spacing.base,
+      borderRadius: theme.spacing.md,
+      backgroundColor: theme.colors.backgroundSecondary,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      marginBottom: theme.spacing.base,
+    },
+    cardTitle: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+      marginBottom: theme.spacing.sm,
+    },
+    emiRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginTop: theme.spacing.xs,
+    },
+    emiItem: {
+      flex: 1,
+    },
+    emiLabel: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.gray500,
+    },
+    emiValue: {
+      marginTop: 2,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+    },
+    metaRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: theme.spacing.md,
+    },
+    metaItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.xs,
+    },
+    metaText: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.gray500,
+    },
+    cardHeaderRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: theme.spacing.sm,
+    },
+    smallButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+      borderRadius: 999,
+      backgroundColor: theme.colors.blue,
+      gap: theme.spacing.xs,
+    },
+    smallButtonText: {
+      color: theme.colors.white,
+      fontSize: 13,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    paymentRow: {
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+    },
+    paymentAmount: {
+      fontSize: 15,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+    },
+    paymentMeta: {
+      marginTop: 2,
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.gray500,
+    },
+    paymentNotes: {
+      marginTop: 2,
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.gray600,
+    },
+    emptyTextSmall: {
+      fontSize: 13,
+      color: theme.colors.gray500,
+    },
+    actionsRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: theme.spacing.md,
+      marginTop: theme.spacing.sm,
+    },
+    actionButton: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 10,
+      borderRadius: 999,
+      borderWidth: 1,
+      gap: 6,
+    },
+    completeButton: {
+      borderColor: theme.colors.success,
+      backgroundColor: theme.colors.successBackground,
+    },
+    completeButtonText: {
+      color: theme.colors.success,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    deleteButton: {
+      borderColor: theme.colors.error,
+      backgroundColor: theme.colors.errorBackground,
+    },
+    deleteButtonText: {
+      color: theme.colors.error,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+  });

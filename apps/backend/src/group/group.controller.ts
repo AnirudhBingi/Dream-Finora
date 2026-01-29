@@ -53,6 +53,25 @@ export class GroupController {
     return this.groupService.getGroups(user.userId, limitNum, offsetNum);
   }
 
+  @Get('public')
+  async getPublicGroups(
+    @CurrentUser() user: { userId: string },
+    @Query('memberId') memberId?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('q') query?: string,
+  ) {
+    const limitNum = limit ? parseInt(limit, 10) : 50;
+    const offsetNum = offset ? parseInt(offset, 10) : 0;
+    return this.groupService.getPublicGroups(
+      user.userId,
+      memberId,
+      limitNum,
+      offsetNum,
+      query,
+    );
+  }
+
   @Get(':id')
   async getGroupById(
     @CurrentUser() user: { userId: string },
@@ -61,13 +80,62 @@ export class GroupController {
     return this.groupService.getGroupById(user.userId, id);
   }
 
+  @Post(':id/join-requests')
+  @HttpCode(HttpStatus.CREATED)
+  async requestJoin(
+    @CurrentUser() user: { userId: string },
+    @Param('id') groupId: string,
+  ) {
+    return this.groupService.requestToJoinGroup(user.userId, groupId);
+  }
+
+  @Get(':id/join-requests')
+  async getJoinRequests(
+    @CurrentUser() user: { userId: string },
+    @Param('id') groupId: string,
+  ) {
+    return this.groupService.getJoinRequests(user.userId, groupId);
+  }
+
+  @Post(':id/join-requests/:requestId/approve')
+  @HttpCode(HttpStatus.OK)
+  async approveJoinRequest(
+    @CurrentUser() user: { userId: string },
+    @Param('id') groupId: string,
+    @Param('requestId') requestId: string,
+  ) {
+    return this.groupService.approveJoinRequest(
+      user.userId,
+      groupId,
+      requestId,
+    );
+  }
+
+  @Post(':id/join-requests/:requestId/decline')
+  @HttpCode(HttpStatus.OK)
+  async declineJoinRequest(
+    @CurrentUser() user: { userId: string },
+    @Param('id') groupId: string,
+    @Param('requestId') requestId: string,
+  ) {
+    return this.groupService.declineJoinRequest(
+      user.userId,
+      groupId,
+      requestId,
+    );
+  }
+
   @Get(':id/balances')
   async getGroupBalances(
     @CurrentUser() user: { userId: string },
     @Param('id') id: string,
     @Query('primaryCurrency') primaryCurrency?: string,
   ) {
-    return this.groupService.getGroupBalances(user.userId, id, primaryCurrency || 'USD');
+    return this.groupService.getGroupBalances(
+      user.userId,
+      id,
+      primaryCurrency || 'USD',
+    );
   }
 
   @Post(':id/members')
@@ -101,9 +169,7 @@ export class GroupController {
   }
 
   @Get('invitations/:token')
-  async getInvitation(
-    @Param('token') token: string,
-  ) {
+  async getInvitation(@Param('token') token: string) {
     return this.groupService.getInvitationByToken(token);
   }
 
@@ -154,7 +220,12 @@ export class GroupController {
     @Param('memberId') memberId: string,
     @Body() changeRoleDto: ChangeMemberRoleDto,
   ) {
-    return this.groupService.changeMemberRole(user.userId, groupId, memberId, changeRoleDto.role);
+    return this.groupService.changeMemberRole(
+      user.userId,
+      groupId,
+      memberId,
+      changeRoleDto.role,
+    );
   }
 
   @Post(':id/transfer-ownership')
@@ -164,7 +235,11 @@ export class GroupController {
     @Param('id') groupId: string,
     @Body() transferOwnershipDto: TransferOwnershipDto,
   ) {
-    return this.groupService.transferOwnership(user.userId, groupId, transferOwnershipDto.newOwnerId);
+    return this.groupService.transferOwnership(
+      user.userId,
+      groupId,
+      transferOwnershipDto.newOwnerId,
+    );
   }
 
   @Post(':id/leave')
@@ -182,6 +257,20 @@ export class GroupController {
     @Param('id') id: string,
   ) {
     return this.groupService.getGroupHistory(user.userId, id);
+  }
+
+  @Get(':id/feed')
+  async getGroupFeed(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+  ) {
+    const limitNum = limit ? parseInt(limit, 10) : 20;
+    return this.groupService.getGroupFeed(user.userId, id, {
+      limit: limitNum,
+      cursor,
+    });
   }
 
   @Post(':id/avatar')
@@ -231,4 +320,3 @@ export class GroupController {
     return this.groupService.updateGroupAvatar(user.userId, groupId, avatarUrl);
   }
 }
-

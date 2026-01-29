@@ -1,4 +1,12 @@
-import { IsString, IsNumber, IsArray, IsOptional, Min, ValidateNested, IsEnum } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsArray,
+  IsOptional,
+  Min,
+  ValidateNested,
+  IsEnum,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export enum SplitType {
@@ -58,4 +66,3 @@ export class CreateExpenseDto {
   @IsEnum(SplitType)
   splitType?: SplitType;
 }
-

@@ -1,4 +1,12 @@
-import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, Min, IsInt } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsEnum,
+  IsDateString,
+  Min,
+  IsInt,
+} from 'class-validator';
 
 export class UpdateLoanDto {
   @IsString()
@@ -59,4 +67,3 @@ export class UpdateLoanDto {
   @IsOptional()
   status?: 'active' | 'completed' | 'paused';
 }
-

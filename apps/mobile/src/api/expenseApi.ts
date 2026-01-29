@@ -1,4 +1,5 @@
-import { getApiBaseUrl } from './getApiBaseUrl';
+import { api } from "./client";
+import type { BalanceInfo } from "./types";
 
 export interface ExpenseSplit {
   id: string;
@@ -17,7 +18,7 @@ export interface ExpenseSplit {
   };
 }
 
-export type SplitType = 'EQUAL' | 'CUSTOM' | 'PERCENTAGE';
+export type SplitType = "EQUAL" | "CUSTOM" | "PERCENTAGE";
 
 export interface Expense {
   id: string;
@@ -32,6 +33,14 @@ export interface Expense {
   receiptUrl?: string | null;
   paidBy?: string | null;
   splitType: SplitType;
+  rideId?: string | null; // Link to Ride if this expense was created from a ride
+  ride?: {
+    id: string;
+    origin: string;
+    destination: string;
+    type: "giveRide" | "rideshare";
+    date: string;
+  } | null; // Ride summary if expense was created from a ride
   splits: ExpenseSplit[];
   createdByUser: {
     id: string;
@@ -72,78 +81,11 @@ export interface CreateExpenseDto {
   splitType?: SplitType; // EQUAL, CUSTOM, or PERCENTAGE
 }
 
-export interface BalanceInfo {
-  totalOwed: number;
-  totalOwedToUser: number;
-  netBalance: number;
-  primaryCurrency?: string;
-  owedByUser: Array<{
-    user: {
-      id: string;
-      email: string;
-      profile?: {
-        displayName: string | null;
-        avatarUrl: string | null;
-      } | null;
-    };
-    amount: number;
-    originalAmount?: number;
-    originalCurrency?: string;
-    splits: ExpenseSplit[];
-    breakdown?: {
-      byGroup?: Array<{
-        groupId: string;
-        groupName: string;
-        amount: number;
-      }>;
-      rideshare?: number;
-      individual?: number;
-    };
-  }>;
-  owedToUser: Array<{
-    user: {
-      id: string;
-      email: string;
-      profile?: {
-        displayName: string | null;
-        avatarUrl: string | null;
-      } | null;
-    };
-    amount: number;
-    originalAmount?: number;
-    originalCurrency?: string;
-    splits: ExpenseSplit[];
-    breakdown?: {
-      byGroup?: Array<{
-        groupId: string;
-        groupName: string;
-        amount: number;
-      }>;
-      rideshare?: number;
-      individual?: number;
-    };
-  }>;
-}
-
 export async function createExpense(
   token: string,
   data: CreateExpenseDto,
 ): Promise<Expense> {
-  const response = await fetch(`${getApiBaseUrl()}/expenses`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to create expense' }));
-    throw new Error(error.message || `Failed to create expense: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<Expense>("/expenses", data, { token });
 }
 
 export interface PaginatedResponse<T> {
@@ -162,69 +104,38 @@ export async function getExpenses(
   limit: number = 50,
   offset: number = 0,
 ): Promise<PaginatedResponse<Expense> | Expense[]> {
-  const queryParams = new URLSearchParams();
-  queryParams.append('limit', limit.toString());
-  queryParams.append('offset', offset.toString());
-
-  const response = await fetch(`${getApiBaseUrl()}/expenses?${queryParams.toString()}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch expenses' }));
-    throw new Error(error.message || `Failed to fetch expenses: ${response.status}`);
-  }
-
-  const data = await response.json();
+  const data = await api.get<PaginatedResponse<Expense> | Expense[]>(
+    `/expenses?limit=${limit}&offset=${offset}`,
+    { token },
+  );
   // Check if response has pagination structure
-  if (data.expenses && Array.isArray(data.expenses)) {
+  if (
+    data &&
+    typeof data === "object" &&
+    "expenses" in data &&
+    Array.isArray((data as any).expenses)
+  ) {
     return data as PaginatedResponse<Expense>;
   }
   // Backward compatibility: return array if not paginated
   return data as Expense[];
 }
 
-export async function getExpenseById(token: string, expenseId: string): Promise<Expense> {
-  const response = await fetch(`${getApiBaseUrl()}/expenses/${expenseId}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch expense' }));
-    throw new Error(error.message || `Failed to fetch expense: ${response.status}`);
-  }
-
-  return response.json();
+export async function getExpenseById(
+  token: string,
+  expenseId: string,
+): Promise<Expense> {
+  return api.get<Expense>(`/expenses/${expenseId}`, { token });
 }
 
-export async function getBalances(token: string, primaryCurrency?: string): Promise<BalanceInfo> {
-  const url = new URL(`${getApiBaseUrl()}/expenses/balances`);
-  if (primaryCurrency) {
-    url.searchParams.append('primaryCurrency', primaryCurrency);
-  }
-  
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch balances' }));
-    throw new Error(error.message || `Failed to fetch balances: ${response.status}`);
-  }
-
-  return response.json();
+export async function getBalances(
+  token: string,
+  primaryCurrency?: string,
+): Promise<BalanceInfo> {
+  const endpoint = primaryCurrency
+    ? `/expenses/balances?primaryCurrency=${encodeURIComponent(primaryCurrency)}`
+    : "/expenses/balances";
+  return api.get<BalanceInfo>(endpoint, { token });
 }
 
 export async function markSplitAsPaid(
@@ -232,23 +143,11 @@ export async function markSplitAsPaid(
   expenseId: string,
   splitId: string,
 ): Promise<Expense> {
-  const response = await fetch(
-    `${getApiBaseUrl()}/expenses/${expenseId}/splits/${splitId}/pay`,
-    {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    },
+  return api.put<Expense>(
+    `/expenses/${expenseId}/splits/${splitId}/pay`,
+    undefined,
+    { token },
   );
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to mark as paid' }));
-    throw new Error(error.message || `Failed to mark as paid: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export async function uploadReceipt(
@@ -257,30 +156,19 @@ export async function uploadReceipt(
   imageUri: string,
 ): Promise<Expense> {
   const formData = new FormData();
-  const filename = imageUri.split('/').pop() || 'receipt.jpg';
+  const filename = imageUri.split("/").pop() || "receipt.jpg";
   const match = /\.(\w+)$/.exec(filename);
   const type = match ? `image/${match[1]}` : `image/jpeg`;
 
-  formData.append('file', {
+  formData.append("file", {
     uri: imageUri,
     name: filename,
     type,
   } as any);
 
-  const response = await fetch(`${getApiBaseUrl()}/expenses/${expenseId}/receipt`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-    body: formData,
+  return api.post<Expense>(`/expenses/${expenseId}/receipt`, formData, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to upload receipt' }));
-    throw new Error(error.message || `Failed to upload receipt: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 // Settlement-related interfaces and functions
@@ -351,76 +239,38 @@ export interface Settlement {
   };
 }
 
-export async function simplifyDebts(token: string): Promise<SimplifiedDebtsResponse> {
-  const response = await fetch(`${getApiBaseUrl()}/expenses/simplify-debts`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+export async function simplifyDebts(
+  token: string,
+): Promise<SimplifiedDebtsResponse> {
+  return api.get<SimplifiedDebtsResponse>("/expenses/simplify-debts", {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to simplify debts' }));
-    throw new Error(error.message || `Failed to simplify debts: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export async function createSettlement(
   token: string,
   data: CreateSettlementDto,
 ): Promise<Settlement> {
-  const response = await fetch(`${getApiBaseUrl()}/expenses/settlements`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to create settlement' }));
-    throw new Error(error.message || `Failed to create settlement: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<Settlement>("/expenses/settlements", data, { token });
 }
 
 export async function getSettlements(token: string): Promise<Settlement[]> {
-  const response = await fetch(`${getApiBaseUrl()}/expenses/settlements`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch settlements' }));
-    throw new Error(error.message || `Failed to fetch settlements: ${response.status}`);
-  }
-
-  return response.json();
+  return api.get<Settlement[]>("/expenses/settlements", { token });
 }
 
-export async function suggestCategory(token: string, description: string): Promise<{ category: string | null }> {
-  const response = await fetch(`${getApiBaseUrl()}/expenses/suggest-category`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ description }),
-  });
-
-  if (!response.ok) {
+export async function suggestCategory(
+  token: string,
+  description: string,
+): Promise<{ category: string | null }> {
+  try {
+    return await api.post<{ category: string | null }>(
+      "/expenses/suggest-category",
+      { description },
+      { token },
+    );
+  } catch {
     return { category: null };
   }
-
-  return response.json();
 }
 
 export interface UpdateExpenseDto {
@@ -444,36 +294,14 @@ export async function updateExpense(
   expenseId: string,
   data: UpdateExpenseDto,
 ): Promise<Expense> {
-  const response = await fetch(`${getApiBaseUrl()}/expenses/${expenseId}`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to update expense' }));
-    throw new Error(error.message || `Failed to update expense: ${response.status}`);
-  }
-
-  return response.json();
+  return api.put<Expense>(`/expenses/${expenseId}`, data, { token });
 }
 
-export async function deleteExpense(token: string, expenseId: string): Promise<void> {
-  const response = await fetch(`${getApiBaseUrl()}/expenses/${expenseId}`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to delete expense' }));
-    throw new Error(error.message || `Failed to delete expense: ${response.status}`);
-  }
+export async function deleteExpense(
+  token: string,
+  expenseId: string,
+): Promise<void> {
+  return api.delete<void>(`/expenses/${expenseId}`, { token });
 }
 
 export interface ExpenseHistory {
@@ -494,20 +322,11 @@ export interface ExpenseHistory {
   };
 }
 
-export async function getExpenseHistory(token: string, expenseId: string): Promise<ExpenseHistory[]> {
-  const response = await fetch(`${getApiBaseUrl()}/expenses/${expenseId}/history`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to get expense history' }));
-    throw new Error(error.message || `Failed to get expense history: ${response.status}`);
-  }
-
-  return response.json();
+export async function getExpenseHistory(
+  token: string,
+  expenseId: string,
+): Promise<ExpenseHistory[]> {
+  return api.get<ExpenseHistory[]>(`/expenses/${expenseId}/history`, { token });
 }
 
+export type { BalanceInfo } from "./types";

@@ -30,4 +30,3 @@ export class CreateTransactionDto {
   @IsOptional()
   date?: Date | string; // Defaults to today if not provided (accepts Date or ISO string)
 }
-

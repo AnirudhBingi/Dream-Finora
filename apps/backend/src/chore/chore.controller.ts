@@ -51,7 +51,12 @@ export class ChoreController {
   ) {
     const limitNum = limit ? parseInt(limit, 10) : 50;
     const offsetNum = offset ? parseInt(offset, 10) : 0;
-    return this.choreService.getChores(user.userId, groupId, limitNum, offsetNum);
+    return this.choreService.getChores(
+      user.userId,
+      groupId,
+      limitNum,
+      offsetNum,
+    );
   }
 
   // IMPORTANT: All specific routes with :id must come before the general @Get(':id') route
@@ -166,7 +171,11 @@ export class ChoreController {
     @Param('groupId') groupId: string,
     @Query('period') period?: 'week' | 'month' | 'all-time',
   ) {
-    return this.choreService.getGroupPointsLeaderboard(user.userId, groupId, period || 'all-time');
+    return this.choreService.getGroupPointsLeaderboard(
+      user.userId,
+      groupId,
+      period || 'all-time',
+    );
   }
 
   @Get('stats/group/:groupId')
@@ -175,7 +184,11 @@ export class ChoreController {
     @Param('groupId') groupId: string,
     @Query('period') period?: 'week' | 'month' | 'all-time',
   ) {
-    return this.choreStatsService.getGroupStats(user.userId, groupId, period || 'all-time');
+    return this.choreStatsService.getGroupStats(
+      user.userId,
+      groupId,
+      period || 'all-time',
+    );
   }
 
   @Get('stats/friend/:friendId')
@@ -201,7 +214,11 @@ export class ChoreController {
     @Query('limit') limit?: string,
   ) {
     const limitNum = limit ? parseInt(limit, 10) : 50;
-    return this.choreStatsService.getGroupChoreHistory(user.userId, groupId, limitNum);
+    return this.choreStatsService.getGroupChoreHistory(
+      user.userId,
+      groupId,
+      limitNum,
+    );
   }
 
   @Get('groups/:groupId/analytics')
@@ -211,12 +228,16 @@ export class ChoreController {
     @Query('days') days?: string,
   ) {
     const daysNum = days ? parseInt(days, 10) : 30;
-    return this.choreStatsService.getGroupAnalytics(user.userId, groupId, daysNum);
+    return this.choreStatsService.getGroupAnalytics(
+      user.userId,
+      groupId,
+      daysNum,
+    );
   }
 
   @Post('calculate-points')
   @HttpCode(HttpStatus.OK)
-  async calculatePoints(
+  calculatePoints(
     @Body() body: { category?: string; title: string; description?: string },
   ) {
     const points = this.chorePointsService.calculatePoints(
@@ -250,7 +271,11 @@ export class ChoreController {
     @Param('id') id: string,
     @Param('assignmentId') assignmentId: string,
   ) {
-    return this.choreService.completeChoreAssignment(user.userId, id, assignmentId);
+    return this.choreService.completeChoreAssignment(
+      user.userId,
+      id,
+      assignmentId,
+    );
   }
 
   @Delete(':id/assignments/:assignmentId')
@@ -260,7 +285,11 @@ export class ChoreController {
     @Param('id') id: string,
     @Param('assignmentId') assignmentId: string,
   ) {
-    return this.choreService.removeChoreAssignment(user.userId, id, assignmentId);
+    return this.choreService.removeChoreAssignment(
+      user.userId,
+      id,
+      assignmentId,
+    );
   }
 
   @Put(':id/cancel')
@@ -279,9 +308,13 @@ export class ChoreController {
     @Param('id') id: string,
     @Body() body: { userId: string; reason?: string },
   ) {
-    return this.choreService.reassignChore(user.userId, id, body.userId, body.reason);
+    return this.choreService.reassignChore(
+      user.userId,
+      id,
+      body.userId,
+      body.reason,
+    );
   }
-
 
   @Put(':id/rotation')
   @HttpCode(HttpStatus.OK)
@@ -300,7 +333,11 @@ export class ChoreController {
     @Param('id') id: string,
     @Body() body: { userId: string; skipUntil: string },
   ) {
-    return this.choreRotationService.skipUser(id, body.userId, new Date(body.skipUntil));
+    return this.choreRotationService.skipUser(
+      id,
+      body.userId,
+      new Date(body.skipUntil),
+    );
   }
 
   @Delete(':id/rotation/skip/:userId')
@@ -331,8 +368,8 @@ export class ChoreController {
     @CurrentUser() user: { userId: string },
     @Param('groupId') groupId: string,
   ) {
-    const fairnessScore = await this.choreRotationService.calculateFairnessScore(groupId);
+    const fairnessScore =
+      await this.choreRotationService.calculateFairnessScore(groupId);
     return { groupId, fairnessScore };
   }
 }
-

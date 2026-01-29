@@ -15,12 +15,16 @@ export enum NotificationType {
   CHORE_DELETED = 'chore_deleted',
   GROUP_MEMBER_ADDED = 'group_member_added',
   GROUP_MEMBER_REMOVED = 'group_member_removed',
+  GROUP_JOIN_REQUEST = 'group_join_request',
+  GROUP_JOIN_APPROVED = 'group_join_approved',
   FRIEND_REQUEST = 'friend_request',
   FRIEND_ACCEPTED = 'friend_accepted',
   MESSAGE_RECEIVED = 'message_received',
   LISTING_INTEREST = 'listing_interest',
   LISTING_COMMENTED = 'listing_commented',
   LISTING_FAVORITED = 'listing_favorited',
+  POST_LIKED = 'post_liked',
+  POST_COMMENTED = 'post_commented',
   RIDE_CREATED = 'ride_created',
   RIDE_JOINED = 'ride_joined',
   RIDE_UPDATED = 'ride_updated',
@@ -74,6 +78,10 @@ export class NotificationService {
         [NotificationType.CHORE_DELETED]: 'choreReminders',
         [NotificationType.MESSAGE_RECEIVED]: 'messageNotifications',
         [NotificationType.LISTING_INTEREST]: 'listingNotifications',
+        [NotificationType.LISTING_COMMENTED]: 'listingNotifications',
+        [NotificationType.LISTING_FAVORITED]: 'listingNotifications',
+        [NotificationType.POST_LIKED]: 'listingNotifications',
+        [NotificationType.POST_COMMENTED]: 'listingNotifications',
       };
 
       const preferenceKey = typeMap[dto.type];
@@ -94,7 +102,11 @@ export class NotificationService {
     });
   }
 
-  async getNotifications(userId: string, limit: number = 50, offset: number = 0) {
+  async getNotifications(
+    userId: string,
+    limit: number = 50,
+    offset: number = 0,
+  ) {
     const [notifications, total] = await Promise.all([
       this.prisma.notification.findMany({
         where: { userId },
@@ -233,10 +245,13 @@ export class NotificationService {
       userId,
       type: NotificationType.EXPENSE_SPLIT_PAID,
       title: 'Split Marked as Paid',
-      message: `${paidByName} marked their split for "${expenseDescription}" as paid (${new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency,
-      }).format(amount)})`,
+      message: `${paidByName} marked their split for "${expenseDescription}" as paid (${new Intl.NumberFormat(
+        'en-US',
+        {
+          style: 'currency',
+          currency,
+        },
+      ).format(amount)})`,
       data: { expenseId },
     });
   }
@@ -391,17 +406,20 @@ export class NotificationService {
     groupId?: string,
   ) {
     // For group chats, show group name in title; for direct chats, show sender name
-    const title = groupName 
+    const title = groupName
       ? `${senderName} in ${groupName}`
       : `Message from ${senderName}`;
-    
+
     return this.createNotification({
       userId,
       type: NotificationType.MESSAGE_RECEIVED,
       title,
-      message: messagePreview.length > 50 ? `${messagePreview.substring(0, 50)}...` : messagePreview,
-      data: { 
-        chatId, 
+      message:
+        messagePreview.length > 50
+          ? `${messagePreview.substring(0, 50)}...`
+          : messagePreview,
+      data: {
+        chatId,
         messageId,
         ...(groupId && { groupId }),
         ...(groupName && { groupName }),
@@ -422,6 +440,30 @@ export class NotificationService {
       title: 'Listing Interest',
       message: `${interestedByName} is interested in your listing: ${listingTitle}`,
       data: { listingId },
+    });
+  }
+
+  async notifyPostLiked(userId: string, postId: string, likerName: string) {
+    return this.createNotification({
+      userId,
+      type: NotificationType.POST_LIKED,
+      title: 'Your post was liked',
+      message: `${likerName} liked your post`,
+      data: { postId },
+    });
+  }
+
+  async notifyPostCommented(
+    userId: string,
+    postId: string,
+    commenterName: string,
+  ) {
+    return this.createNotification({
+      userId,
+      type: NotificationType.POST_COMMENTED,
+      title: 'New comment on your post',
+      message: `${commenterName} commented on your post`,
+      data: { postId },
     });
   }
 
@@ -520,4 +562,3 @@ export class NotificationService {
     });
   }
 }
-

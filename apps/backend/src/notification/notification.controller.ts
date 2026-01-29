@@ -26,7 +26,11 @@ export class NotificationController {
   ) {
     const limitNum = limit ? parseInt(limit, 10) : 50;
     const offsetNum = offset ? parseInt(offset, 10) : 0;
-    return this.notificationService.getNotifications(user.userId, limitNum, offsetNum);
+    return this.notificationService.getNotifications(
+      user.userId,
+      limitNum,
+      offsetNum,
+    );
   }
 
   @Get('unread-count')
@@ -62,4 +66,3 @@ export class NotificationController {
     return { success: true };
   }
 }
-

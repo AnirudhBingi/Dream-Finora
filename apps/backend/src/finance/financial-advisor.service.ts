@@ -5,6 +5,14 @@ import { GoalService } from './goal.service';
 import { LoanService } from './loan.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 
+type ContextAnalytics = Awaited<
+  ReturnType<AnalyticsService['getContextAnalytics']>
+>;
+type CombinedAnalytics = Awaited<
+  ReturnType<AnalyticsService['getCombinedAnalytics']>
+>;
+type AnalyticsResult = ContextAnalytics | CombinedAnalytics;
+
 export interface FinancialRecommendation {
   id: string;
   type: 'budget' | 'goal' | 'spending' | 'savings' | 'debt' | 'emergency';
@@ -62,25 +70,30 @@ export class FinancialAdvisorService {
   /**
    * Helper to extract analytics data from either context or combined analytics
    */
-  private getAnalyticsData(analytics: any, context: 'local' | 'home' | 'combined') {
+  private getAnalyticsData(
+    analytics: AnalyticsResult,
+    context: 'local' | 'home' | 'combined',
+  ): ContextAnalytics {
     if (context === 'combined' && analytics.context === 'combined') {
       return analytics.local;
     }
-    return analytics;
+    return analytics as ContextAnalytics;
   }
 
   /**
    * Calculate trend from monthly data
    */
-  private calculateTrend(values: number[]): 'increasing' | 'decreasing' | 'stable' {
+  private calculateTrend(
+    values: number[],
+  ): 'increasing' | 'decreasing' | 'stable' {
     if (values.length < 2) return 'stable';
     const recent = values.slice(-3); // Last 3 months
     const earlier = values.slice(0, -3); // Earlier months
     if (recent.length === 0 || earlier.length === 0) return 'stable';
-    
+
     const recentAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
     const earlierAvg = earlier.reduce((a, b) => a + b, 0) / earlier.length;
-    
+
     const change = ((recentAvg - earlierAvg) / earlierAvg) * 100;
     if (change > 5) return 'increasing';
     if (change < -5) return 'decreasing';
@@ -115,17 +128,23 @@ export class FinancialAdvisorService {
       this.loanService.getLoans(userId, actualContext),
       context === 'combined'
         ? this.analyticsService.getCombinedAnalytics(userId, 6, 30)
-        : this.analyticsService.getContextAnalytics(userId, actualContext, 6, 30),
+        : this.analyticsService.getContextAnalytics(
+            userId,
+            actualContext,
+            6,
+            30,
+          ),
     ]);
 
     const analytics = this.getAnalyticsData(analyticsRaw, context);
     const monthlyTrends = analytics.monthlyTrends || [];
-    const spendingTrend = this.calculateTrend(monthlyTrends.map((t: any) => t.expense));
-    const incomeTrend = this.calculateTrend(monthlyTrends.map((t: any) => t.income));
+    const spendingTrend = this.calculateTrend(
+      monthlyTrends.map((t) => t.expense),
+    );
 
     // Enhanced Budget Recommendations
     if (analytics.budgetPerformance && budgets.length > 0) {
-      const { budgetsExceeded, totalBudgets, averageAdherence } = analytics.budgetPerformance;
+      const { totalBudgets, averageAdherence } = analytics.budgetPerformance;
       const now = new Date();
 
       // Detailed exceeded budgets
@@ -139,7 +158,7 @@ export class FinancialAdvisorService {
         const tracking = budget.BudgetTracking?.[0];
         const overage = tracking.spent - budget.amount;
         const overagePercentage = ((overage / budget.amount) * 100).toFixed(1);
-        
+
         recommendations.push({
           id: `budget-exceeded-${budget.id}`,
           type: 'budget',
@@ -168,19 +187,29 @@ export class FinancialAdvisorService {
         const tracking = budget.BudgetTracking?.[0];
         if (!tracking) return false;
         const percentage = (tracking.spent / budget.amount) * 100;
-        return percentage >= (budget.warningThreshold || 80) && percentage < 100;
+        return (
+          percentage >= (budget.warningThreshold || 80) && percentage < 100
+        );
       });
 
       approachingBudgets.forEach((budget) => {
         const tracking = budget.BudgetTracking?.[0];
         const remaining = budget.amount - tracking.spent;
         const percentage = (tracking.spent / budget.amount) * 100;
-        
+
         // Calculate days until budget exceeded (based on current spending rate)
         const periodStart = new Date(budget.startDate);
-        const daysElapsed = Math.max(1, Math.ceil((now.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24)));
+        const daysElapsed = Math.max(
+          1,
+          Math.ceil(
+            (now.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24),
+          ),
+        );
         const dailySpendingRate = tracking.spent / daysElapsed;
-        const daysUntilExceeded = dailySpendingRate > 0 ? Math.ceil(remaining / dailySpendingRate) : null;
+        const daysUntilExceeded =
+          dailySpendingRate > 0
+            ? Math.ceil(remaining / dailySpendingRate)
+            : null;
 
         recommendations.push({
           id: `budget-approaching-${budget.id}`,
@@ -202,7 +231,9 @@ export class FinancialAdvisorService {
             `Spent: ${this.formatCurrency(tracking.spent)} / ${this.formatCurrency(budget.amount)}`,
             `Remaining: ${this.formatCurrency(remaining)}`,
             `Daily spending rate: ${this.formatCurrency(dailySpendingRate)}`,
-            daysUntilExceeded ? `Projected exceed date: ${new Date(now.getTime() + daysUntilExceeded * 24 * 60 * 60 * 1000).toLocaleDateString()}` : '',
+            daysUntilExceeded
+              ? `Projected exceed date: ${new Date(now.getTime() + daysUntilExceeded * 24 * 60 * 60 * 1000).toLocaleDateString()}`
+              : '',
           ].filter(Boolean),
         });
       });
@@ -213,13 +244,7 @@ export class FinancialAdvisorService {
           const tracking = b.BudgetTracking?.[0];
           return tracking && tracking.spent > b.amount;
         });
-        
-        const totalOverage = budgetsWithOverage.reduce((sum, b) => {
-          const tracking = b.BudgetTracking?.[0];
-          return sum + (tracking.spent - b.amount);
-        }, 0);
-        
-        const avgOverage = budgetsWithOverage.length > 0 ? totalOverage / budgetsWithOverage.length : 0;
+
         const totalOverageAll = budgets.reduce((sum, b) => {
           const tracking = b.BudgetTracking?.[0];
           if (!tracking) return sum;
@@ -255,20 +280,32 @@ export class FinancialAdvisorService {
       activeGoals.forEach((goal) => {
         const progress = (goal.currentAmount / goal.targetAmount) * 100;
         const remaining = goal.targetAmount - goal.currentAmount;
-        
+
         if (goal.targetDate) {
           const targetDate = new Date(goal.targetDate);
-          const daysRemaining = Math.ceil((targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-          const daysElapsed = Math.max(1, Math.ceil((now.getTime() - new Date(goal.createdAt).getTime()) / (1000 * 60 * 60 * 24)));
-          
-          const expectedProgress = (daysElapsed / (daysElapsed + daysRemaining)) * 100;
+          const daysRemaining = Math.ceil(
+            (targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+          );
+          const daysElapsed = Math.max(
+            1,
+            Math.ceil(
+              (now.getTime() - new Date(goal.createdAt).getTime()) /
+                (1000 * 60 * 60 * 24),
+            ),
+          );
+
+          const expectedProgress =
+            (daysElapsed / (daysElapsed + daysRemaining)) * 100;
           const progressGap = expectedProgress - progress;
-          
+
           if (progressGap > 10) {
             // Behind schedule
-            const requiredMonthlyContribution = remaining / Math.max(1, daysRemaining / 30);
-            const currentMonthlyContribution = goal.currentAmount / Math.max(1, daysElapsed / 30);
-            const increaseNeeded = requiredMonthlyContribution - currentMonthlyContribution;
+            const requiredMonthlyContribution =
+              remaining / Math.max(1, daysRemaining / 30);
+            const currentMonthlyContribution =
+              goal.currentAmount / Math.max(1, daysElapsed / 30);
+            const increaseNeeded =
+              requiredMonthlyContribution - currentMonthlyContribution;
 
             recommendations.push({
               id: `goal-behind-${goal.id}`,
@@ -297,8 +334,15 @@ export class FinancialAdvisorService {
             });
           } else if (progressGap < -10) {
             // Ahead of schedule
-            const projectedCompletionDate = new Date(now.getTime() + (remaining / (goal.currentAmount / daysElapsed)) * 24 * 60 * 60 * 1000);
-            
+            const projectedCompletionDate = new Date(
+              now.getTime() +
+                (remaining / (goal.currentAmount / daysElapsed)) *
+                  24 *
+                  60 *
+                  60 *
+                  1000,
+            );
+
             recommendations.push({
               id: `goal-ahead-${goal.id}`,
               type: 'goal',
@@ -321,8 +365,12 @@ export class FinancialAdvisorService {
         } else {
           // No target date - check if progress is slow
           if (progress < 25 && goal.currentAmount > 0) {
-            const daysSinceCreation = Math.ceil((now.getTime() - new Date(goal.createdAt).getTime()) / (1000 * 60 * 60 * 24));
-            const currentRate = goal.currentAmount / Math.max(1, daysSinceCreation);
+            const daysSinceCreation = Math.ceil(
+              (now.getTime() - new Date(goal.createdAt).getTime()) /
+                (1000 * 60 * 60 * 24),
+            );
+            const currentRate =
+              goal.currentAmount / Math.max(1, daysSinceCreation);
             const estimatedDaysToComplete = remaining / currentRate;
 
             recommendations.push({
@@ -338,7 +386,9 @@ export class FinancialAdvisorService {
                 target: goal.targetAmount,
                 difference: remaining,
                 percentage: progress,
-                projectedDate: new Date(now.getTime() + estimatedDaysToComplete * 24 * 60 * 60 * 1000).toISOString(),
+                projectedDate: new Date(
+                  now.getTime() + estimatedDaysToComplete * 24 * 60 * 60 * 1000,
+                ).toISOString(),
                 trend: 'stable',
               },
             });
@@ -349,7 +399,8 @@ export class FinancialAdvisorService {
 
     // Enhanced Spending & Savings Recommendations
     if (analytics.incomeVsExpenses) {
-      const { totalIncome, totalExpenses, net, savingsRate } = analytics.incomeVsExpenses;
+      const { totalIncome, totalExpenses, net, savingsRate } =
+        analytics.incomeVsExpenses;
       const monthlyIncome = totalIncome / 6;
       const monthlyExpenses = totalExpenses / 6;
       const monthlyNet = net / 6;
@@ -357,7 +408,7 @@ export class FinancialAdvisorService {
       if (savingsRate < 0) {
         const monthlyDeficit = Math.abs(monthlyNet);
         const recommendedReduction = monthlyDeficit * 0.3; // Suggest reducing by 30% of deficit
-        
+
         recommendations.push({
           id: 'spending-negative',
           type: 'spending',
@@ -411,13 +462,16 @@ export class FinancialAdvisorService {
       }
 
       // Category-specific spending insights
-      if (analytics.spendingByCategory && analytics.spendingByCategory.length > 0) {
+      if (
+        analytics.spendingByCategory &&
+        analytics.spendingByCategory.length > 0
+      ) {
         const topCategory = analytics.spendingByCategory[0];
-        const monthlyTopCategorySpending = (topCategory.amount / 6);
-        
+        const monthlyTopCategorySpending = topCategory.amount / 6;
+
         if (topCategory.percentage > 40) {
           const recommendedReduction = monthlyTopCategorySpending * 0.15; // Suggest 15% reduction
-          
+
           recommendations.push({
             id: 'spending-concentrated',
             type: 'spending',
@@ -443,7 +497,9 @@ export class FinancialAdvisorService {
         if (monthlyTrends.length >= 2) {
           const currentMonth = monthlyTrends[monthlyTrends.length - 1];
           const previousMonths = monthlyTrends.slice(0, -1);
-          const avgPreviousExpenses = previousMonths.reduce((sum, m) => sum + m.expense, 0) / previousMonths.length;
+          const avgPreviousExpenses =
+            previousMonths.reduce((sum, m) => sum + m.expense, 0) /
+            previousMonths.length;
           const change = currentMonth.expense - avgPreviousExpenses;
           const changePercent = (change / avgPreviousExpenses) * 100;
 
@@ -454,9 +510,10 @@ export class FinancialAdvisorService {
               priority: changePercent > 0 ? 'high' : 'low',
               title: `Spending ${changePercent > 0 ? 'Increased' : 'Decreased'} by ${Math.abs(changePercent).toFixed(0)}% This Month`,
               description: `Your spending this month is ${this.formatCurrency(currentMonth.expense)}, ${changePercent > 0 ? 'up' : 'down'} ${this.formatCurrency(Math.abs(change))} from your ${this.formatCurrency(avgPreviousExpenses)} average.${changePercent > 0 ? ' This significant increase may impact your savings goals.' : ' Great job reducing expenses!'}`,
-              action: changePercent > 0 
-                ? `Identify what caused the ${this.formatCurrency(change)} increase and determine if it's a one-time expense or a new spending pattern.`
-                : `Maintain this lower spending level to boost your savings rate.`,
+              action:
+                changePercent > 0
+                  ? `Identify what caused the ${this.formatCurrency(change)} increase and determine if it's a one-time expense or a new spending pattern.`
+                  : `Maintain this lower spending level to boost your savings rate.`,
               impact: changePercent > 0 ? 'high' : 'low',
               metrics: {
                 current: currentMonth.expense,
@@ -473,17 +530,22 @@ export class FinancialAdvisorService {
 
     // Enhanced Debt Recommendations
     if (analytics.loanSummary && loans.length > 0) {
-      const { activeLoans, totalRemaining, totalPaid } = analytics.loanSummary;
+      const { totalRemaining, totalPaid } = analytics.loanSummary;
       const activeLoanList = loans.filter((l) => l.status === 'active');
-      const monthlyIncome = analytics.incomeVsExpenses ? analytics.incomeVsExpenses.totalIncome / 6 : 0;
-      const monthlyDebtPayment = activeLoanList.reduce((sum, loan) => sum + loan.emi, 0);
+      const monthlyIncome = analytics.incomeVsExpenses
+        ? analytics.incomeVsExpenses.totalIncome / 6
+        : 0;
+      const monthlyDebtPayment = activeLoanList.reduce(
+        (sum, loan) => sum + loan.emi,
+        0,
+      );
 
       if (monthlyIncome > 0) {
         const debtToIncomeRatio = (monthlyDebtPayment / monthlyIncome) * 100;
 
         if (debtToIncomeRatio > 40) {
-          const recommendedReduction = monthlyDebtPayment - (monthlyIncome * 0.3);
-          
+          const recommendedReduction = monthlyDebtPayment - monthlyIncome * 0.3;
+
           recommendations.push({
             id: 'debt-to-income-high',
             type: 'debt',
@@ -509,11 +571,21 @@ export class FinancialAdvisorService {
       }
 
       // High-interest debt analysis
-      const highInterestLoans = activeLoanList.filter((loan) => loan.interestRate > 10);
+      const highInterestLoans = activeLoanList.filter(
+        (loan) => loan.interestRate > 10,
+      );
       if (highInterestLoans.length > 0) {
-        const totalHighInterestDebt = highInterestLoans.reduce((sum, loan) => sum + loan.remainingAmount, 0);
-        const avgHighInterestRate = highInterestLoans.reduce((sum, loan) => sum + loan.interestRate, 0) / highInterestLoans.length;
-        const annualInterestCost = highInterestLoans.reduce((sum, loan) => sum + (loan.remainingAmount * loan.interestRate / 100), 0);
+        const totalHighInterestDebt = highInterestLoans.reduce(
+          (sum, loan) => sum + loan.remainingAmount,
+          0,
+        );
+        const avgHighInterestRate =
+          highInterestLoans.reduce((sum, loan) => sum + loan.interestRate, 0) /
+          highInterestLoans.length;
+        const annualInterestCost = highInterestLoans.reduce(
+          (sum, loan) => sum + (loan.remainingAmount * loan.interestRate) / 100,
+          0,
+        );
 
         recommendations.push({
           id: 'high-interest-debt',
@@ -531,15 +603,20 @@ export class FinancialAdvisorService {
             `Total high-interest debt: ${this.formatCurrency(totalHighInterestDebt)}`,
             `Average interest rate: ${avgHighInterestRate.toFixed(1)}%`,
             `Annual interest cost: ${this.formatCurrency(annualInterestCost)}`,
-            `Loans: ${highInterestLoans.map(l => l.name).join(', ')}`,
+            `Loans: ${highInterestLoans.map((l) => l.name).join(', ')}`,
           ],
         });
       }
 
       // Debt payoff strategy
       if (activeLoanList.length > 1) {
-        const totalDebt = activeLoanList.reduce((sum, loan) => sum + loan.remainingAmount, 0);
-        const currentPayoffTime = activeLoanList.reduce((sum, loan) => sum + loan.remainingMonths, 0) / activeLoanList.length;
+        const totalDebt = activeLoanList.reduce(
+          (sum, loan) => sum + loan.remainingAmount,
+          0,
+        );
+        const currentPayoffTime =
+          activeLoanList.reduce((sum, loan) => sum + loan.remainingMonths, 0) /
+          activeLoanList.length;
         const recommendedExtraPayment = monthlyDebtPayment * 0.1; // 10% extra
         const estimatedPayoffReduction = currentPayoffTime * 0.15; // Rough estimate: 15% reduction
 
@@ -566,8 +643,10 @@ export class FinancialAdvisorService {
 
     // Enhanced Emergency Fund Recommendations
     const totalBalance = await this.getTotalBalance(userId, actualContext);
-    const monthlyExpenses = analytics.incomeVsExpenses ? analytics.incomeVsExpenses.totalExpenses / 6 : 0;
-    
+    const monthlyExpenses = analytics.incomeVsExpenses
+      ? analytics.incomeVsExpenses.totalExpenses / 6
+      : 0;
+
     if (monthlyExpenses > 0) {
       const emergencyFundMonths = totalBalance / monthlyExpenses;
       const targetMonths = 6;
@@ -576,7 +655,7 @@ export class FinancialAdvisorService {
 
       if (emergencyFundMonths < 3) {
         const monthlySavingsNeeded = gap / 12; // To reach 6 months in 1 year
-        
+
         recommendations.push({
           id: 'emergency-fund-low',
           type: 'emergency',
@@ -590,7 +669,9 @@ export class FinancialAdvisorService {
             target: targetAmount,
             difference: gap,
             percentage: (emergencyFundMonths / targetMonths) * 100,
-            projectedDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+            projectedDate: new Date(
+              Date.now() + 365 * 24 * 60 * 60 * 1000,
+            ).toISOString(),
           },
           details: [
             `Current fund: ${this.formatCurrency(totalBalance)}`,
@@ -602,8 +683,9 @@ export class FinancialAdvisorService {
         });
       } else if (emergencyFundMonths < 6) {
         const remainingMonths = 6 - emergencyFundMonths;
-        const monthlySavingsNeeded = (targetAmount - totalBalance) / (remainingMonths * 3); // Reach in 3 months
-        
+        const monthlySavingsNeeded =
+          (targetAmount - totalBalance) / (remainingMonths * 3); // Reach in 3 months
+
         recommendations.push({
           id: 'emergency-fund-building',
           type: 'emergency',
@@ -644,7 +726,12 @@ export class FinancialAdvisorService {
     const [analyticsRaw, totalBalance] = await Promise.all([
       context === 'combined'
         ? this.analyticsService.getCombinedAnalytics(userId, 6, 30)
-        : this.analyticsService.getContextAnalytics(userId, actualContext, 6, 30),
+        : this.analyticsService.getContextAnalytics(
+            userId,
+            actualContext,
+            6,
+            30,
+          ),
       this.getTotalBalance(userId, actualContext),
     ]);
 
@@ -660,59 +747,93 @@ export class FinancialAdvisorService {
     };
 
     const insights: string[] = [];
-    const trends: any = {};
-    const projections: any = {};
+    const trends: NonNullable<FinancialHealthScore['trends']> = {};
+    const projections: NonNullable<FinancialHealthScore['projections']> = {};
 
     // Calculate trends
     if (monthlyTrends.length >= 2) {
-      trends.spendingTrend = this.calculateTrend(monthlyTrends.map((t: any) => t.expense));
-      trends.incomeTrend = this.calculateTrend(monthlyTrends.map((t: any) => t.income));
-      trends.savingsTrend = this.calculateTrend(monthlyTrends.map((t: any) => t.net));
+      trends.spendingTrend = this.calculateTrend(
+        monthlyTrends.map((t) => t.expense),
+      );
+      trends.incomeTrend = this.calculateTrend(
+        monthlyTrends.map((t) => t.income),
+      );
+      trends.savingsTrend = this.calculateTrend(
+        monthlyTrends.map((t) => t.net),
+      );
     }
 
     // Budget adherence score
-    if (analytics.budgetPerformance && analytics.budgetPerformance.totalBudgets > 0) {
-      breakdown.budgetAdherence = Math.max(0, Math.min(100, analytics.budgetPerformance.averageAdherence));
+    if (
+      analytics.budgetPerformance &&
+      analytics.budgetPerformance.totalBudgets > 0
+    ) {
+      breakdown.budgetAdherence = Math.max(
+        0,
+        Math.min(100, analytics.budgetPerformance.averageAdherence),
+      );
       if (breakdown.budgetAdherence < 70) {
-        insights.push(`Budget adherence is ${breakdown.budgetAdherence.toFixed(0)}%, below the 70% target. ${analytics.budgetPerformance.budgetsExceeded} budget${analytics.budgetPerformance.budgetsExceeded > 1 ? 's are' : ' is'} currently exceeded.`);
+        insights.push(
+          `Budget adherence is ${breakdown.budgetAdherence.toFixed(0)}%, below the 70% target. ${analytics.budgetPerformance.budgetsExceeded} budget${analytics.budgetPerformance.budgetsExceeded > 1 ? 's are' : ' is'} currently exceeded.`,
+        );
       } else {
-        insights.push(`Excellent budget adherence at ${breakdown.budgetAdherence.toFixed(0)}%! ${analytics.budgetPerformance.budgetsOnTrack} of ${analytics.budgetPerformance.totalBudgets} budget${analytics.budgetPerformance.totalBudgets > 1 ? 's are' : ' is'} on track.`);
+        insights.push(
+          `Excellent budget adherence at ${breakdown.budgetAdherence.toFixed(0)}%! ${analytics.budgetPerformance.budgetsOnTrack} of ${analytics.budgetPerformance.totalBudgets} budget${analytics.budgetPerformance.totalBudgets > 1 ? 's are' : ' is'} on track.`,
+        );
       }
     } else {
       breakdown.budgetAdherence = 50;
-      insights.push('Create budgets to track and control your spending effectively.');
+      insights.push(
+        'Create budgets to track and control your spending effectively.',
+      );
     }
 
     // Goal progress score
     if (analytics.goalsProgress && analytics.goalsProgress.totalGoals > 0) {
-      breakdown.goalProgress = Math.max(0, Math.min(100, analytics.goalsProgress.overallProgress));
+      breakdown.goalProgress = Math.max(
+        0,
+        Math.min(100, analytics.goalsProgress.overallProgress),
+      );
       if (breakdown.goalProgress < 50) {
-        insights.push(`Overall goal progress is ${breakdown.goalProgress.toFixed(0)}%. ${analytics.goalsProgress.completedGoals} of ${analytics.goalsProgress.totalGoals} goal${analytics.goalsProgress.totalGoals > 1 ? 's are' : ' is'} completed. Consider increasing contributions.`);
+        insights.push(
+          `Overall goal progress is ${breakdown.goalProgress.toFixed(0)}%. ${analytics.goalsProgress.completedGoals} of ${analytics.goalsProgress.totalGoals} goal${analytics.goalsProgress.totalGoals > 1 ? 's are' : ' is'} completed. Consider increasing contributions.`,
+        );
       } else {
-        insights.push(`Great goal progress at ${breakdown.goalProgress.toFixed(0)}%! ${analytics.goalsProgress.completedGoals} goal${analytics.goalsProgress.completedGoals > 1 ? 's completed' : ' completed'}. Keep up the momentum!`);
+        insights.push(
+          `Great goal progress at ${breakdown.goalProgress.toFixed(0)}%! ${analytics.goalsProgress.completedGoals} goal${analytics.goalsProgress.completedGoals > 1 ? 's completed' : ' completed'}. Keep up the momentum!`,
+        );
       }
     } else {
       breakdown.goalProgress = 50;
-      insights.push('Set financial goals to give your savings purpose and track progress.');
+      insights.push(
+        'Set financial goals to give your savings purpose and track progress.',
+      );
     }
 
     // Savings rate score
     if (analytics.incomeVsExpenses) {
-      const { savingsRate, totalIncome, totalExpenses } = analytics.incomeVsExpenses;
+      const { savingsRate, totalIncome, totalExpenses } =
+        analytics.incomeVsExpenses;
       const monthlyIncome = totalIncome / 6;
       const monthlyExpenses = totalExpenses / 6;
 
       if (savingsRate < 0) {
         breakdown.savingsRate = 0;
-        insights.push(`Critical: Spending exceeds income by ${this.formatCurrency(Math.abs(monthlyIncome - monthlyExpenses))} monthly. This is unsustainable and needs immediate attention.`);
+        insights.push(
+          `Critical: Spending exceeds income by ${this.formatCurrency(Math.abs(monthlyIncome - monthlyExpenses))} monthly. This is unsustainable and needs immediate attention.`,
+        );
       } else if (savingsRate >= 20) {
         breakdown.savingsRate = 100;
-        insights.push(`Excellent savings rate of ${savingsRate.toFixed(1)}%! You're saving ${this.formatCurrency(monthlyIncome - monthlyExpenses)} monthly, exceeding the 20% recommendation.`);
+        insights.push(
+          `Excellent savings rate of ${savingsRate.toFixed(1)}%! You're saving ${this.formatCurrency(monthlyIncome - monthlyExpenses)} monthly, exceeding the 20% recommendation.`,
+        );
       } else {
         breakdown.savingsRate = 50 + savingsRate * 2.5;
         const targetSavings = monthlyIncome * 0.2;
         const gap = targetSavings - (monthlyIncome - monthlyExpenses);
-        insights.push(`Savings rate is ${savingsRate.toFixed(1)}%. To reach 20%, increase savings by ${this.formatCurrency(gap)} monthly.`);
+        insights.push(
+          `Savings rate is ${savingsRate.toFixed(1)}%. To reach 20%, increase savings by ${this.formatCurrency(gap)} monthly.`,
+        );
       }
     } else {
       breakdown.savingsRate = 50;
@@ -720,7 +841,9 @@ export class FinancialAdvisorService {
 
     // Debt-to-income score
     if (analytics.loanSummary && analytics.loanSummary.activeLoans > 0) {
-      const monthlyIncome = analytics.incomeVsExpenses ? analytics.incomeVsExpenses.totalIncome / 6 : 0;
+      const monthlyIncome = analytics.incomeVsExpenses
+        ? analytics.incomeVsExpenses.totalIncome / 6
+        : 0;
       const loans = await this.loanService.getLoans(userId, actualContext);
       const monthlyDebtPayment = loans
         .filter((l) => l.status === 'active')
@@ -730,13 +853,19 @@ export class FinancialAdvisorService {
         const debtToIncomeRatio = (monthlyDebtPayment / monthlyIncome) * 100;
         if (debtToIncomeRatio >= 50) {
           breakdown.debtToIncome = 0;
-          insights.push(`Debt-to-income ratio is ${debtToIncomeRatio.toFixed(0)}%, very high. Debt payments of ${this.formatCurrency(monthlyDebtPayment)} consume half your income.`);
+          insights.push(
+            `Debt-to-income ratio is ${debtToIncomeRatio.toFixed(0)}%, very high. Debt payments of ${this.formatCurrency(monthlyDebtPayment)} consume half your income.`,
+          );
         } else if (debtToIncomeRatio >= 30) {
           breakdown.debtToIncome = 70 - debtToIncomeRatio;
-          insights.push(`Debt-to-income ratio is ${debtToIncomeRatio.toFixed(0)}%, above the 30% recommendation. Consider debt reduction strategies.`);
+          insights.push(
+            `Debt-to-income ratio is ${debtToIncomeRatio.toFixed(0)}%, above the 30% recommendation. Consider debt reduction strategies.`,
+          );
         } else {
           breakdown.debtToIncome = 100 - debtToIncomeRatio * 2;
-          insights.push(`Good debt management: ${debtToIncomeRatio.toFixed(0)}% debt-to-income ratio, within recommended limits.`);
+          insights.push(
+            `Good debt management: ${debtToIncomeRatio.toFixed(0)}% debt-to-income ratio, within recommended limits.`,
+          );
         }
       } else {
         breakdown.debtToIncome = 50;
@@ -747,31 +876,43 @@ export class FinancialAdvisorService {
     }
 
     // Emergency fund score
-    const monthlyExpenses = analytics.incomeVsExpenses ? analytics.incomeVsExpenses.totalExpenses / 6 : 0;
+    const monthlyExpenses = analytics.incomeVsExpenses
+      ? analytics.incomeVsExpenses.totalExpenses / 6
+      : 0;
     if (monthlyExpenses > 0) {
       const emergencyFundMonths = totalBalance / monthlyExpenses;
       if (emergencyFundMonths >= 6) {
         breakdown.emergencyFund = 100;
-        insights.push(`Excellent emergency fund: ${emergencyFundMonths.toFixed(1)} months (${this.formatCurrency(totalBalance)}) saved. You're well protected.`);
+        insights.push(
+          `Excellent emergency fund: ${emergencyFundMonths.toFixed(1)} months (${this.formatCurrency(totalBalance)}) saved. You're well protected.`,
+        );
       } else if (emergencyFundMonths >= 3) {
         breakdown.emergencyFund = 70 + (emergencyFundMonths - 3) * 10;
-        const gap = (monthlyExpenses * 6) - totalBalance;
-        insights.push(`Good emergency fund: ${emergencyFundMonths.toFixed(1)} months saved. Add ${this.formatCurrency(gap)} to reach 6 months coverage.`);
+        const gap = monthlyExpenses * 6 - totalBalance;
+        insights.push(
+          `Good emergency fund: ${emergencyFundMonths.toFixed(1)} months saved. Add ${this.formatCurrency(gap)} to reach 6 months coverage.`,
+        );
       } else {
         breakdown.emergencyFund = (emergencyFundMonths / 3) * 70;
         const target = monthlyExpenses * 3;
-        insights.push(`Emergency fund is ${emergencyFundMonths.toFixed(1)} months. Build to 3 months minimum (${this.formatCurrency(target)}) for basic security.`);
+        insights.push(
+          `Emergency fund is ${emergencyFundMonths.toFixed(1)} months. Build to 3 months minimum (${this.formatCurrency(target)}) for basic security.`,
+        );
       }
     } else {
       breakdown.emergencyFund = 50;
     }
 
     // Calculate projections
-    if (analytics.budgetPerformance && analytics.budgetPerformance.totalBudgets > 0) {
+    if (
+      analytics.budgetPerformance &&
+      analytics.budgetPerformance.totalBudgets > 0
+    ) {
       // Simple projection: if spending trend is increasing, estimate days until budget exceeded
       if (trends.spendingTrend === 'increasing' && monthlyTrends.length >= 2) {
-        const recentExpenses = monthlyTrends.slice(-2).map((t: any) => t.expense);
-        const expenseGrowth = (recentExpenses[1] - recentExpenses[0]) / recentExpenses[0];
+        const recentExpenses = monthlyTrends.slice(-2).map((t) => t.expense);
+        const expenseGrowth =
+          (recentExpenses[1] - recentExpenses[0]) / recentExpenses[0];
         // Rough estimate
         projections.budgetBurnRate = Math.ceil(30 / (1 + expenseGrowth));
       }
@@ -780,10 +921,10 @@ export class FinancialAdvisorService {
     // Calculate overall score
     const overall = Math.round(
       breakdown.budgetAdherence * 0.2 +
-      breakdown.goalProgress * 0.2 +
-      breakdown.savingsRate * 0.25 +
-      breakdown.debtToIncome * 0.15 +
-      breakdown.emergencyFund * 0.2
+        breakdown.goalProgress * 0.2 +
+        breakdown.savingsRate * 0.25 +
+        breakdown.debtToIncome * 0.15 +
+        breakdown.emergencyFund * 0.2,
     );
 
     return {
@@ -791,14 +932,18 @@ export class FinancialAdvisorService {
       breakdown,
       insights,
       trends: Object.keys(trends).length > 0 ? trends : undefined,
-      projections: Object.keys(projections).length > 0 ? projections : undefined,
+      projections:
+        Object.keys(projections).length > 0 ? projections : undefined,
     };
   }
 
   /**
    * Get total balance for a user in a context
    */
-  private async getTotalBalance(userId: string, context: 'local' | 'home' | 'combined'): Promise<number> {
+  private async getTotalBalance(
+    userId: string,
+    context: 'local' | 'home' | 'combined',
+  ): Promise<number> {
     if (context === 'combined') {
       const [localBalance, homeBalance] = await Promise.all([
         this.getTotalBalance(userId, 'local'),

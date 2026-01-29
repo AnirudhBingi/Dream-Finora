@@ -1,22 +1,24 @@
-import { getApiBaseUrl } from './getApiBaseUrl';
+import { api } from "./client";
+import { UserSummary } from "./types";
 
 export enum ListingType {
-  ROOMMATE = 'roommate',
-  ACCOMMODATION = 'accommodation',
-  ITEM = 'item',
-  EVENT = 'event',
-  RIDE = 'ride',
+  ROOMMATE = "roommate",
+  ACCOMMODATION = "accommodation",
+  ITEM = "item",
+  EVENT = "event",
+  RIDE = "ride",
 }
 
 export enum ListingStatus {
-  ACTIVE = 'active',
-  COMPLETED = 'completed',
-  CLOSED = 'closed',
+  ACTIVE = "active",
+  COMPLETED = "completed",
+  CLOSED = "closed",
 }
 
 export interface Listing {
   id: string;
   userId: string;
+  groupId?: string | null;
   type: ListingType;
   title: string;
   description: string;
@@ -26,12 +28,20 @@ export interface Listing {
   status: ListingStatus;
   images: string[];
   views: number;
-  metadata?: RoommateMetadata | AccommodationMetadata | ItemMetadata | EventMetadata | RideMetadata | null;
+  metadata?:
+    | RoommateMetadata
+    | AccommodationMetadata
+    | ItemMetadata
+    | EventMetadata
+    | RideMetadata
+    | null;
   createdAt: string;
   updatedAt: string;
   isFavorited?: boolean;
   favoriteCount?: number;
   commentCount?: number;
+  latestComment?: ListingCommentPreview | null;
+  latestComments?: ListingCommentPreview[];
   user: {
     id: string;
     email: string;
@@ -40,6 +50,20 @@ export interface Listing {
       avatarUrl: string | null;
     } | null;
   };
+}
+
+export interface ListingCommentPreview {
+  id: string;
+  content: string;
+  createdAt: string;
+  user: {
+    id: string;
+    email: string;
+    profile?: {
+      displayName: string | null;
+      avatarUrl: string | null;
+    } | null;
+  } | null;
 }
 
 // Type-specific metadata interfaces
@@ -97,7 +121,13 @@ export interface CreateListingDto {
   price?: number;
   currency?: string;
   images?: string[];
-  metadata?: RoommateMetadata | AccommodationMetadata | ItemMetadata | EventMetadata | RideMetadata;
+  groupId?: string;
+  metadata?:
+    | RoommateMetadata
+    | AccommodationMetadata
+    | ItemMetadata
+    | EventMetadata
+    | RideMetadata;
 }
 
 export interface ListingComment {
@@ -121,21 +151,7 @@ export async function createListing(
   token: string,
   data: CreateListingDto,
 ): Promise<Listing> {
-  const response = await fetch(`${getApiBaseUrl()}/listings`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to create listing' }));
-    throw new Error(error.message || `Failed to create listing: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<Listing>("/listings", data, { token });
 }
 
 export interface PaginatedListingsResponse {
@@ -149,38 +165,52 @@ export interface PaginatedListingsResponse {
 export async function getListings(
   token: string,
   filters?: {
+    userId?: string;
     type?: ListingType;
     status?: ListingStatus;
     search?: string;
+    location?: string;
+    groupId?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    sort?: "newest" | "price_low" | "price_high" | "popular";
     limit?: number;
     offset?: number;
+    cursor?: string;
   },
 ): Promise<PaginatedListingsResponse | Listing[]> {
   const params = new URLSearchParams();
-  if (filters?.type) params.append('type', filters.type);
-  if (filters?.status) params.append('status', filters.status);
-  if (filters?.search) params.append('search', filters.search);
-  if (filters?.limit !== undefined) params.append('limit', filters.limit.toString());
-  if (filters?.offset !== undefined) params.append('offset', filters.offset.toString());
+  if (filters?.userId) params.append("userId", filters.userId);
+  if (filters?.type) params.append("type", filters.type);
+  if (filters?.status) params.append("status", filters.status);
+  if (filters?.search) params.append("search", filters.search);
+  if (filters?.location) params.append("location", filters.location);
+  if (filters?.groupId) params.append("groupId", filters.groupId);
+  if (filters?.minPrice !== undefined)
+    params.append("minPrice", filters.minPrice.toString());
+  if (filters?.maxPrice !== undefined)
+    params.append("maxPrice", filters.maxPrice.toString());
+  if (filters?.sort) params.append("sort", filters.sort);
+  if (filters?.limit !== undefined)
+    params.append("limit", filters.limit.toString());
+  if (filters?.offset !== undefined)
+    params.append("offset", filters.offset.toString());
+  if (filters?.cursor) params.append("cursor", filters.cursor);
 
-  const url = `${getApiBaseUrl()}/listings${params.toString() ? `?${params.toString()}` : ''}`;
-
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  const endpoint = params.toString()
+    ? `/listings?${params.toString()}`
+    : "/listings";
+  const data = await api.get<PaginatedListingsResponse | Listing[]>(endpoint, {
+    token,
   });
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch listings' }));
-    throw new Error(error.message || `Failed to fetch listings: ${response.status}`);
-  }
-
-  const data = await response.json();
   // Check if response has pagination structure
-  if (data.listings && Array.isArray(data.listings)) {
+  if (
+    data &&
+    typeof data === "object" &&
+    "listings" in data &&
+    Array.isArray((data as any).listings)
+  ) {
     return data as PaginatedListingsResponse;
   }
   // Backward compatibility: return array if not paginated
@@ -188,37 +218,14 @@ export async function getListings(
 }
 
 export async function getMyListings(token: string): Promise<Listing[]> {
-  const response = await fetch(`${getApiBaseUrl()}/listings/my`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch my listings' }));
-    throw new Error(error.message || `Failed to fetch my listings: ${response.status}`);
-  }
-
-  return response.json();
+  return api.get<Listing[]>("/listings/my", { token });
 }
 
-export async function getListingById(token: string, listingId: string): Promise<Listing> {
-  const response = await fetch(`${getApiBaseUrl()}/listings/${listingId}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch listing' }));
-    throw new Error(error.message || `Failed to fetch listing: ${response.status}`);
-  }
-
-  return response.json();
+export async function getListingById(
+  token: string,
+  listingId: string,
+): Promise<Listing> {
+  return api.get<Listing>(`/listings/${listingId}`, { token });
 }
 
 export async function updateListingStatus(
@@ -226,53 +233,24 @@ export async function updateListingStatus(
   listingId: string,
   status: ListingStatus,
 ): Promise<Listing> {
-  const response = await fetch(`${getApiBaseUrl()}/listings/${listingId}/status`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ status }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to update listing status' }));
-    throw new Error(error.message || `Failed to update listing status: ${response.status}`);
-  }
-
-  return response.json();
+  return api.put<Listing>(
+    `/listings/${listingId}/status`,
+    { status },
+    { token },
+  );
 }
 
-export async function deleteListing(token: string, listingId: string): Promise<void> {
-  const response = await fetch(`${getApiBaseUrl()}/listings/${listingId}`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to delete listing' }));
-    throw new Error(error.message || `Failed to delete listing: ${response.status}`);
-  }
+export async function deleteListing(
+  token: string,
+  listingId: string,
+): Promise<void> {
+  return api.delete<void>(`/listings/${listingId}`, { token });
 }
 
 export async function getItemCategories(token: string): Promise<string[]> {
-  const response = await fetch(`${getApiBaseUrl()}/listings/categories`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  const data = await api.get<{ categories: string[] }>("/listings/categories", {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch categories' }));
-    throw new Error(error.message || `Failed to fetch categories: ${response.status}`);
-  }
-
-  const data = await response.json();
   return data.categories || [];
 }
 
@@ -280,19 +258,14 @@ export async function suggestCategory(
   token: string,
   title: string,
 ): Promise<{ category: string | null }> {
-  const params = new URLSearchParams({ title });
-  const response = await fetch(`${getApiBaseUrl()}/listings/suggest-category?${params}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
+  try {
+    return await api.get<{ category: string | null }>(
+      `/listings/suggest-category?title=${encodeURIComponent(title)}`,
+      { token },
+    );
+  } catch {
     return { category: null };
   }
-
-  return response.json();
 }
 
 export async function uploadListingImages(
@@ -303,31 +276,20 @@ export async function uploadListingImages(
   const formData = new FormData();
 
   for (const uri of imageUris) {
-    const filename = uri.split('/').pop() || 'image.jpg';
+    const filename = uri.split("/").pop() || "image.jpg";
     const match = /\.(\w+)$/.exec(filename);
     const type = match ? `image/${match[1]}` : `image/jpeg`;
 
-    formData.append('files', {
+    formData.append("files", {
       uri,
       name: filename,
       type,
     } as any);
   }
 
-  const response = await fetch(`${getApiBaseUrl()}/listings/${listingId}/images`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-    body: formData,
+  return api.post<Listing>(`/listings/${listingId}/images`, formData, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to upload images' }));
-    throw new Error(error.message || `Failed to upload images: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export async function updateListing(
@@ -335,75 +297,38 @@ export async function updateListing(
   listingId: string,
   data: Partial<CreateListingDto>,
 ): Promise<Listing> {
-  const response = await fetch(`${getApiBaseUrl()}/listings/${listingId}`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to update listing' }));
-    throw new Error(error.message || `Failed to update listing: ${response.status}`);
-  }
-
-  return response.json();
+  return api.put<Listing>(`/listings/${listingId}`, data, { token });
 }
 
 export async function toggleFavorite(
   token: string,
   listingId: string,
 ): Promise<{ favorited: boolean }> {
-  const response = await fetch(`${getApiBaseUrl()}/listings/${listingId}/favorite`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to toggle favorite' }));
-    throw new Error(error.message || `Failed to toggle favorite: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<{ favorited: boolean }>(
+    `/listings/${listingId}/favorite`,
+    undefined,
+    { token },
+  );
 }
 
 export async function getFavorites(token: string): Promise<Listing[]> {
-  const response = await fetch(`${getApiBaseUrl()}/listings/favorites`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch favorites' }));
-    throw new Error(error.message || `Failed to fetch favorites: ${response.status}`);
-  }
-
-  return response.json();
+  return api.get<Listing[]>("/listings/favorites", { token });
 }
 
-export async function getComments(token: string, listingId: string): Promise<ListingComment[]> {
-  const response = await fetch(`${getApiBaseUrl()}/listings/${listingId}/comments`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+export async function getListingFavorites(
+  token: string,
+  listingId: string,
+): Promise<UserSummary[]> {
+  return api.get<UserSummary[]>(`/listings/${listingId}/favorites`, { token });
+}
+
+export async function getComments(
+  token: string,
+  listingId: string,
+): Promise<ListingComment[]> {
+  return api.get<ListingComment[]>(`/listings/${listingId}/comments`, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch comments' }));
-    throw new Error(error.message || `Failed to fetch comments: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export async function addComment(
@@ -411,21 +336,11 @@ export async function addComment(
   listingId: string,
   content: string,
 ): Promise<ListingComment> {
-  const response = await fetch(`${getApiBaseUrl()}/listings/${listingId}/comments`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ content }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to add comment' }));
-    throw new Error(error.message || `Failed to add comment: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<ListingComment>(
+    `/listings/${listingId}/comments`,
+    { content },
+    { token },
+  );
 }
 
 export async function editComment(
@@ -434,21 +349,11 @@ export async function editComment(
   commentId: string,
   content: string,
 ): Promise<ListingComment> {
-  const response = await fetch(`${getApiBaseUrl()}/listings/${listingId}/comments/${commentId}`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ content }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to edit comment' }));
-    throw new Error(error.message || `Failed to edit comment: ${response.status}`);
-  }
-
-  return response.json();
+  return api.put<ListingComment>(
+    `/listings/${listingId}/comments/${commentId}`,
+    { content },
+    { token },
+  );
 }
 
 export async function deleteComment(
@@ -456,37 +361,18 @@ export async function deleteComment(
   listingId: string,
   commentId: string,
 ): Promise<void> {
-  const response = await fetch(`${getApiBaseUrl()}/listings/${listingId}/comments/${commentId}`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  return api.delete<void>(`/listings/${listingId}/comments/${commentId}`, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to delete comment' }));
-    throw new Error(error.message || `Failed to delete comment: ${response.status}`);
-  }
 }
 
 export async function generateShareLink(
   token: string,
   listingId: string,
 ): Promise<{ shareLink: string; listingId: string }> {
-  const response = await fetch(`${getApiBaseUrl()}/listings/${listingId}/share`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to generate share link' }));
-    throw new Error(error.message || `Failed to generate share link: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<{ shareLink: string; listingId: string }>(
+    `/listings/${listingId}/share`,
+    undefined,
+    { token },
+  );
 }
-

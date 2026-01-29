@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
-import { NotificationService, NotificationType } from '../notification/notification.service';
+import {
+  NotificationService,
+  NotificationType,
+} from '../notification/notification.service';
 import { randomUUID } from 'crypto';
 
 @Injectable()
@@ -14,7 +17,12 @@ export class ChoreReminderService {
   /**
    * Schedule reminders for a chore
    */
-  async scheduleReminders(choreId: string, dueDate: Date | null, reminderHoursBefore: number | null, userIds: string[]) {
+  async scheduleReminders(
+    choreId: string,
+    dueDate: Date | null,
+    reminderHoursBefore: number | null,
+    userIds: string[],
+  ) {
     if (!dueDate || !reminderHoursBefore || reminderHoursBefore <= 0) {
       return;
     }
@@ -138,15 +146,20 @@ export class ChoreReminderService {
         message += ' soon';
       }
 
-      await this.notificationService.createNotification({
-        userId: reminder.userId,
-        type: NotificationType.CHORE_ASSIGNED,
-        title: 'Chore Reminder',
-        message,
-        data: { choreId: reminder.choreId },
-      }).catch(err => {
-        console.error(`Failed to send reminder for chore ${reminder.choreId}:`, err);
-      });
+      await this.notificationService
+        .createNotification({
+          userId: reminder.userId,
+          type: NotificationType.CHORE_ASSIGNED,
+          title: 'Chore Reminder',
+          message,
+          data: { choreId: reminder.choreId },
+        })
+        .catch((err) => {
+          console.error(
+            `Failed to send reminder for chore ${reminder.choreId}:`,
+            err,
+          );
+        });
 
       // Mark reminder as sent
       await this.prisma.choreReminder.update({
@@ -220,7 +233,9 @@ export class ChoreReminderService {
     });
 
     for (const chore of overdueChores) {
-      const daysOverdue = Math.floor((now.getTime() - chore.dueDate!.getTime()) / (1000 * 60 * 60 * 24));
+      const daysOverdue = Math.floor(
+        (now.getTime() - chore.dueDate!.getTime()) / (1000 * 60 * 60 * 24),
+      );
 
       // Send overdue notification to assigned users
       if (chore.assignmentType === 'single' && chore.assignedTo) {
@@ -238,8 +253,13 @@ export class ChoreReminderService {
         });
 
         if (!existingReminder) {
-          await this.sendOverdueNotification(chore.id, chore.title, chore.assignedTo, daysOverdue);
-          
+          await this.sendOverdueNotification(
+            chore.id,
+            chore.title,
+            chore.assignedTo,
+            daysOverdue,
+          );
+
           // Create reminder record
           await this.prisma.choreReminder.create({
             data: {
@@ -253,7 +273,10 @@ export class ChoreReminderService {
             },
           });
         }
-      } else if (chore.assignmentType === 'multiple' && chore.ChoreAssignment.length > 0) {
+      } else if (
+        chore.assignmentType === 'multiple' &&
+        chore.ChoreAssignment.length > 0
+      ) {
         // Send to all uncompleted assignments
         for (const assignment of chore.ChoreAssignment) {
           const existingReminder = await this.prisma.choreReminder.findFirst({
@@ -269,8 +292,13 @@ export class ChoreReminderService {
           });
 
           if (!existingReminder) {
-            await this.sendOverdueNotification(chore.id, chore.title, assignment.userId, daysOverdue);
-            
+            await this.sendOverdueNotification(
+              chore.id,
+              chore.title,
+              assignment.userId,
+              daysOverdue,
+            );
+
             await this.prisma.choreReminder.create({
               data: {
                 id: randomUUID(),
@@ -302,37 +330,51 @@ export class ChoreReminderService {
 
         if (!existingReminder) {
           const assignedName = chore.assignedTo
-            ? (chore.User_Chore_assignedToToUser?.UserProfile?.displayName || chore.User_Chore_assignedToToUser?.email || 'Someone')
+            ? chore.User_Chore_assignedToToUser?.UserProfile?.displayName ||
+              chore.User_Chore_assignedToToUser?.email ||
+              'Someone'
             : 'Unassigned';
-          
-          await this.notificationService.createNotification({
-            userId: chore.createdBy,
-            type: NotificationType.CHORE_ASSIGNED,
-            title: 'Overdue Chore Alert',
-            message: `"${chore.title}" assigned to ${assignedName} is ${daysOverdue} day${daysOverdue !== 1 ? 's' : ''} overdue`,
-            data: { choreId: chore.id },
-          }).catch(err => {
-            console.error(`Failed to send overdue notification to creator:`, err);
-          });
+
+          await this.notificationService
+            .createNotification({
+              userId: chore.createdBy,
+              type: NotificationType.CHORE_ASSIGNED,
+              title: 'Overdue Chore Alert',
+              message: `"${chore.title}" assigned to ${assignedName} is ${daysOverdue} day${daysOverdue !== 1 ? 's' : ''} overdue`,
+              data: { choreId: chore.id },
+            })
+            .catch((err) => {
+              console.error(
+                `Failed to send overdue notification to creator:`,
+                err,
+              );
+            });
         }
       }
     }
   }
 
-  private async sendOverdueNotification(choreId: string, choreTitle: string, userId: string, daysOverdue: number) {
-    const message = daysOverdue === 1
-      ? `"${choreTitle}" was due yesterday`
-      : `"${choreTitle}" is ${daysOverdue} days overdue`;
+  private async sendOverdueNotification(
+    choreId: string,
+    choreTitle: string,
+    userId: string,
+    daysOverdue: number,
+  ) {
+    const message =
+      daysOverdue === 1
+        ? `"${choreTitle}" was due yesterday`
+        : `"${choreTitle}" is ${daysOverdue} days overdue`;
 
-    await this.notificationService.createNotification({
-      userId,
-      type: NotificationType.CHORE_ASSIGNED,
-      title: 'Overdue Chore',
-      message,
-      data: { choreId },
-    }).catch(err => {
-      console.error(`Failed to send overdue notification:`, err);
-    });
+    await this.notificationService
+      .createNotification({
+        userId,
+        type: NotificationType.CHORE_ASSIGNED,
+        title: 'Overdue Chore',
+        message,
+        data: { choreId },
+      })
+      .catch((err) => {
+        console.error(`Failed to send overdue notification:`, err);
+      });
   }
 }
-

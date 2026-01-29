@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -8,17 +8,20 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
-import { useAuth } from '../auth/authContext';
-import { CreateLoanDto, createLoan } from '../api/financeApi';
-import { getProfile, Profile } from '../api/profileApi';
-import { DatePicker } from '../components/DatePicker';
-import { Header } from '../components/Header';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useAuth } from "../auth/authContext";
+import { CreateLoanDto, createLoan } from "../api/financeApi";
+import { getProfile, Profile } from "../api/profileApi";
+import { DatePicker } from "../components/DatePicker";
+import { Header } from "../components/Header";
+import { useDataFetch } from "../hooks/useDataFetch";
+import { useAsyncOperation } from "../hooks/useAsyncOperation";
+import { useTheme } from "../theme";
 
 interface CreateLoanScreenProps {
-  context: 'local' | 'home';
+  context: "local" | "home";
   onBack: () => void;
   onSuccess: () => void;
   onNavigateToProfile?: () => void;
@@ -26,7 +29,120 @@ interface CreateLoanScreenProps {
   onNavigateToSettings?: () => void;
 }
 
-type PaymentFrequency = 'monthly' | 'quarterly' | 'yearly';
+type PaymentFrequency = "monthly" | "quarterly" | "yearly";
+
+function createStyles(theme: ReturnType<typeof useTheme>["theme"]) {
+  return StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    scrollContent: {
+      paddingBottom: theme.spacing.xl,
+    },
+    content: {
+      paddingHorizontal: theme.spacing.xl,
+    },
+    form: {
+      gap: theme.spacing.lg,
+    },
+    inputGroup: {
+      gap: theme.spacing.sm,
+    },
+    inputRow: {
+      flexDirection: "row",
+      gap: theme.spacing.md,
+    },
+    inputHalf: {
+      flex: 1,
+    },
+    label: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.gray700,
+    },
+    input: {
+      backgroundColor: theme.colors.backgroundSecondary,
+      borderRadius: theme.spacing.sm,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.base,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textPrimary,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      minHeight: 48,
+    },
+    readonlyField: {
+      backgroundColor: theme.colors.backgroundTertiary,
+      borderRadius: theme.spacing.sm,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.base,
+      minHeight: 48,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      justifyContent: "center",
+    },
+    readonlyText: {
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textPrimary,
+    },
+    placeholderText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.gray400,
+    },
+    frequencyScroll: {
+      marginHorizontal: -theme.spacing.xl,
+      paddingHorizontal: theme.spacing.xl,
+    },
+    frequencyContainer: {
+      gap: theme.spacing.sm,
+    },
+    frequencyChip: {
+      paddingVertical: 10,
+      paddingHorizontal: theme.spacing.base,
+      borderRadius: 20,
+      backgroundColor: theme.colors.backgroundTertiary,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    frequencyChipSelected: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    frequencyChipText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.gray700,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    frequencyChipTextSelected: {
+      color: theme.colors.white,
+    },
+    saveButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.colors.blue,
+      borderRadius: theme.spacing.md,
+      paddingVertical: theme.spacing.base,
+      paddingHorizontal: theme.spacing.lg,
+      marginTop: theme.spacing.sm,
+      gap: theme.spacing.sm,
+      minHeight: 56,
+    },
+    saveButtonDisabled: {
+      opacity: 0.6,
+    },
+    saveButtonText: {
+      color: theme.colors.white,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+  });
+}
 
 export function CreateLoanScreen({
   context,
@@ -36,55 +152,51 @@ export function CreateLoanScreen({
   onNavigateToNotifications,
   onNavigateToSettings,
 }: CreateLoanScreenProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { token } = useAuth();
-  const [name, setName] = useState('');
-  const [lender, setLender] = useState('');
-  const [principalAmount, setPrincipalAmount] = useState('');
-  const [interestRate, setInterestRate] = useState('');
-  const [loanTerm, setLoanTerm] = useState('');
-  const [emi, setEmi] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [nextPaymentDate, setNextPaymentDate] = useState('');
-  const [paymentFrequency, setPaymentFrequency] = useState<PaymentFrequency>('monthly');
-  const [saving, setSaving] = useState(false);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [name, setName] = useState("");
+  const [lender, setLender] = useState("");
+  const [principalAmount, setPrincipalAmount] = useState("");
+  const [interestRate, setInterestRate] = useState("");
+  const [loanTerm, setLoanTerm] = useState("");
+  const [emi, setEmi] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [nextPaymentDate, setNextPaymentDate] = useState("");
+  const [paymentFrequency, setPaymentFrequency] =
+    useState<PaymentFrequency>("monthly");
 
-  useEffect(() => {
-    loadProfile();
-  }, [token]);
-
-  async function loadProfile() {
-    if (!token) return;
-    try {
-      const profileData = await getProfile(token);
-      setProfile(profileData || null);
-    } catch (err) {
-      console.error('Failed to load profile:', err);
-      setProfile(null);
-    }
-  }
+  const { data: profile } = useDataFetch<Profile>({
+    fetchFn: async () => {
+      if (!token) throw new Error("No authentication token");
+      return getProfile(token);
+    },
+    immediate: true,
+    deps: [token],
+  });
 
   // Get currency symbol based on context
   function getCurrencySymbol(): string {
-    if (!profile) return '$';
-    const currency = context === 'local' 
-      ? (profile.primaryCurrency || 'USD')
-      : (profile.homeCountryCurrency || 'USD');
-    
+    if (!profile) return "$";
+    const currency =
+      context === "local"
+        ? profile.primaryCurrency || "USD"
+        : profile.homeCountryCurrency || "USD";
+
     // Common currency symbols
     const currencySymbols: Record<string, string> = {
-      'USD': '$',
-      'EUR': '€',
-      'GBP': '£',
-      'INR': '₹',
-      'JPY': '¥',
-      'CNY': '¥',
-      'AUD': 'A$',
-      'CAD': 'C$',
-      'CHF': 'CHF',
-      'SGD': 'S$',
+      USD: "$",
+      EUR: "€",
+      GBP: "£",
+      INR: "₹",
+      JPY: "¥",
+      CNY: "¥",
+      AUD: "A$",
+      CAD: "C$",
+      CHF: "CHF",
+      SGD: "S$",
     };
-    
+
     return currencySymbols[currency] || currency;
   }
 
@@ -114,59 +226,51 @@ export function CreateLoanScreen({
 
       setEmi(emiValue.toFixed(2));
     } else {
-      setEmi('');
+      setEmi("");
     }
   }, [principalAmount, interestRate, loanTerm]);
 
-  async function handleSave() {
-    if (!token) return;
+  const { execute: handleSave, loading: saving } = useAsyncOperation({
+    operationFn: async () => {
+      if (!token) throw new Error("Not authenticated");
 
-    if (!name.trim()) {
-      Alert.alert('Error', 'Please enter a loan name');
-      return;
-    }
+      if (!name.trim()) {
+        throw new Error("Please enter a loan name");
+      }
 
-    if (!lender.trim()) {
-      Alert.alert('Error', 'Please enter a lender name');
-      return;
-    }
+      if (!lender.trim()) {
+        throw new Error("Please enter a lender name");
+      }
 
-    const principalNum = parseFloat(principalAmount);
-    if (isNaN(principalNum) || principalNum <= 0) {
-      Alert.alert('Error', 'Please enter a valid principal amount');
-      return;
-    }
+      const principalNum = parseFloat(principalAmount);
+      if (isNaN(principalNum) || principalNum <= 0) {
+        throw new Error("Please enter a valid principal amount");
+      }
 
-    const rateNum = parseFloat(interestRate);
-    if (isNaN(rateNum) || rateNum < 0) {
-      Alert.alert('Error', 'Please enter a valid interest rate');
-      return;
-    }
+      const rateNum = parseFloat(interestRate);
+      if (isNaN(rateNum) || rateNum < 0) {
+        throw new Error("Please enter a valid interest rate");
+      }
 
-    const termNum = parseInt(loanTerm, 10);
-    if (isNaN(termNum) || termNum <= 0) {
-      Alert.alert('Error', 'Please enter a valid loan term in months');
-      return;
-    }
+      const termNum = parseInt(loanTerm, 10);
+      if (isNaN(termNum) || termNum <= 0) {
+        throw new Error("Please enter a valid loan term in months");
+      }
 
-    const emiNum = parseFloat(emi);
-    if (isNaN(emiNum) || emiNum <= 0) {
-      Alert.alert('Error', 'EMI could not be calculated. Please check the inputs.');
-      return;
-    }
+      const emiNum = parseFloat(emi);
+      if (isNaN(emiNum) || emiNum <= 0) {
+        throw new Error(
+          "EMI could not be calculated. Please check the inputs.",
+        );
+      }
 
-    if (!startDate) {
-      Alert.alert('Error', 'Please select a start date');
-      return;
-    }
+      if (!startDate) {
+        throw new Error("Please select a start date");
+      }
 
-    if (!nextPaymentDate) {
-      Alert.alert('Error', 'Please select a next payment date');
-      return;
-    }
-
-    try {
-      setSaving(true);
+      if (!nextPaymentDate) {
+        throw new Error("Please select a next payment date");
+      }
 
       const loanData: CreateLoanDto = {
         name: name.trim(),
@@ -183,27 +287,26 @@ export function CreateLoanScreen({
         context,
       };
 
-      await createLoan(token, loanData);
-
-      Alert.alert('Success', 'Loan created successfully', [
-        { text: 'OK', onPress: onSuccess },
+      return createLoan(token, loanData);
+    },
+    onSuccess: () => {
+      Alert.alert("Success", "Loan created successfully", [
+        { text: "OK", onPress: onSuccess },
       ]);
-    } catch (err) {
-      Alert.alert(
-        'Error',
-        err instanceof Error ? err.message : 'Failed to create loan',
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
+    },
+    onError: (errorMessage) => {
+      Alert.alert("Error", errorMessage);
+    },
+  });
 
   const today = new Date();
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <Header
-        title={context === 'local' ? 'Create Local Loan' : 'Create Home Country Loan'}
+        title={
+          context === "local" ? "Create Local Loan" : "Create Home Country Loan"
+        }
         onBack={onBack}
         onNavigateToProfile={onNavigateToProfile}
         onNavigateToNotifications={onNavigateToNotifications}
@@ -215,7 +318,6 @@ export function CreateLoanScreen({
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.content}>
-
           <View style={styles.form}>
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Loan Name *</Text>
@@ -224,7 +326,7 @@ export function CreateLoanScreen({
                 value={name}
                 onChangeText={setName}
                 placeholder="e.g., Home Loan, Car Loan"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={theme.colors.textTertiary}
                 autoCapitalize="words"
               />
             </View>
@@ -236,7 +338,7 @@ export function CreateLoanScreen({
                 value={lender}
                 onChangeText={setLender}
                 placeholder="e.g., Bank of America"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={theme.colors.textTertiary}
                 autoCapitalize="words"
               />
             </View>
@@ -248,7 +350,7 @@ export function CreateLoanScreen({
                 value={principalAmount}
                 onChangeText={setPrincipalAmount}
                 placeholder="0.00"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={theme.colors.textTertiary}
                 keyboardType="decimal-pad"
               />
             </View>
@@ -261,7 +363,7 @@ export function CreateLoanScreen({
                   value={interestRate}
                   onChangeText={setInterestRate}
                   placeholder="e.g., 6.5"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={theme.colors.textTertiary}
                   keyboardType="decimal-pad"
                 />
               </View>
@@ -272,7 +374,7 @@ export function CreateLoanScreen({
                   value={loanTerm}
                   onChangeText={setLoanTerm}
                   placeholder="e.g., 60"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={theme.colors.textTertiary}
                   keyboardType="number-pad"
                 />
               </View>
@@ -281,8 +383,12 @@ export function CreateLoanScreen({
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Calculated EMI</Text>
               <View style={styles.readonlyField}>
-                <Text style={emi ? styles.readonlyText : styles.placeholderText}>
-                  {emi ? `${getCurrencySymbol()}${emi}` : 'Enter principal, rate, and term to calculate'}
+                <Text
+                  style={emi ? styles.readonlyText : styles.placeholderText}
+                >
+                  {emi
+                    ? `${getCurrencySymbol()}${emi}`
+                    : "Enter principal, rate, and term to calculate"}
                 </Text>
               </View>
             </View>
@@ -305,26 +411,30 @@ export function CreateLoanScreen({
                 style={styles.frequencyScroll}
                 contentContainerStyle={styles.frequencyContainer}
               >
-                {(['monthly', 'quarterly', 'yearly'] as PaymentFrequency[]).map((freq) => (
-                  <TouchableOpacity
-                    key={freq}
-                    style={[
-                      styles.frequencyChip,
-                      paymentFrequency === freq && styles.frequencyChipSelected,
-                    ]}
-                    onPress={() => setPaymentFrequency(freq)}
-                    activeOpacity={0.7}
-                  >
-                    <Text
+                {(["monthly", "quarterly", "yearly"] as PaymentFrequency[]).map(
+                  (freq) => (
+                    <TouchableOpacity
+                      key={freq}
                       style={[
-                        styles.frequencyChipText,
-                        paymentFrequency === freq && styles.frequencyChipTextSelected,
+                        styles.frequencyChip,
+                        paymentFrequency === freq &&
+                          styles.frequencyChipSelected,
                       ]}
+                      onPress={() => setPaymentFrequency(freq)}
+                      activeOpacity={0.7}
                     >
-                      {freq.charAt(0).toUpperCase() + freq.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                      <Text
+                        style={[
+                          styles.frequencyChipText,
+                          paymentFrequency === freq &&
+                            styles.frequencyChipTextSelected,
+                        ]}
+                      >
+                        {freq.charAt(0).toUpperCase() + freq.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ),
+                )}
               </ScrollView>
             </View>
 
@@ -340,15 +450,19 @@ export function CreateLoanScreen({
 
             <TouchableOpacity
               style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-              onPress={handleSave}
+              onPress={() => handleSave()}
               disabled={saving}
               activeOpacity={0.7}
             >
               {saving ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={theme.colors.white} />
               ) : (
                 <>
-                  <MaterialIcons name="check" size={24} color="#fff" />
+                  <MaterialIcons
+                    name="check"
+                    size={24}
+                    color={theme.colors.white}
+                  />
                   <Text style={styles.saveButtonText}>Create Loan</Text>
                 </>
               )}
@@ -359,116 +473,3 @@ export function CreateLoanScreen({
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollContent: {
-    paddingBottom: 24,
-  },
-  content: {
-    paddingHorizontal: 24,
-  },
-  form: {
-    gap: 20,
-  },
-  inputGroup: {
-    gap: 8,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  inputHalf: {
-    flex: 1,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  input: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: '#111827',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    minHeight: 48,
-  },
-  readonlyField: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    minHeight: 48,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    justifyContent: 'center',
-  },
-  readonlyText: {
-    fontSize: 16,
-    color: '#111827',
-  },
-  placeholderText: {
-    fontSize: 14,
-    color: '#9CA3AF',
-  },
-  frequencyScroll: {
-    marginHorizontal: -24,
-    paddingHorizontal: 24,
-  },
-  frequencyContainer: {
-    gap: 8,
-  },
-  frequencyChip: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  frequencyChipSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  frequencyChipText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  frequencyChipTextSelected: {
-    color: '#fff',
-  },
-  saveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#2563EB',
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    marginTop: 8,
-    gap: 8,
-    minHeight: 56,
-  },
-  saveButtonDisabled: {
-    opacity: 0.6,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-});
-
-

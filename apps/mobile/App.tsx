@@ -4,6 +4,7 @@ import { View, ActivityIndicator, StyleSheet, Alert } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { RootScreenRenderer } from './src/components/RootScreenRenderer';
 import { AuthProvider, useAuth } from './src/auth/authContext';
+import { ThemeProvider, useTheme } from './src/theme';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { RegisterScreen } from './src/screens/RegisterScreen';
 import { ForgotPasswordScreen } from './src/screens/ForgotPasswordScreen';
@@ -1506,6 +1507,8 @@ function AppContent() {
         onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
         onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
         onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
+        onViewUserProfile={(userId) => navigate('userProfile', { selectedUserId: userId })}
+        onViewGroup={(groupId) => navigate('groupDetail', { selectedGroupId: groupId })}
       />,
         true,
         'profile'
@@ -2210,6 +2213,8 @@ function AppContent() {
             onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
             onNavigateToNotifications={() => setCurrentScreenWithHistory('notifications')}
             onNavigateToSettings={() => setCurrentScreenWithHistory('settings')}
+            onViewUserProfile={(userId) => navigate('userProfile', { selectedUserId: userId })}
+            onViewGroup={(groupId) => navigate('groupDetail', { selectedGroupId: groupId })}
           />,
           true,
           'userProfile'
@@ -2266,7 +2271,10 @@ function AppContent() {
       component: wrapScreen(
         <SettingsScreen
           onBack={goBack}
-          onNavigateToProfile={() => setCurrentScreenWithHistory('profile')}
+          onNavigateToEditProfile={() => setCurrentScreenWithHistory('editProfile')}
+          onNavigateToAccountSettings={() =>
+            setCurrentScreenWithHistory('accountSettings')
+          }
         />,
         true,
         'settings'
@@ -2386,10 +2394,22 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <AppContent />
-        <StatusBar style="dark" translucent={false} />
+        <ThemeProvider>
+          <AppContent />
+          <ThemedStatusBar />
+        </ThemeProvider>
       </AuthProvider>
     </SafeAreaProvider>
+  );
+}
+
+function ThemedStatusBar() {
+  const { resolvedMode } = useTheme();
+  return (
+    <StatusBar
+      style={resolvedMode === 'dark' ? 'light' : 'dark'}
+      translucent={false}
+    />
   );
 }
 

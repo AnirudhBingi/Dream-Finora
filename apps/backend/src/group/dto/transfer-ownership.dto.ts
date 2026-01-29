@@ -4,4 +4,3 @@ export class TransferOwnershipDto {
   @IsString()
   newOwnerId: string;
 }
-

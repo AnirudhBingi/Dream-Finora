@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -8,13 +8,16 @@ import {
   ActivityIndicator,
   Alert,
   TextInput,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
-import { useAuth } from '../auth/authContext';
-import { addLoanPayment, getLoanById, Loan } from '../api/financeApi';
-import { DatePicker } from '../components/DatePicker';
-import { Header } from '../components/Header';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useAuth } from "../auth/authContext";
+import { addLoanPayment, getLoanById, Loan } from "../api/financeApi";
+import { DatePicker } from "../components/DatePicker";
+import { Header } from "../components/Header";
+import { ErrorState } from "../components/ErrorState";
+import { useDataFetch } from "../hooks/useDataFetch";
+import { useTheme } from "../theme";
 
 interface RecordLoanPaymentScreenProps {
   loanId?: string;
@@ -35,63 +38,72 @@ export function RecordLoanPaymentScreen({
   onNavigateToNotifications,
   onNavigateToSettings,
 }: RecordLoanPaymentScreenProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { token } = useAuth();
-  const [loan, setLoan] = useState<Loan | null>(null);
-  const [amount, setAmount] = useState(suggestedAmount?.toString() || '');
-  const [principalPaid, setPrincipalPaid] = useState('');
-  const [interestPaid, setInterestPaid] = useState('');
-  const [paymentDate, setPaymentDate] = useState('');
-  const [notes, setNotes] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [amount, setAmount] = useState(suggestedAmount?.toString() || "");
+  const [principalPaid, setPrincipalPaid] = useState("");
+  const [interestPaid, setInterestPaid] = useState("");
+  const [paymentDate, setPaymentDate] = useState("");
+  const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    loadLoan();
-  }, [token, loanId]);
-
-  async function loadLoan() {
-    if (!token) return;
-
-    try {
-      setLoading(true);
-      const data = await getLoanById(token, loanId);
-      setLoan(data);
-
+  const {
+    data: loan,
+    loading,
+    error,
+    refresh,
+    refetch,
+  } = useDataFetch<Loan>({
+    fetchFn: async () => {
+      if (!token || !loanId)
+        throw new Error("No authentication token or loan ID");
+      return getLoanById(token, loanId);
+    },
+    immediate: true,
+    deps: [token, loanId],
+    transform: (data: Loan) => {
       // Pre-fill fields based on EMI and remaining amount
       const today = new Date();
       setPaymentDate(
-        `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(
+        `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(
           today.getDate(),
-        ).padStart(2, '0')}`,
+        ).padStart(2, "0")}`,
       );
 
       if (suggestedAmount && suggestedAmount > 0) {
         // Use suggested amount from advisor
-        const monthlyRate = data.interestRate > 0 ? data.interestRate / 12 / 100 : 0;
+        const monthlyRate =
+          data.interestRate > 0 ? data.interestRate / 12 / 100 : 0;
         const estimatedInterest = data.remainingAmount * monthlyRate;
-        const estimatedPrincipal = Math.max(0, suggestedAmount - estimatedInterest);
+        const estimatedPrincipal = Math.max(
+          0,
+          suggestedAmount - estimatedInterest,
+        );
         setAmount(suggestedAmount.toFixed(2));
         setPrincipalPaid(estimatedPrincipal.toFixed(2));
         setInterestPaid(estimatedInterest.toFixed(2));
       } else if (data.emi && data.remainingAmount > 0) {
         // Default to EMI
-        const monthlyRate = data.interestRate > 0 ? data.interestRate / 12 / 100 : 0;
+        const monthlyRate =
+          data.interestRate > 0 ? data.interestRate / 12 / 100 : 0;
         const estimatedInterest = data.remainingAmount * monthlyRate;
         const estimatedPrincipal = Math.max(0, data.emi - estimatedInterest);
         setAmount(data.emi.toFixed(2));
         setPrincipalPaid(estimatedPrincipal.toFixed(2));
         setInterestPaid(estimatedInterest.toFixed(2));
       }
-    } catch (err) {
-      Alert.alert(
-        'Error',
-        err instanceof Error ? err.message : 'Failed to load loan for payment',
-      );
+
+      return data;
+    },
+  });
+
+  useEffect(() => {
+    if (error) {
+      Alert.alert("Error", error || "Failed to load loan for payment");
       onBack();
-    } finally {
-      setLoading(false);
     }
-  }
+  }, [error]);
 
   async function handleSave() {
     if (!token || !loan) return;
@@ -101,22 +113,22 @@ export function RecordLoanPaymentScreen({
     const interestNum = parseFloat(interestPaid);
 
     if (isNaN(amountNum) || amountNum <= 0) {
-      Alert.alert('Error', 'Please enter a valid payment amount');
+      Alert.alert("Error", "Please enter a valid payment amount");
       return;
     }
 
     if (isNaN(principalNum) || principalNum < 0) {
-      Alert.alert('Error', 'Please enter a valid principal amount');
+      Alert.alert("Error", "Please enter a valid principal amount");
       return;
     }
 
     if (isNaN(interestNum) || interestNum < 0) {
-      Alert.alert('Error', 'Please enter a valid interest amount');
+      Alert.alert("Error", "Please enter a valid interest amount");
       return;
     }
 
     if (!paymentDate) {
-      Alert.alert('Error', 'Please select a payment date');
+      Alert.alert("Error", "Please select a payment date");
       return;
     }
 
@@ -130,13 +142,13 @@ export function RecordLoanPaymentScreen({
         notes: notes.trim() || undefined,
       });
 
-      Alert.alert('Success', 'Payment recorded successfully', [
-        { text: 'OK', onPress: onSuccess },
+      Alert.alert("Success", "Payment recorded successfully", [
+        { text: "OK", onPress: onSuccess },
       ]);
     } catch (err) {
       Alert.alert(
-        'Error',
-        err instanceof Error ? err.message : 'Failed to record payment',
+        "Error",
+        err instanceof Error ? err.message : "Failed to record payment",
       );
     } finally {
       setSaving(false);
@@ -145,7 +157,7 @@ export function RecordLoanPaymentScreen({
 
   if (loading || !loan) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <Header
           title="Record Payment"
           onBack={onBack}
@@ -154,7 +166,7 @@ export function RecordLoanPaymentScreen({
           onNavigateToSettings={onNavigateToSettings}
         />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
+          <ActivityIndicator size="large" color={theme.colors.blue} />
           <Text style={styles.loadingText}>Loading loan...</Text>
         </View>
       </SafeAreaView>
@@ -172,7 +184,7 @@ export function RecordLoanPaymentScreen({
       : 0;
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <Header
         title="Record Payment"
         onBack={onBack}
@@ -186,7 +198,6 @@ export function RecordLoanPaymentScreen({
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.content}>
-
           <View style={styles.summary}>
             <Text style={styles.summaryTitle}>{loan.name}</Text>
             <Text style={styles.summarySubtitle}>{loan.lender}</Text>
@@ -200,7 +211,7 @@ export function RecordLoanPaymentScreen({
                 value={amount}
                 onChangeText={setAmount}
                 placeholder="0.00"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={theme.colors.textTertiary}
                 keyboardType="decimal-pad"
               />
             </View>
@@ -213,7 +224,7 @@ export function RecordLoanPaymentScreen({
                   value={principalPaid}
                   onChangeText={setPrincipalPaid}
                   placeholder="0.00"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={theme.colors.textTertiary}
                   keyboardType="decimal-pad"
                 />
               </View>
@@ -224,7 +235,7 @@ export function RecordLoanPaymentScreen({
                   value={interestPaid}
                   onChangeText={setInterestPaid}
                   placeholder="0.00"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={theme.colors.textTertiary}
                   keyboardType="decimal-pad"
                 />
               </View>
@@ -247,7 +258,7 @@ export function RecordLoanPaymentScreen({
                 value={notes}
                 onChangeText={setNotes}
                 placeholder="Add any notes about this payment"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={theme.colors.textTertiary}
                 multiline
               />
             </View>
@@ -255,14 +266,16 @@ export function RecordLoanPaymentScreen({
             <View style={styles.previewCard}>
               <Text style={styles.previewTitle}>Preview</Text>
               <Text style={styles.previewText}>
-                Remaining amount after this payment:{' '}
+                Remaining amount after this payment:{" "}
                 <Text style={styles.previewValue}>
                   {remainingAfterPayment.toFixed(2)}
                 </Text>
               </Text>
               <Text style={styles.previewText}>
-                Remaining months after this payment:{' '}
-                <Text style={styles.previewValue}>{remainingMonthsAfterPayment}</Text>
+                Remaining months after this payment:{" "}
+                <Text style={styles.previewValue}>
+                  {remainingMonthsAfterPayment}
+                </Text>
               </Text>
             </View>
 
@@ -273,10 +286,14 @@ export function RecordLoanPaymentScreen({
               activeOpacity={0.7}
             >
               {saving ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={theme.colors.white} />
               ) : (
                 <>
-                  <MaterialIcons name="check" size={24} color="#fff" />
+                  <MaterialIcons
+                    name="check"
+                    size={24}
+                    color={theme.colors.white}
+                  />
                   <Text style={styles.saveButtonText}>Save Payment</Text>
                 </>
               )}
@@ -288,118 +305,118 @@ export function RecordLoanPaymentScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollContent: {
-    paddingBottom: 24,
-  },
-  content: {
-    paddingHorizontal: 24,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#6B7280',
-  },
-  summary: {
-    marginBottom: 16,
-  },
-  summaryTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  summarySubtitle: {
-    marginTop: 2,
-    fontSize: 13,
-    color: '#6B7280',
-  },
-  form: {
-    gap: 16,
-  },
-  inputGroup: {
-    gap: 8,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  inputHalf: {
-    flex: 1,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  input: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: '#111827',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    minHeight: 48,
-  },
-  notesInput: {
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-  previewCard: {
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-    gap: 4,
-  },
-  previewTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1D4ED8',
-  },
-  previewText: {
-    fontSize: 13,
-    color: '#1D4ED8',
-  },
-  previewValue: {
-    fontWeight: '700',
-  },
-  saveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#2563EB',
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    marginTop: 8,
-    gap: 8,
-    minHeight: 56,
-  },
-  saveButtonDisabled: {
-    opacity: 0.6,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-});
-
-
+function createStyles(theme: ReturnType<typeof useTheme>["theme"]) {
+  return StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    scrollContent: {
+      paddingBottom: theme.spacing.xl,
+    },
+    content: {
+      paddingHorizontal: theme.spacing.xl,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: theme.spacing.xl,
+    },
+    loadingText: {
+      marginTop: theme.spacing.base,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.gray500,
+    },
+    summary: {
+      marginBottom: theme.spacing.base,
+    },
+    summaryTitle: {
+      fontSize: theme.typography.fontSize.lg,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+    },
+    summarySubtitle: {
+      marginTop: 2,
+      fontSize: 13,
+      color: theme.colors.gray500,
+    },
+    form: {
+      gap: theme.spacing.base,
+    },
+    inputGroup: {
+      gap: theme.spacing.sm,
+    },
+    inputRow: {
+      flexDirection: "row",
+      gap: theme.spacing.md,
+    },
+    inputHalf: {
+      flex: 1,
+    },
+    label: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.gray700,
+    },
+    input: {
+      backgroundColor: theme.colors.backgroundSecondary,
+      borderRadius: theme.spacing.sm,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.base,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textPrimary,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      minHeight: 48,
+    },
+    notesInput: {
+      minHeight: 80,
+      textAlignVertical: "top",
+    },
+    previewCard: {
+      padding: theme.spacing.md,
+      borderRadius: theme.spacing.sm,
+      backgroundColor: theme.colors.blueBackground,
+      borderWidth: 1,
+      borderColor: theme.colors.blueLight,
+      gap: theme.spacing.xs,
+    },
+    previewTitle: {
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.blueDark,
+    },
+    previewText: {
+      fontSize: 13,
+      color: theme.colors.blueDark,
+    },
+    previewValue: {
+      fontWeight: theme.typography.fontWeight.bold,
+    },
+    saveButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.colors.blue,
+      borderRadius: theme.spacing.md,
+      paddingVertical: theme.spacing.base,
+      paddingHorizontal: theme.spacing.lg,
+      marginTop: theme.spacing.sm,
+      gap: theme.spacing.sm,
+      minHeight: 56,
+    },
+    saveButtonDisabled: {
+      opacity: 0.6,
+    },
+    saveButtonText: {
+      color: theme.colors.white,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+  });
+}

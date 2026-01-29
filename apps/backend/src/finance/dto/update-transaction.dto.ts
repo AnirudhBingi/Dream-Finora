@@ -28,4 +28,3 @@ export class UpdateTransactionDto {
   @IsOptional()
   date?: Date | string; // Accepts Date or ISO string
 }
-

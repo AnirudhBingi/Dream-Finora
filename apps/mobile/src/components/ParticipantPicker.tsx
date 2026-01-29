@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -6,16 +6,18 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-} from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
-import { useAuth } from '../auth/authContext';
-import { getFriends, Friend, searchUsers, SearchUser } from '../api/friendApi';
-import { getGroups, Group, getGroupById, GroupMember } from '../api/groupApi';
-import { Avatar } from './Avatar';
+} from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useAuth } from "../auth/authContext";
+import { getFriends, Friend, searchUsers, SearchUser } from "../api/friendApi";
+import { getGroups, Group, getGroupById, GroupMember } from "../api/groupApi";
+import { Avatar } from "./Avatar";
+import { getAvatarUrl } from "../utils/avatar";
+import { useTheme } from "../theme";
 
 export interface SelectedParticipant {
   userId: string;
-  type: 'friend' | 'group-member';
+  type: "friend" | "group-member";
   name: string;
   email: string;
 }
@@ -29,6 +31,7 @@ interface ParticipantPickerProps {
   groupId?: string;
   initialGroupId?: string | null;
   onGroupChange?: (groupId: string | null) => void;
+  excludeCurrentUser?: boolean; // If true, exclude current user from selection (e.g., for Charge Riders where driver can't be a passenger)
 }
 
 export function ParticipantPicker({
@@ -40,11 +43,16 @@ export function ParticipantPicker({
   groupId,
   initialGroupId,
   onGroupChange,
+  excludeCurrentUser = false,
 }: ParticipantPickerProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { token, user } = useAuth();
   const [friends, setFriends] = useState<Friend[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(initialGroupId || null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(
+    initialGroupId || null,
+  );
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
   const [loadingFriends, setLoadingFriends] = useState(true);
   const [loadingGroups, setLoadingGroups] = useState(true);
@@ -83,7 +91,7 @@ export function ParticipantPicker({
       const friendsData = await getFriends(token);
       setFriends(friendsData);
     } catch (err) {
-      console.error('Failed to load friends:', err);
+      console.error("Failed to load friends:", err);
     } finally {
       setLoadingFriends(false);
     }
@@ -99,12 +107,12 @@ export function ParticipantPicker({
       let groupsList: Group[] = [];
       if (Array.isArray(groupsData)) {
         groupsList = groupsData;
-      } else if (groupsData && typeof groupsData === 'object') {
+      } else if (groupsData && typeof groupsData === "object") {
         groupsList = (groupsData as any).groups || [];
       }
       setGroups(groupsList);
     } catch (err) {
-      console.error('Failed to load groups:', err);
+      console.error("Failed to load groups:", err);
       setGroups([]); // Set empty array on error
     } finally {
       setLoadingGroups(false);
@@ -119,7 +127,7 @@ export function ParticipantPicker({
       const groupData = await getGroupById(token, groupId);
       setGroupMembers(groupData.members || []);
     } catch (err) {
-      console.error('Failed to load group members:', err);
+      console.error("Failed to load group members:", err);
     } finally {
       setLoadingMembers(false);
     }
@@ -134,7 +142,8 @@ export function ParticipantPicker({
       // Remove participant
       onSelectionChange(
         (selectedParticipants || []).filter(
-          (p) => !(p.userId === participant.userId && p.type === participant.type),
+          (p) =>
+            !(p.userId === participant.userId && p.type === participant.type),
         ),
       );
     } else {
@@ -147,139 +156,199 @@ export function ParticipantPicker({
     }
   }
 
-  function isParticipantSelected(userId: string, type: 'friend' | 'group-member'): boolean {
-    return (selectedParticipants || []).some((p) => p.userId === userId && p.type === type);
+  function isParticipantSelected(
+    userId: string,
+    type: "friend" | "group-member",
+  ): boolean {
+    return (selectedParticipants || []).some(
+      (p) => p.userId === userId && p.type === type,
+    );
   }
 
   function getUserDisplayName(friend: Friend): string {
-    return friend?.friend?.profile?.displayName || friend?.friend?.email || 'Unknown';
+    return (
+      friend?.friend?.profile?.displayName || friend?.friend?.email || "Unknown"
+    );
   }
 
   function getMemberDisplayName(member: GroupMember): string {
-    return member?.user?.profile?.displayName || member?.user?.email || 'Unknown';
+    return (
+      member?.user?.profile?.displayName || member?.user?.email || "Unknown"
+    );
   }
 
   return (
     <View style={styles.container}>
       {/* Friends Section - Only show if showFriends is true or no group is selected */}
       {(showFriends || !selectedGroupId) && (
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <MaterialIcons name="people" size={20} color="#2563EB" />
-          <Text style={styles.sectionTitle}>Friends</Text>
-        </View>
-        {!token ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Please log in to select participants</Text>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <MaterialIcons name="people" size={20} color={theme.colors.blue} />
+            <Text style={styles.sectionTitle}>Friends</Text>
           </View>
-        ) : loadingFriends ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color="#2563EB" />
-            <Text style={styles.loadingText}>Loading friends...</Text>
-          </View>
-        ) : friends.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <MaterialIcons name="people-outline" size={24} color="#9CA3AF" />
-            <Text style={styles.emptyText}>No friends yet</Text>
-            <Text style={styles.emptySubtext}>Add friends from the Friends screen</Text>
-          </View>
-        ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.scrollView}>
-            {/* Add current user as "You" in friends list */}
-            {user && (
-              <TouchableOpacity
-                key={user.id}
-                style={[
-                  styles.participantChip,
-                  isParticipantSelected(user.id, 'friend') && styles.participantChipSelected,
-                ]}
-                onPress={() =>
-                  toggleParticipant({
-                    userId: user.id,
-                    type: 'friend',
-                    name: 'You',
-                    email: user.email || '',
-                  })
-                }
-                activeOpacity={0.7}
-              >
-                <View style={styles.chipContent}>
-                  <View style={isParticipantSelected(user.id, 'friend') && styles.avatarSelected}>
-                    <Avatar
-                      avatarUrl={user.profile?.avatarUrl}
-                      displayName="You"
-                      size={32}
-                      borderColor={isParticipantSelected(user.id, 'friend') ? '#FFFFFF' : 'transparent'}
-                      borderWidth={isParticipantSelected(user.id, 'friend') ? 2 : 0}
-                    />
-                  </View>
-                  <Text
-                    style={[
-                      styles.chipText,
-                      isParticipantSelected(user.id, 'friend') && styles.chipTextSelected,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    You
-                  </Text>
-                  {isParticipantSelected(user.id, 'friend') && (
-                    <MaterialIcons name="check-circle" size={16} color="#FFFFFF" />
-                  )}
-                </View>
-              </TouchableOpacity>
-            )}
-            {friends.map((friend) => {
-              const isSelected = isParticipantSelected(friend.friendId, 'friend');
-              return (
+          {!token ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>
+                Please log in to select participants
+              </Text>
+            </View>
+          ) : loadingFriends ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color={theme.colors.blue} />
+              <Text style={styles.loadingText}>Loading friends...</Text>
+            </View>
+          ) : friends.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <MaterialIcons
+                name="people-outline"
+                size={24}
+                color={theme.colors.textTertiary}
+              />
+              <Text style={styles.emptyText}>No friends yet</Text>
+              <Text style={styles.emptySubtext}>
+                Add friends from the Friends screen
+              </Text>
+            </View>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.scrollView}
+            >
+              {/* Add current user as "You" in friends list */}
+              {user && (
                 <TouchableOpacity
-                  key={friend.id}
-                  style={[styles.participantChip, isSelected && styles.participantChipSelected]}
+                  key={user.id}
+                  style={[
+                    styles.participantChip,
+                    isParticipantSelected(user.id, "friend") &&
+                      styles.participantChipSelected,
+                  ]}
                   onPress={() =>
                     toggleParticipant({
-                      userId: friend.friendId,
-                      type: 'friend',
-                      name: getUserDisplayName(friend),
-                      email: friend.friend.email,
+                      userId: user.id,
+                      type: "friend",
+                      name: "You",
+                      email: user.email || "",
                     })
                   }
                   activeOpacity={0.7}
                 >
                   <View style={styles.chipContent}>
-                    <View style={isSelected && styles.avatarSelected}>
+                    <View
+                      style={
+                        isParticipantSelected(user.id, "friend") &&
+                        styles.avatarSelected
+                      }
+                    >
                       <Avatar
-                        avatarUrl={friend?.friend?.profile?.avatarUrl}
-                        displayName={getUserDisplayName(friend)}
+                        avatarUrl={undefined}
+                        displayName="You"
                         size={32}
-                        borderColor={isSelected ? '#FFFFFF' : 'transparent'}
-                        borderWidth={isSelected ? 2 : 0}
+                        borderColor={
+                          isParticipantSelected(user.id, "friend")
+                            ? theme.colors.textInverse
+                            : "transparent"
+                        }
+                        borderWidth={
+                          isParticipantSelected(user.id, "friend") ? 2 : 0
+                        }
                       />
                     </View>
                     <Text
                       style={[
                         styles.chipText,
-                        isSelected && styles.chipTextSelected,
+                        isParticipantSelected(user.id, "friend") &&
+                          styles.chipTextSelected,
                       ]}
                       numberOfLines={1}
                     >
-                      {getUserDisplayName(friend)}
+                      You
                     </Text>
-                    {isSelected && (
-                      <MaterialIcons name="check-circle" size={16} color="#FFFFFF" />
+                    {isParticipantSelected(user.id, "friend") && (
+                      <MaterialIcons
+                        name="check-circle"
+                        size={16}
+                        color={theme.colors.textInverse}
+                      />
                     )}
                   </View>
                 </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        )}
-      </View>
+              )}
+              {friends
+                .filter((friend) => {
+                  // Filter out current user if excludeCurrentUser is true
+                  if (excludeCurrentUser && friend.friendId === user?.id) {
+                    return false;
+                  }
+                  return true;
+                })
+                .map((friend) => {
+                  const isSelected = isParticipantSelected(
+                    friend.friendId,
+                    "friend",
+                  );
+                  return (
+                    <TouchableOpacity
+                      key={friend.id}
+                      style={[
+                        styles.participantChip,
+                        isSelected && styles.participantChipSelected,
+                      ]}
+                      onPress={() =>
+                        toggleParticipant({
+                          userId: friend.friendId,
+                          type: "friend",
+                          name: getUserDisplayName(friend),
+                          email: friend.friend.email,
+                        })
+                      }
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.chipContent}>
+                        <View style={isSelected && styles.avatarSelected}>
+                          <Avatar
+                            avatarUrl={friend?.friend?.profile?.avatarUrl}
+                            displayName={getUserDisplayName(friend)}
+                            size={32}
+                            borderColor={
+                              isSelected
+                                ? theme.colors.textInverse
+                                : "transparent"
+                            }
+                            borderWidth={isSelected ? 2 : 0}
+                          />
+                        </View>
+                        <Text
+                          style={[
+                            styles.chipText,
+                            isSelected && styles.chipTextSelected,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {getUserDisplayName(friend)}
+                        </Text>
+                        {isSelected && (
+                          <MaterialIcons
+                            name="check-circle"
+                            size={16}
+                            color={theme.colors.textInverse}
+                          />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+            </ScrollView>
+          )}
+        </View>
       )}
 
       {/* Groups Section */}
       {showGroups && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <MaterialIcons name="group" size={20} color="#3B82F6" />
+            <MaterialIcons name="group" size={20} color={theme.colors.blue} />
             <Text style={styles.sectionTitle}>Groups</Text>
           </View>
           {!token ? (
@@ -288,14 +357,20 @@ export function ParticipantPicker({
             </View>
           ) : loadingGroups ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color="#3B82F6" />
+              <ActivityIndicator size="small" color={theme.colors.blue} />
               <Text style={styles.loadingText}>Loading groups...</Text>
             </View>
           ) : groups.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <MaterialIcons name="people-outline" size={24} color="#9CA3AF" />
+              <MaterialIcons
+                name="people-outline"
+                size={24}
+                color={theme.colors.textTertiary}
+              />
               <Text style={styles.emptyText}>No groups yet</Text>
-              <Text style={styles.emptySubtext}>Create a group from the Circles screen</Text>
+              <Text style={styles.emptySubtext}>
+                Create a group from the Circles screen
+              </Text>
             </View>
           ) : (
             <>
@@ -304,37 +379,56 @@ export function ParticipantPicker({
                 showsHorizontalScrollIndicator={false}
                 style={styles.scrollView}
               >
-                {groups && Array.isArray(groups) && groups.map((group) => {
-                  const isSelected = selectedGroupId === group.id;
-                  return (
-                    <TouchableOpacity
-                      key={group.id}
-                      style={[styles.groupChip, isSelected && styles.groupChipSelected]}
-                      onPress={() => {
-                        const newGroupId = isSelected ? null : group.id;
-                        setSelectedGroupId(newGroupId);
-                        onGroupChange?.(newGroupId);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.chipContent}>
-                        <View style={[styles.avatar, isSelected && styles.avatarSelected]}>
-                          <MaterialIcons
-                            name="group"
-                            size={16}
-                            color={isSelected ? '#FFFFFF' : '#6B7280'}
+                {groups &&
+                  Array.isArray(groups) &&
+                  groups.map((group) => {
+                    const isSelected = selectedGroupId === group.id;
+                    return (
+                      <TouchableOpacity
+                        key={group.id}
+                        style={[
+                          styles.groupChip,
+                          isSelected && styles.groupChipSelected,
+                        ]}
+                        onPress={() => {
+                          const newGroupId = isSelected ? null : group.id;
+                          setSelectedGroupId(newGroupId);
+                          onGroupChange?.(newGroupId);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.chipContent}>
+                          <Avatar
+                            avatarUrl={getAvatarUrl(group.avatarUrl || null)}
+                            displayName={group.name}
+                            size={32}
+                            borderColor={
+                              isSelected
+                                ? theme.colors.textInverse
+                                : "transparent"
+                            }
+                            borderWidth={isSelected ? 2 : 0}
                           />
+                          <Text
+                            style={[
+                              styles.chipText,
+                              isSelected && styles.chipTextSelected,
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {group.name}
+                          </Text>
+                          {isSelected && (
+                            <MaterialIcons
+                              name="check-circle"
+                              size={16}
+                              color={theme.colors.textInverse}
+                            />
+                          )}
                         </View>
-                        <Text
-                          style={[styles.chipText, isSelected && styles.chipTextSelected]}
-                          numberOfLines={1}
-                        >
-                          {group.name}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
+                      </TouchableOpacity>
+                    );
+                  })}
               </ScrollView>
 
               {/* Group Members */}
@@ -342,7 +436,10 @@ export function ParticipantPicker({
                 <View style={styles.groupMembersContainer}>
                   {loadingMembers ? (
                     <View style={styles.loadingContainer}>
-                      <ActivityIndicator size="small" color="#3B82F6" />
+                      <ActivityIndicator
+                        size="small"
+                        color={theme.colors.blue}
+                      />
                       <Text style={styles.loadingText}>Loading members...</Text>
                     </View>
                   ) : (
@@ -351,10 +448,26 @@ export function ParticipantPicker({
                       showsHorizontalScrollIndicator={false}
                       style={styles.scrollView}
                     >
-                      {groupMembers.map((member) => {
+                      {groupMembers
+                        .filter((member) => {
+                          // Filter out current user if excludeCurrentUser is true
+                          if (
+                            excludeCurrentUser &&
+                            member.userId === user?.id
+                          ) {
+                            return false;
+                          }
+                          return true;
+                        })
+                        .map((member) => {
                           const isCurrentUser = member.userId === user?.id;
-                          const displayName = isCurrentUser ? 'You' : getMemberDisplayName(member);
-                          const isSelected = isParticipantSelected(member.userId, 'group-member');
+                          const displayName = isCurrentUser
+                            ? "You"
+                            : getMemberDisplayName(member);
+                          const isSelected = isParticipantSelected(
+                            member.userId,
+                            "group-member",
+                          );
                           return (
                             <TouchableOpacity
                               key={member.userId}
@@ -365,7 +478,7 @@ export function ParticipantPicker({
                               onPress={() =>
                                 toggleParticipant({
                                   userId: member.userId,
-                                  type: 'group-member',
+                                  type: "group-member",
                                   name: displayName,
                                   email: member.user.email,
                                 })
@@ -373,12 +486,18 @@ export function ParticipantPicker({
                               activeOpacity={0.7}
                             >
                               <View style={styles.chipContent}>
-                                <View style={isSelected && styles.avatarSelected}>
+                                <View
+                                  style={isSelected && styles.avatarSelected}
+                                >
                                   <Avatar
                                     avatarUrl={member?.user?.profile?.avatarUrl}
                                     displayName={displayName}
                                     size={32}
-                                    borderColor={isSelected ? '#FFFFFF' : 'transparent'}
+                                    borderColor={
+                                      isSelected
+                                        ? theme.colors.textInverse
+                                        : "transparent"
+                                    }
                                     borderWidth={isSelected ? 2 : 0}
                                   />
                                 </View>
@@ -392,7 +511,11 @@ export function ParticipantPicker({
                                   {displayName}
                                 </Text>
                                 {isSelected && (
-                                  <MaterialIcons name="check-circle" size={16} color="#FFFFFF" />
+                                  <MaterialIcons
+                                    name="check-circle"
+                                    size={16}
+                                    color={theme.colors.textInverse}
+                                  />
                                 )}
                               </View>
                             </TouchableOpacity>
@@ -411,8 +534,8 @@ export function ParticipantPicker({
       {selectedParticipants.length > 0 && (
         <View style={styles.summaryContainer}>
           <Text style={styles.summaryText}>
-            {selectedParticipants.length} participant{selectedParticipants.length !== 1 ? 's' : ''}{' '}
-            selected
+            {selectedParticipants.length} participant
+            {selectedParticipants.length !== 1 ? "s" : ""} selected
           </Text>
         </View>
       )}
@@ -420,121 +543,130 @@ export function ParticipantPicker({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    paddingVertical: 16,
-    minHeight: 120, // Ensure minimum height so it's always visible
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    paddingHorizontal: 4,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  scrollView: {
-    marginHorizontal: -16,
-    paddingHorizontal: 16,
-  },
-  loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 12,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  emptyContainer: {
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 80,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  emptySubtext: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  participantChip: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginRight: 8,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  participantChipSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  groupChip: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginRight: 8,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  groupChipSelected: {
-    backgroundColor: '#3B82F6',
-    borderColor: '#3B82F6',
-  },
-  chipContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  avatarSelected: {
-    // This style is used for the Avatar component wrapper when selected
-    // The Avatar component handles its own styling
-  },
-  chipText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-    maxWidth: 120,
-  },
-  chipTextSelected: {
-    color: '#FFFFFF',
-  },
-  groupMembersContainer: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-  },
-  summaryContainer: {
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-  },
-  summaryText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#6B7280',
-  },
-});
-
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    container: {
+      paddingVertical: theme.spacing.base,
+      minHeight: 120, // Ensure minimum height so it's always visible
+      backgroundColor: theme.colors.background,
+      borderRadius: 8,
+      paddingHorizontal: theme.spacing.xs,
+    },
+    section: {
+      marginBottom: theme.spacing.xl,
+    },
+    sectionHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.sm,
+      marginBottom: theme.spacing.md,
+    },
+    sectionTitle: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+    },
+    scrollView: {
+      marginHorizontal: -theme.spacing.base,
+      paddingHorizontal: theme.spacing.base,
+    },
+    loadingContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.sm,
+      paddingVertical: theme.spacing.md,
+    },
+    loadingText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+    },
+    emptyContainer: {
+      paddingVertical: theme.spacing.base,
+      alignItems: "center",
+      justifyContent: "center",
+      minHeight: 80,
+    },
+    emptyText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+      fontWeight: theme.typography.fontWeight.medium,
+      marginTop: theme.spacing.sm,
+      textAlign: "center",
+    },
+    emptySubtext: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.textTertiary,
+      marginTop: theme.spacing.xs,
+      textAlign: "center",
+    },
+    participantChip: {
+      backgroundColor: theme.colors.backgroundTertiary,
+      borderRadius: 20,
+      paddingVertical: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.md,
+      marginRight: theme.spacing.sm,
+      borderWidth: 2,
+      borderColor: "transparent",
+    },
+    participantChipSelected: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    groupChip: {
+      backgroundColor: theme.colors.backgroundTertiary,
+      borderRadius: 20,
+      paddingVertical: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.md,
+      marginRight: theme.spacing.sm,
+      borderWidth: 2,
+      borderColor: "transparent",
+    },
+    groupChipSelected: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    chipContent: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    avatar: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: theme.colors.gray200,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    avatarSelected: {
+      // This style is used for the Avatar component wrapper when selected
+      // The Avatar component handles its own styling
+      backgroundColor: theme.colors.background,
+    },
+    chipText: {
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.gray700,
+      maxWidth: 120,
+    },
+    chipTextSelected: {
+      color: theme.colors.textInverse,
+    },
+    groupMembersContainer: {
+      marginTop: theme.spacing.md,
+      paddingTop: theme.spacing.md,
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.border,
+    },
+    summaryContainer: {
+      marginTop: theme.spacing.base,
+      paddingTop: theme.spacing.base,
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.border,
+    },
+    summaryText: {
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.textSecondary,
+    },
+  });

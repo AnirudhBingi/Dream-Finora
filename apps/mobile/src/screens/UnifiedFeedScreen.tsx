@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -13,12 +13,21 @@ import {
   Alert,
   Share,
   FlatList,
-} from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAuth } from '../auth/authContext';
-import { getPosts, PostsResponse, Post, getPostLikes, sharePost } from '../api/postApi';
+} from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import { MaterialIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAuth } from "../auth/authContext";
+import {
+  getPosts,
+  PostsResponse,
+  Post,
+  getPostLikes,
+  sharePost,
+} from "../api/postApi";
 import {
   getListings,
   Listing,
@@ -29,26 +38,26 @@ import {
   getListingFavorites,
   updateListingStatus,
   deleteListing,
-} from '../api/listingApi';
-import { getApiBaseUrl } from '../api/getApiBaseUrl';
-import { startConversation } from '../api/messagingApi';
-import { toggleLike } from '../api/postApi';
-import { EmptyState } from '../components/EmptyState';
-import { ErrorState } from '../components/ErrorState';
-import { PostFeedCard } from '../components/PostFeedCard';
-import { ListingFeedCard } from '../components/ListingFeedCard';
-import { UserListModal } from '../components/UserListModal';
-import { UserSummary } from '../api/types';
-import { CollapsibleHeader } from '../components/CollapsibleHeader';
-import { useBottomNavPadding } from '../hooks/useBottomNavPadding';
-import { useDataFetch } from '../hooks/useDataFetch';
-import { theme } from '../theme';
+} from "../api/listingApi";
+import { getApiBaseUrl } from "../api/getApiBaseUrl";
+import { startConversation } from "../api/messagingApi";
+import { toggleLike } from "../api/postApi";
+import { EmptyState } from "../components/EmptyState";
+import { ErrorState } from "../components/ErrorState";
+import { PostFeedCard } from "../components/PostFeedCard";
+import { ListingFeedCard } from "../components/ListingFeedCard";
+import { UserListModal } from "../components/UserListModal";
+import { UserSummary } from "../api/types";
+import { CollapsibleHeader } from "../components/CollapsibleHeader";
+import { useBottomNavPadding } from "../hooks/useBottomNavPadding";
+import { useDataFetch } from "../hooks/useDataFetch";
+import { useTheme } from "../theme";
 
 type FeedItem =
-  | { type: 'post'; data: Post }
-  | { type: 'listing'; data: Listing };
+  | { type: "post"; data: Post }
+  | { type: "listing"; data: Listing };
 
-const SEARCH_HISTORY_KEY = 'spacev_search_history';
+const SEARCH_HISTORY_KEY = "spacev_search_history";
 const MAX_SEARCH_HISTORY = 8;
 
 interface UnifiedFeedScreenProps {
@@ -76,24 +85,34 @@ export function UnifiedFeedScreen({
   onBack,
   groupId,
 }: UnifiedFeedScreenProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { token, user } = useAuth();
   const [baseItems, setBaseItems] = useState<FeedItem[]>([]);
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
-  const [feedFilter, setFeedFilter] = useState<'all' | 'posts' | 'listings' | 'myListings'>('all');
-  const [searchInput, setSearchInput] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [listingTypeFilter, setListingTypeFilter] = useState<ListingType | 'all'>('all');
-  const [listingSort, setListingSort] = useState<'newest' | 'price_low' | 'price_high' | 'popular'>('newest');
+  const [feedFilter, setFeedFilter] = useState<
+    "all" | "posts" | "listings" | "myListings"
+  >("all");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [listingTypeFilter, setListingTypeFilter] = useState<
+    ListingType | "all"
+  >("all");
+  const [listingSort, setListingSort] = useState<
+    "newest" | "price_low" | "price_high" | "popular"
+  >("newest");
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
-  const [listingLocation, setListingLocation] = useState('');
-  const [minPriceInput, setMinPriceInput] = useState('');
-  const [maxPriceInput, setMaxPriceInput] = useState('');
+  const [listingLocation, setListingLocation] = useState("");
+  const [minPriceInput, setMinPriceInput] = useState("");
+  const [maxPriceInput, setMaxPriceInput] = useState("");
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [offset, setOffset] = useState(0);
-  const [contactingListingId, setContactingListingId] = useState<string | null>(null);
+  const [contactingListingId, setContactingListingId] = useState<string | null>(
+    null,
+  );
   const [engagementModal, setEngagementModal] = useState<{
     visible: boolean;
     title: string;
@@ -102,10 +121,10 @@ export function UnifiedFeedScreen({
     emptyMessage: string;
   }>({
     visible: false,
-    title: '',
+    title: "",
     users: [],
     loading: false,
-    emptyMessage: '',
+    emptyMessage: "",
   });
   const limit = 20;
 
@@ -119,9 +138,11 @@ export function UnifiedFeedScreen({
   const HIDE_DISTANCE = TOTAL_HEADER_HEIGHT;
   const listingPriceStats = useMemo(() => {
     const listingPrices = feedItems
-      .filter((item) => item.type === 'listing')
+      .filter((item) => item.type === "listing")
       .map((item) => item.data.price)
-      .filter((price): price is number => typeof price === 'number' && price > 0);
+      .filter(
+        (price): price is number => typeof price === "number" && price > 0,
+      );
 
     if (listingPrices.length === 0) {
       return null;
@@ -142,7 +163,7 @@ export function UnifiedFeedScreen({
         if (!isMounted || !stored) return;
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
-          setSearchHistory(parsed.filter((item) => typeof item === 'string'));
+          setSearchHistory(parsed.filter((item) => typeof item === "string"));
         }
       })
       .catch(() => null);
@@ -154,7 +175,10 @@ export function UnifiedFeedScreen({
   async function persistSearchHistory(nextHistory: string[]) {
     setSearchHistory(nextHistory);
     try {
-      await AsyncStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(nextHistory));
+      await AsyncStorage.setItem(
+        SEARCH_HISTORY_KEY,
+        JSON.stringify(nextHistory),
+      );
     } catch {
       // Ignore storage errors for search history
     }
@@ -166,7 +190,7 @@ export function UnifiedFeedScreen({
     const nextHistory = [
       trimmed,
       ...searchHistory.filter(
-        (item) => item.toLowerCase() !== trimmed.toLowerCase()
+        (item) => item.toLowerCase() !== trimmed.toLowerCase(),
       ),
     ].slice(0, MAX_SEARCH_HISTORY);
     await persistSearchHistory(nextHistory);
@@ -180,20 +204,25 @@ export function UnifiedFeedScreen({
     const minPrice = minPriceInput.trim() ? Number(minPriceInput) : undefined;
     const maxPrice = maxPriceInput.trim() ? Number(maxPriceInput) : undefined;
     return {
-      userId: feedFilter === 'myListings' ? user?.id : undefined,
-      type: listingTypeFilter === 'all' ? undefined : listingTypeFilter,
+      userId: feedFilter === "myListings" ? user?.id : undefined,
+      type: listingTypeFilter === "all" ? undefined : listingTypeFilter,
       search: searchQuery.trim() || undefined,
       location: listingLocation.trim() || undefined,
       groupId,
       minPrice: Number.isFinite(minPrice) ? minPrice : undefined,
       maxPrice: Number.isFinite(maxPrice) ? maxPrice : undefined,
-      sort: feedFilter === 'listings' || feedFilter === 'myListings' ? listingSort : undefined,
+      sort:
+        feedFilter === "listings" || feedFilter === "myListings"
+          ? listingSort
+          : undefined,
       limit,
       offset: currentOffset,
     };
   }
 
-  function normalizeListingsResponse(listingsData: Awaited<ReturnType<typeof getListings>>) {
+  function normalizeListingsResponse(
+    listingsData: Awaited<ReturnType<typeof getListings>>,
+  ) {
     if (Array.isArray(listingsData)) {
       return {
         listings: listingsData,
@@ -215,7 +244,10 @@ export function UnifiedFeedScreen({
     if (!query) return true;
     if (matchesSearchText(post.content, query)) return true;
     if (matchesSearchText(post.location, query)) return true;
-    if (Array.isArray(post.hashtags) && post.hashtags.some((tag) => matchesSearchText(tag, query))) {
+    if (
+      Array.isArray(post.hashtags) &&
+      post.hashtags.some((tag) => matchesSearchText(tag, query))
+    ) {
       return true;
     }
     return false;
@@ -257,7 +289,7 @@ export function UnifiedFeedScreen({
     }
 
     feedItems.forEach((item) => {
-      if (item.type === 'post') {
+      if (item.type === "post") {
         if (item.data.location) addSuggestion(item.data.location, 2);
         if (Array.isArray(item.data.hashtags)) {
           item.data.hashtags.forEach((tag) => {
@@ -266,7 +298,7 @@ export function UnifiedFeedScreen({
         }
         return;
       }
-      if (item.type === 'listing') {
+      if (item.type === "listing") {
         if (item.data.location) addSuggestion(item.data.location, 2);
         return;
       }
@@ -278,11 +310,15 @@ export function UnifiedFeedScreen({
     });
 
     const suggestions = Array.from(suggestionMap.values())
-      .filter(({ value }) => (query ? value.toLowerCase().includes(query) : true))
+      .filter(({ value }) =>
+        query ? value.toLowerCase().includes(query) : true,
+      )
       .sort((a, b) => {
         if (a.score !== b.score) return b.score - a.score;
-        const aStarts = query && a.value.toLowerCase().startsWith(query) ? 1 : 0;
-        const bStarts = query && b.value.toLowerCase().startsWith(query) ? 1 : 0;
+        const aStarts =
+          query && a.value.toLowerCase().startsWith(query) ? 1 : 0;
+        const bStarts =
+          query && b.value.toLowerCase().startsWith(query) ? 1 : 0;
         if (aStarts !== bStarts) return bStarts - aStarts;
         return a.value.localeCompare(b.value);
       })
@@ -296,13 +332,15 @@ export function UnifiedFeedScreen({
   }
 
   function mergeFeedItems(nextBase: FeedItem[]) {
-    if (feedFilter === 'posts') {
-      return nextBase.filter((item) => item.type === 'post');
+    if (feedFilter === "posts") {
+      return nextBase.filter((item) => item.type === "post");
     }
-    if (feedFilter === 'myListings' || feedFilter === 'listings') {
-      return nextBase.filter((item) => item.type === 'listing');
+    if (feedFilter === "myListings" || feedFilter === "listings") {
+      return nextBase.filter((item) => item.type === "listing");
     }
-    return [...nextBase].sort((a, b) => getItemCreatedAt(b) - getItemCreatedAt(a));
+    return [...nextBase].sort(
+      (a, b) => getItemCreatedAt(b) - getItemCreatedAt(a),
+    );
   }
 
   useEffect(() => {
@@ -322,16 +360,18 @@ export function UnifiedFeedScreen({
     refetch,
   } = useDataFetch<FeedItem[]>({
     fetchFn: async () => {
-      if (!token) throw new Error('No authentication token');
-      if (feedFilter === 'myListings' && !user?.id) {
+      if (!token) throw new Error("No authentication token");
+      if (feedFilter === "myListings" && !user?.id) {
         setBaseItems([]);
         setHasMore(false);
         setOffset(0);
         return [];
       }
-      const shouldFetchPosts = feedFilter === 'all' || feedFilter === 'posts';
+      const shouldFetchPosts = feedFilter === "all" || feedFilter === "posts";
       const shouldFetchListings =
-        feedFilter === 'all' || feedFilter === 'listings' || feedFilter === 'myListings';
+        feedFilter === "all" ||
+        feedFilter === "listings" ||
+        feedFilter === "myListings";
 
       const [postsData, listingsData] = await Promise.all([
         shouldFetchPosts
@@ -341,31 +381,47 @@ export function UnifiedFeedScreen({
               search: searchQuery.trim() || undefined,
               groupId,
             })
-          : Promise.resolve({ posts: [], total: 0, limit, offset: 0, hasMore: false }),
+          : Promise.resolve({
+              posts: [],
+              total: 0,
+              limit,
+              offset: 0,
+              hasMore: false,
+            }),
         shouldFetchListings
           ? getListings(token, getListingFilters(0))
-          : Promise.resolve({ listings: [], total: 0, limit, offset: 0, hasMore: false }),
+          : Promise.resolve({
+              listings: [],
+              total: 0,
+              limit,
+              offset: 0,
+              hasMore: false,
+            }),
       ]);
 
-      const { listings, hasMore: listingsHasMore } = normalizeListingsResponse(listingsData);
+      const { listings, hasMore: listingsHasMore } =
+        normalizeListingsResponse(listingsData);
       const postsList: Post[] = postsData.posts || [];
 
       const merged: FeedItem[] = [
-        ...postsList.map((post) => ({ type: 'post' as const, data: post })),
-        ...listings.map((listing) => ({ type: 'listing' as const, data: listing })),
+        ...postsList.map((post) => ({ type: "post" as const, data: post })),
+        ...listings.map((listing) => ({
+          type: "listing" as const,
+          data: listing,
+        })),
       ];
       const sorted =
-        feedFilter === 'listings'
+        feedFilter === "listings"
           ? merged
           : merged.sort((a, b) => getItemCreatedAt(b) - getItemCreatedAt(a));
 
       setBaseItems(sorted);
       setHasMore(
-        feedFilter === 'posts'
+        feedFilter === "posts"
           ? postsData.hasMore
-          : feedFilter === 'listings' || feedFilter === 'myListings'
+          : feedFilter === "listings" || feedFilter === "myListings"
             ? listingsHasMore
-            : listingsHasMore || postsData.hasMore
+            : listingsHasMore || postsData.hasMore,
       );
       setOffset(merged.length);
 
@@ -390,9 +446,11 @@ export function UnifiedFeedScreen({
 
     try {
       setLoadingMore(true);
-      const shouldFetchPosts = feedFilter === 'all' || feedFilter === 'posts';
+      const shouldFetchPosts = feedFilter === "all" || feedFilter === "posts";
       const shouldFetchListings =
-        feedFilter === 'all' || feedFilter === 'listings' || feedFilter === 'myListings';
+        feedFilter === "all" ||
+        feedFilter === "listings" ||
+        feedFilter === "myListings";
       const [postsData, listingsData] = await Promise.all([
         shouldFetchPosts
           ? getPosts(token, {
@@ -401,35 +459,51 @@ export function UnifiedFeedScreen({
               search: searchQuery.trim() || undefined,
               groupId,
             })
-          : Promise.resolve({ posts: [], total: 0, limit, offset: 0, hasMore: false }),
+          : Promise.resolve({
+              posts: [],
+              total: 0,
+              limit,
+              offset: 0,
+              hasMore: false,
+            }),
         shouldFetchListings
           ? getListings(token, getListingFilters(offset))
-          : Promise.resolve({ listings: [], total: 0, limit, offset: 0, hasMore: false }),
+          : Promise.resolve({
+              listings: [],
+              total: 0,
+              limit,
+              offset: 0,
+              hasMore: false,
+            }),
       ]);
 
-      const { listings, hasMore: listingsHasMore } = normalizeListingsResponse(listingsData);
+      const { listings, hasMore: listingsHasMore } =
+        normalizeListingsResponse(listingsData);
       const postsList: Post[] = postsData.posts || [];
 
       const newItems: FeedItem[] = [
-        ...postsList.map((post) => ({ type: 'post' as const, data: post })),
-        ...listings.map((listing) => ({ type: 'listing' as const, data: listing })),
+        ...postsList.map((post) => ({ type: "post" as const, data: post })),
+        ...listings.map((listing) => ({
+          type: "listing" as const,
+          data: listing,
+        })),
       ];
       const sorted =
-        feedFilter === 'listings'
+        feedFilter === "listings"
           ? newItems
           : newItems.sort((a, b) => getItemCreatedAt(b) - getItemCreatedAt(a));
 
       setBaseItems((prev) => [...prev, ...sorted]);
       setHasMore(
-        feedFilter === 'posts'
+        feedFilter === "posts"
           ? postsData.hasMore
-          : feedFilter === 'listings' || feedFilter === 'myListings'
+          : feedFilter === "listings" || feedFilter === "myListings"
             ? listingsHasMore
-            : listingsHasMore || postsData.hasMore
+            : listingsHasMore || postsData.hasMore,
       );
       setOffset((prev) => prev + sorted.length);
     } catch (err) {
-      console.error('Failed to load more:', err);
+      console.error("Failed to load more:", err);
     } finally {
       setLoadingMore(false);
     }
@@ -446,7 +520,7 @@ export function UnifiedFeedScreen({
       // Refresh feed to update like status
       await refetch();
     } catch (err) {
-      console.error('Failed to toggle like:', err);
+      console.error("Failed to toggle like:", err);
     }
   }
 
@@ -457,36 +531,39 @@ export function UnifiedFeedScreen({
       // Refresh feed to update favorite status
       await refetch();
     } catch (err) {
-      console.error('Failed to toggle favorite:', err);
+      console.error("Failed to toggle favorite:", err);
     }
   }
 
-  async function handleUpdateListingStatus(listingId: string, status: ListingStatus) {
+  async function handleUpdateListingStatus(
+    listingId: string,
+    status: ListingStatus,
+  ) {
     if (!token) return;
     try {
       await updateListingStatus(token, listingId, status);
       await refetch();
     } catch (err) {
-      Alert.alert('Error', 'Failed to update listing status');
+      Alert.alert("Error", "Failed to update listing status");
     }
   }
 
   function handleDeleteListing(listingId: string) {
     if (!token) return;
     Alert.alert(
-      'Delete Listing',
-      'Are you sure you want to delete this listing? This action cannot be undone.',
+      "Delete Listing",
+      "Are you sure you want to delete this listing? This action cannot be undone.",
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Delete',
-          style: 'destructive',
+          text: "Delete",
+          style: "destructive",
           onPress: async () => {
             try {
               await deleteListing(token, listingId);
               await refetch();
             } catch (err) {
-              Alert.alert('Error', 'Failed to delete listing');
+              Alert.alert("Error", "Failed to delete listing");
             }
           },
         },
@@ -502,7 +579,7 @@ export function UnifiedFeedScreen({
       await Share.share({ message: shareLink });
       await refetch();
     } catch (err) {
-      Alert.alert('Error', 'Failed to share post');
+      Alert.alert("Error", "Failed to share post");
     }
   }
 
@@ -512,7 +589,7 @@ export function UnifiedFeedScreen({
       const { shareLink } = await generateShareLink(token, listingId);
       await Share.share({ message: shareLink });
     } catch (err) {
-      console.error('Failed to share listing:', err);
+      console.error("Failed to share listing:", err);
     }
   }
 
@@ -529,7 +606,7 @@ export function UnifiedFeedScreen({
         onNavigateToMessage(conversation.id, otherUser);
       }
     } catch (err) {
-      console.error('Failed to start conversation:', err);
+      console.error("Failed to start conversation:", err);
     } finally {
       setContactingListingId(null);
     }
@@ -539,10 +616,10 @@ export function UnifiedFeedScreen({
     if (!token) return;
     setEngagementModal({
       visible: true,
-      title: 'Post likes',
+      title: "Post likes",
       users: [],
       loading: true,
-      emptyMessage: 'No likes yet.',
+      emptyMessage: "No likes yet.",
     });
     try {
       const users = await getPostLikes(token, postId);
@@ -552,7 +629,7 @@ export function UnifiedFeedScreen({
         loading: false,
       }));
     } catch (err) {
-      console.error('Failed to load post likes:', err);
+      console.error("Failed to load post likes:", err);
       setEngagementModal((prev) => ({
         ...prev,
         users: [],
@@ -565,10 +642,10 @@ export function UnifiedFeedScreen({
     if (!token) return;
     setEngagementModal({
       visible: true,
-      title: 'Listing favorites',
+      title: "Listing favorites",
       users: [],
       loading: true,
-      emptyMessage: 'No favorites yet.',
+      emptyMessage: "No favorites yet.",
     });
     try {
       const users = await getListingFavorites(token, listingId);
@@ -578,7 +655,7 @@ export function UnifiedFeedScreen({
         loading: false,
       }));
     } catch (err) {
-      console.error('Failed to load listing favorites:', err);
+      console.error("Failed to load listing favorites:", err);
       setEngagementModal((prev) => ({
         ...prev,
         users: [],
@@ -594,15 +671,17 @@ export function UnifiedFeedScreen({
   const normalizedSearch = searchQuery.trim().toLowerCase();
   const filteredItems = feedItems.filter((item) => {
     const matchesType =
-      feedFilter === 'all'
+      feedFilter === "all"
         ? true
-        : feedFilter === 'posts'
-          ? item.type === 'post'
-          : item.type === 'listing';
+        : feedFilter === "posts"
+          ? item.type === "post"
+          : item.type === "listing";
     if (!matchesType) return false;
     if (!normalizedSearch) return true;
-    if (item.type === 'post') return matchesPostSearch(item.data, normalizedSearch);
-    if (item.type === 'listing') return matchesListingSearch(item.data, normalizedSearch);
+    if (item.type === "post")
+      return matchesPostSearch(item.data, normalizedSearch);
+    if (item.type === "listing")
+      return matchesListingSearch(item.data, normalizedSearch);
     return false;
   });
 
@@ -611,44 +690,48 @@ export function UnifiedFeedScreen({
     const ratio = price / listingPriceStats.avg;
     if (ratio <= 0.8) {
       return {
-        label: 'Great value',
+        label: "Great value",
         color: theme.colors.success,
         backgroundColor: theme.colors.successBackground,
       };
     }
     if (ratio <= 1.1) {
       return {
-        label: 'Fair price',
+        label: "Fair price",
         color: theme.colors.info,
         backgroundColor: theme.colors.infoBackground,
       };
     }
     return {
-      label: 'Premium',
+      label: "Premium",
       color: theme.colors.warning,
       backgroundColor: theme.colors.warningBackground,
     };
   }
 
   const emptyStateTitle =
-    feedFilter === 'posts'
-      ? 'No posts yet'
-      : feedFilter === 'listings' || feedFilter === 'myListings'
-        ? 'No listings yet'
-        : 'No posts or listings yet';
+    feedFilter === "posts"
+      ? "No posts yet"
+      : feedFilter === "listings" || feedFilter === "myListings"
+        ? "No listings yet"
+        : "No posts or listings yet";
   const emptyStateMessage =
-    feedFilter === 'posts'
-      ? 'Create your first post to get started!'
-      : feedFilter === 'listings' || feedFilter === 'myListings'
-        ? 'Create your first listing to get started!'
-        : 'Create your first post or listing to get started!';
+    feedFilter === "posts"
+      ? "Create your first post to get started!"
+      : feedFilter === "listings" || feedFilter === "myListings"
+        ? "Create your first listing to get started!"
+        : "Create your first post or listing to get started!";
 
   if (loading && !feedItems.length) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
+      <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
         <CollapsibleHeader scrollY={scrollY} headerHeight={HEADER_HEIGHT}>
           <View style={styles.header}>
-            <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={onBack}
+              activeOpacity={0.7}
+            >
               <Text style={styles.backButtonText}>← Back</Text>
             </TouchableOpacity>
             <View style={styles.headerRight}>
@@ -660,7 +743,11 @@ export function UnifiedFeedScreen({
                   accessibilityRole="button"
                   accessibilityLabel="Create listing"
                 >
-                  <MaterialIcons name="add-box" size={24} color={theme.colors.blue} />
+                  <MaterialIcons
+                    name="add-box"
+                    size={24}
+                    color={theme.colors.blue}
+                  />
                 </TouchableOpacity>
               )}
               {onCreatePost && (
@@ -671,7 +758,11 @@ export function UnifiedFeedScreen({
                   accessibilityRole="button"
                   accessibilityLabel="Create post"
                 >
-                  <MaterialIcons name="add-circle-outline" size={24} color={theme.colors.blue} />
+                  <MaterialIcons
+                    name="add-circle-outline"
+                    size={24}
+                    color={theme.colors.blue}
+                  />
                 </TouchableOpacity>
               )}
             </View>
@@ -680,9 +771,21 @@ export function UnifiedFeedScreen({
         <Animated.View
           style={{
             height: scrollY.interpolate({
-              inputRange: [-200, 0, SCROLL_THRESHOLD, SCROLL_THRESHOLD + HIDE_DISTANCE, 10000],
-              outputRange: [TOTAL_HEADER_HEIGHT, TOTAL_HEADER_HEIGHT, TOTAL_HEADER_HEIGHT, 0, 0],
-              extrapolate: 'clamp',
+              inputRange: [
+                -200,
+                0,
+                SCROLL_THRESHOLD,
+                SCROLL_THRESHOLD + HIDE_DISTANCE,
+                10000,
+              ],
+              outputRange: [
+                TOTAL_HEADER_HEIGHT,
+                TOTAL_HEADER_HEIGHT,
+                TOTAL_HEADER_HEIGHT,
+                0,
+                0,
+              ],
+              extrapolate: "clamp",
             }),
           }}
           pointerEvents="none"
@@ -696,22 +799,33 @@ export function UnifiedFeedScreen({
 
   if (error) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
+      <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={onBack}
+            activeOpacity={0.7}
+          >
             <Text style={styles.backButtonText}>← Back</Text>
           </TouchableOpacity>
         </View>
-        <ErrorState message={error || 'Failed to load feed'} onRetry={refetch} />
+        <ErrorState
+          message={error || "Failed to load feed"}
+          onRetry={refetch}
+        />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
+    <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
       <CollapsibleHeader scrollY={scrollY} headerHeight={HEADER_HEIGHT}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={onBack}
+            activeOpacity={0.7}
+          >
             <Text style={styles.backButtonText}>← Back</Text>
           </TouchableOpacity>
           <View style={styles.headerRight}>
@@ -723,7 +837,11 @@ export function UnifiedFeedScreen({
                 accessibilityRole="button"
                 accessibilityLabel="Create listing"
               >
-                <MaterialIcons name="add-box" size={24} color={theme.colors.blue} />
+                <MaterialIcons
+                  name="add-box"
+                  size={24}
+                  color={theme.colors.blue}
+                />
               </TouchableOpacity>
             )}
             {onCreatePost && (
@@ -734,7 +852,11 @@ export function UnifiedFeedScreen({
                 accessibilityRole="button"
                 accessibilityLabel="Create post"
               >
-                <MaterialIcons name="add-circle-outline" size={24} color={theme.colors.blue} />
+                <MaterialIcons
+                  name="add-circle-outline"
+                  size={24}
+                  color={theme.colors.blue}
+                />
               </TouchableOpacity>
             )}
           </View>
@@ -743,20 +865,35 @@ export function UnifiedFeedScreen({
       <Animated.View
         style={{
           height: scrollY.interpolate({
-            inputRange: [-200, 0, SCROLL_THRESHOLD, SCROLL_THRESHOLD + HIDE_DISTANCE, 10000],
-            outputRange: [TOTAL_HEADER_HEIGHT, TOTAL_HEADER_HEIGHT, TOTAL_HEADER_HEIGHT, 0, 0],
-            extrapolate: 'clamp',
+            inputRange: [
+              -200,
+              0,
+              SCROLL_THRESHOLD,
+              SCROLL_THRESHOLD + HIDE_DISTANCE,
+              10000,
+            ],
+            outputRange: [
+              TOTAL_HEADER_HEIGHT,
+              TOTAL_HEADER_HEIGHT,
+              TOTAL_HEADER_HEIGHT,
+              0,
+              0,
+            ],
+            extrapolate: "clamp",
           }),
         }}
         pointerEvents="none"
       />
       <Animated.FlatList
         style={styles.container}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: bottomPadding },
+        ]}
         scrollEventThrottle={16}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false }
+          { useNativeDriver: false },
         )}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -775,21 +912,29 @@ export function UnifiedFeedScreen({
             <View style={styles.filterRow}>
               {(
                 [
-                  { key: 'all', label: 'All' },
-                  { key: 'posts', label: 'Posts' },
-                  { key: 'listings', label: 'Listings' },
-                  { key: 'myListings', label: 'My Listings' },
+                  { key: "all", label: "All" },
+                  { key: "posts", label: "Posts" },
+                  { key: "listings", label: "Listings" },
+                  { key: "myListings", label: "My Listings" },
                 ] as const
               ).map((filter) => {
                 const isActive = feedFilter === filter.key;
                 return (
                   <TouchableOpacity
                     key={filter.key}
-                    style={[styles.filterPill, isActive && styles.filterPillActive]}
+                    style={[
+                      styles.filterPill,
+                      isActive && styles.filterPillActive,
+                    ]}
                     onPress={() => setFeedFilter(filter.key)}
                     activeOpacity={0.8}
                   >
-                    <Text style={[styles.filterText, isActive && styles.filterTextActive]}>
+                    <Text
+                      style={[
+                        styles.filterText,
+                        isActive && styles.filterTextActive,
+                      ]}
+                    >
                       {filter.label}
                     </Text>
                   </TouchableOpacity>
@@ -806,19 +951,25 @@ export function UnifiedFeedScreen({
                 placeholderTextColor={theme.colors.textTertiary}
                 returnKeyType="search"
               />
-              {(searchQuery || searchInput) ? (
+              {searchQuery || searchInput ? (
                 <TouchableOpacity
                   style={styles.searchClearButton}
                   onPress={() => {
-                    setSearchInput('');
-                    setSearchQuery('');
+                    setSearchInput("");
+                    setSearchQuery("");
                   }}
                   activeOpacity={0.7}
                 >
-                  <MaterialIcons name="close" size={18} color={theme.colors.textSecondary} />
+                  <MaterialIcons
+                    name="close"
+                    size={18}
+                    color={theme.colors.textSecondary}
+                  />
                 </TouchableOpacity>
               ) : null}
-              {(feedFilter === 'all' || feedFilter === 'listings' || feedFilter === 'myListings') && (
+              {(feedFilter === "all" ||
+                feedFilter === "listings" ||
+                feedFilter === "myListings") && (
                 <TouchableOpacity
                   style={styles.filtersButton}
                   onPress={() => setIsFilterModalOpen(true)}
@@ -831,7 +982,7 @@ export function UnifiedFeedScreen({
           </View>
         }
         renderItem={({ item }) => {
-          if (item.type === 'post') {
+          if (item.type === "post") {
             return (
               <PostFeedCard
                 post={item.data}
@@ -887,16 +1038,16 @@ export function UnifiedFeedScreen({
               title={emptyStateTitle}
               message={emptyStateMessage}
               actionLabel={
-                feedFilter === 'listings' || feedFilter === 'myListings'
+                feedFilter === "listings" || feedFilter === "myListings"
                   ? onCreateListing
-                    ? 'Create Listing'
+                    ? "Create Listing"
                     : undefined
                   : onCreatePost
-                    ? 'Create Post'
+                    ? "Create Post"
                     : undefined
               }
               onAction={
-                feedFilter === 'listings' || feedFilter === 'myListings'
+                feedFilter === "listings" || feedFilter === "myListings"
                   ? onCreateListing
                   : onCreatePost
               }
@@ -928,11 +1079,11 @@ export function UnifiedFeedScreen({
               <TouchableOpacity
                 style={styles.modalReset}
                 onPress={() => {
-                  setListingTypeFilter('all');
-                  setListingSort('newest');
-                  setListingLocation('');
-                  setMinPriceInput('');
-                  setMaxPriceInput('');
+                  setListingTypeFilter("all");
+                  setListingSort("newest");
+                  setListingLocation("");
+                  setMinPriceInput("");
+                  setMaxPriceInput("");
                 }}
                 activeOpacity={0.7}
               >
@@ -945,15 +1096,15 @@ export function UnifiedFeedScreen({
                 <TouchableOpacity
                   style={[
                     styles.filterPill,
-                    listingTypeFilter === 'all' && styles.filterPillActive,
+                    listingTypeFilter === "all" && styles.filterPillActive,
                   ]}
-                  onPress={() => setListingTypeFilter('all')}
+                  onPress={() => setListingTypeFilter("all")}
                   activeOpacity={0.8}
                 >
                   <Text
                     style={[
                       styles.filterText,
-                      listingTypeFilter === 'all' && styles.filterTextActive,
+                      listingTypeFilter === "all" && styles.filterTextActive,
                     ]}
                   >
                     All Types
@@ -964,11 +1115,19 @@ export function UnifiedFeedScreen({
                   return (
                     <TouchableOpacity
                       key={type}
-                      style={[styles.filterPill, isActive && styles.filterPillActive]}
+                      style={[
+                        styles.filterPill,
+                        isActive && styles.filterPillActive,
+                      ]}
                       onPress={() => setListingTypeFilter(type)}
                       activeOpacity={0.8}
                     >
-                      <Text style={[styles.filterText, isActive && styles.filterTextActive]}>
+                      <Text
+                        style={[
+                          styles.filterText,
+                          isActive && styles.filterTextActive,
+                        ]}
+                      >
                         {type}
                       </Text>
                     </TouchableOpacity>
@@ -979,21 +1138,29 @@ export function UnifiedFeedScreen({
               <View style={styles.modalPillRow}>
                 {(
                   [
-                    { key: 'newest', label: 'Newest' },
-                    { key: 'price_low', label: 'Price Low' },
-                    { key: 'price_high', label: 'Price High' },
-                    { key: 'popular', label: 'Popular' },
+                    { key: "newest", label: "Newest" },
+                    { key: "price_low", label: "Price Low" },
+                    { key: "price_high", label: "Price High" },
+                    { key: "popular", label: "Popular" },
                   ] as const
                 ).map((sortOption) => {
                   const isActive = listingSort === sortOption.key;
                   return (
                     <TouchableOpacity
                       key={sortOption.key}
-                      style={[styles.filterPill, isActive && styles.filterPillActive]}
+                      style={[
+                        styles.filterPill,
+                        isActive && styles.filterPillActive,
+                      ]}
                       onPress={() => setListingSort(sortOption.key)}
                       activeOpacity={0.8}
                     >
-                      <Text style={[styles.filterText, isActive && styles.filterTextActive]}>
+                      <Text
+                        style={[
+                          styles.filterText,
+                          isActive && styles.filterTextActive,
+                        ]}
+                      >
                         {sortOption.label}
                       </Text>
                     </TouchableOpacity>
@@ -1071,7 +1238,9 @@ export function UnifiedFeedScreen({
               {searchHistory.length > 0 && (
                 <View style={styles.searchSection}>
                   <View style={styles.searchSectionHeader}>
-                    <Text style={styles.searchSectionTitle}>Recent Searches</Text>
+                    <Text style={styles.searchSectionTitle}>
+                      Recent Searches
+                    </Text>
                     <TouchableOpacity
                       onPress={clearSearchHistory}
                       activeOpacity={0.7}
@@ -1131,291 +1300,292 @@ export function UnifiedFeedScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-  scrollContent: {
-    paddingBottom: theme.spacing.xl,
-  },
-  content: {
-    paddingHorizontal: 0,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: theme.spacing.base,
-    paddingVertical: theme.spacing.sm,
-    height: 60,
-  },
-  backButton: {
-    paddingVertical: theme.spacing.xs,
-    paddingHorizontal: theme.spacing.sm,
-  },
-  backButtonText: {
-    fontSize: theme.typography.fontSize.base,
-    fontWeight: theme.typography.fontWeight.medium,
-    color: theme.colors.blue,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    gap: theme.spacing.base,
-  },
-  headerButton: {
-    padding: theme.spacing.xs,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  filterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.base,
-    paddingTop: theme.spacing.sm,
-    paddingBottom: theme.spacing.base,
-  },
-  filterPill: {
-    paddingHorizontal: theme.spacing.base,
-    paddingVertical: theme.spacing.xs,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.white,
-  },
-  filterPillActive: {
-    borderColor: theme.colors.blue,
-    backgroundColor: theme.colors.blue,
-  },
-  filterText: {
-    fontSize: theme.typography.fontSize.sm,
-    fontWeight: theme.typography.fontWeight.medium,
-    color: theme.colors.textSecondary,
-  },
-  filterTextActive: {
-    color: theme.colors.white,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.base,
-    paddingBottom: theme.spacing.base,
-  },
-  searchInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.base,
-    paddingVertical: theme.spacing.sm,
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textPrimary,
-    backgroundColor: theme.colors.white,
-  },
-  searchClearButton: {
-    padding: theme.spacing.xs,
-    borderRadius: theme.spacing.sm,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.white,
-  },
-  filtersButton: {
-    paddingHorizontal: theme.spacing.base,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.spacing.sm,
-    backgroundColor: theme.colors.blue,
-  },
-  filtersButtonText: {
-    color: theme.colors.white,
-    fontWeight: theme.typography.fontWeight.medium,
-    fontSize: theme.typography.fontSize.sm,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-    marginBottom: theme.spacing.sm,
-  },
-  priceInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.base,
-    paddingVertical: theme.spacing.sm,
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textPrimary,
-    backgroundColor: theme.colors.white,
-  },
-  locationInput: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.base,
-    paddingVertical: theme.spacing.sm,
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textPrimary,
-    backgroundColor: theme.colors.white,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: theme.colors.white,
-    borderTopLeftRadius: theme.spacing.lg,
-    borderTopRightRadius: theme.spacing.lg,
-    paddingHorizontal: theme.spacing.base,
-    paddingTop: theme.spacing.base,
-    paddingBottom: theme.spacing.xl,
-    maxHeight: '85%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: theme.spacing.base,
-  },
-  modalTitle: {
-    fontSize: theme.typography.fontSize.lg,
-    fontWeight: theme.typography.fontWeight.semibold,
-    color: theme.colors.textPrimary,
-  },
-  modalReset: {
-    paddingVertical: theme.spacing.xs,
-    paddingHorizontal: theme.spacing.sm,
-  },
-  modalResetText: {
-    color: theme.colors.blue,
-    fontWeight: theme.typography.fontWeight.medium,
-  },
-  modalSectionTitle: {
-    fontSize: theme.typography.fontSize.sm,
-    fontWeight: theme.typography.fontWeight.semibold,
-    color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.sm,
-  },
-  modalPillRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.sm,
-    marginBottom: theme.spacing.base,
-  },
-  modalActions: {
-    paddingTop: theme.spacing.base,
-  },
-  modalCloseButton: {
-    backgroundColor: theme.colors.blue,
-    borderRadius: theme.spacing.sm,
-    paddingVertical: theme.spacing.base,
-    alignItems: 'center',
-  },
-  modalCloseButtonText: {
-    color: theme.colors.white,
-    fontWeight: theme.typography.fontWeight.semibold,
-    fontSize: theme.typography.fontSize.base,
-  },
-  searchModalContent: {
-    backgroundColor: theme.colors.white,
-    borderTopLeftRadius: theme.spacing.lg,
-    borderTopRightRadius: theme.spacing.lg,
-    paddingHorizontal: theme.spacing.base,
-    paddingTop: theme.spacing.base,
-    paddingBottom: theme.spacing.xl,
-    maxHeight: '85%',
-  },
-  searchModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    marginBottom: theme.spacing.base,
-  },
-  searchModalInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.base,
-    paddingVertical: theme.spacing.sm,
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textPrimary,
-    backgroundColor: theme.colors.white,
-  },
-  searchModalClose: {
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.sm,
-  },
-  searchModalCloseText: {
-    color: theme.colors.blue,
-    fontWeight: theme.typography.fontWeight.medium,
-  },
-  searchSection: {
-    marginBottom: theme.spacing.base,
-  },
-  searchSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: theme.spacing.sm,
-  },
-  searchSectionTitle: {
-    fontSize: theme.typography.fontSize.sm,
-    fontWeight: theme.typography.fontWeight.semibold,
-    color: theme.colors.textSecondary,
-  },
-  searchSectionAction: {
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.blue,
-  },
-  searchChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.sm,
-  },
-  searchChip: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 999,
-    paddingHorizontal: theme.spacing.base,
-    paddingVertical: theme.spacing.xs,
-    backgroundColor: theme.colors.gray50,
-  },
-  searchChipText: {
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textPrimary,
-  },
-  loadMoreButton: {
-    backgroundColor: theme.colors.white,
-    borderRadius: theme.spacing.sm,
-    paddingVertical: theme.spacing.base,
-    paddingHorizontal: theme.spacing.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: theme.spacing.base,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    minHeight: 44,
-  },
-  loadMoreButtonText: {
-    fontSize: theme.typography.fontSize.base,
-    fontWeight: theme.typography.fontWeight.medium,
-    color: theme.colors.blue,
-  },
-  loadingMoreContainer: {
-    alignItems: 'center',
-    paddingVertical: theme.spacing.base,
-  },
-  loadingMoreText: {
-    fontSize: theme.typography.fontSize.sm,
-    color: theme.colors.textSecondary,
-  },
-});
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.backgroundSecondary,
+    },
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.backgroundSecondary,
+    },
+    scrollContent: {
+      paddingBottom: theme.spacing.xl,
+    },
+    content: {
+      paddingHorizontal: 0,
+    },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: theme.spacing.base,
+      paddingVertical: theme.spacing.sm,
+      height: 60,
+    },
+    backButton: {
+      paddingVertical: theme.spacing.xs,
+      paddingHorizontal: theme.spacing.sm,
+    },
+    backButtonText: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.blue,
+    },
+    headerRight: {
+      flexDirection: "row",
+      gap: theme.spacing.base,
+    },
+    headerButton: {
+      padding: theme.spacing.xs,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    filterRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.base,
+      paddingTop: theme.spacing.sm,
+      paddingBottom: theme.spacing.base,
+    },
+    filterPill: {
+      paddingHorizontal: theme.spacing.base,
+      paddingVertical: theme.spacing.xs,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.background,
+    },
+    filterPillActive: {
+      borderColor: theme.colors.blue,
+      backgroundColor: theme.colors.blue,
+    },
+    filterText: {
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.textSecondary,
+    },
+    filterTextActive: {
+      color: theme.colors.textInverse,
+    },
+    searchRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.base,
+      paddingBottom: theme.spacing.base,
+    },
+    searchInput: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.base,
+      paddingVertical: theme.spacing.sm,
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textPrimary,
+      backgroundColor: theme.colors.background,
+    },
+    searchClearButton: {
+      padding: theme.spacing.xs,
+      borderRadius: theme.spacing.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.background,
+    },
+    filtersButton: {
+      paddingHorizontal: theme.spacing.base,
+      paddingVertical: theme.spacing.sm,
+      borderRadius: theme.spacing.sm,
+      backgroundColor: theme.colors.blue,
+    },
+    filtersButtonText: {
+      color: theme.colors.textInverse,
+      fontWeight: theme.typography.fontWeight.medium,
+      fontSize: theme.typography.fontSize.sm,
+    },
+    priceRow: {
+      flexDirection: "row",
+      gap: theme.spacing.sm,
+      marginBottom: theme.spacing.sm,
+    },
+    priceInput: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.base,
+      paddingVertical: theme.spacing.sm,
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textPrimary,
+      backgroundColor: theme.colors.background,
+    },
+    locationInput: {
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.base,
+      paddingVertical: theme.spacing.sm,
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textPrimary,
+      backgroundColor: theme.colors.background,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: theme.colors.overlay,
+      justifyContent: "flex-end",
+    },
+    modalContent: {
+      backgroundColor: theme.colors.background,
+      borderTopLeftRadius: theme.spacing.lg,
+      borderTopRightRadius: theme.spacing.lg,
+      paddingHorizontal: theme.spacing.base,
+      paddingTop: theme.spacing.base,
+      paddingBottom: theme.spacing.xl,
+      maxHeight: "85%",
+    },
+    modalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: theme.spacing.base,
+    },
+    modalTitle: {
+      fontSize: theme.typography.fontSize.lg,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+    },
+    modalReset: {
+      paddingVertical: theme.spacing.xs,
+      paddingHorizontal: theme.spacing.sm,
+    },
+    modalResetText: {
+      color: theme.colors.blue,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    modalSectionTitle: {
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textSecondary,
+      marginBottom: theme.spacing.sm,
+    },
+    modalPillRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: theme.spacing.sm,
+      marginBottom: theme.spacing.base,
+    },
+    modalActions: {
+      paddingTop: theme.spacing.base,
+    },
+    modalCloseButton: {
+      backgroundColor: theme.colors.blue,
+      borderRadius: theme.spacing.sm,
+      paddingVertical: theme.spacing.base,
+      alignItems: "center",
+    },
+    modalCloseButtonText: {
+      color: theme.colors.textInverse,
+      fontWeight: theme.typography.fontWeight.semibold,
+      fontSize: theme.typography.fontSize.base,
+    },
+    searchModalContent: {
+      backgroundColor: theme.colors.background,
+      borderTopLeftRadius: theme.spacing.lg,
+      borderTopRightRadius: theme.spacing.lg,
+      paddingHorizontal: theme.spacing.base,
+      paddingTop: theme.spacing.base,
+      paddingBottom: theme.spacing.xl,
+      maxHeight: "85%",
+    },
+    searchModalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.sm,
+      marginBottom: theme.spacing.base,
+    },
+    searchModalInput: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.base,
+      paddingVertical: theme.spacing.sm,
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textPrimary,
+      backgroundColor: theme.colors.background,
+    },
+    searchModalClose: {
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: theme.spacing.sm,
+    },
+    searchModalCloseText: {
+      color: theme.colors.blue,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    searchSection: {
+      marginBottom: theme.spacing.base,
+    },
+    searchSectionHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: theme.spacing.sm,
+    },
+    searchSectionTitle: {
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textSecondary,
+    },
+    searchSectionAction: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.blue,
+    },
+    searchChips: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: theme.spacing.sm,
+    },
+    searchChip: {
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: 999,
+      paddingHorizontal: theme.spacing.base,
+      paddingVertical: theme.spacing.xs,
+      backgroundColor: theme.colors.backgroundSecondary,
+    },
+    searchChipText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textPrimary,
+    },
+    loadMoreButton: {
+      backgroundColor: theme.colors.background,
+      borderRadius: theme.spacing.sm,
+      paddingVertical: theme.spacing.base,
+      paddingHorizontal: theme.spacing.xl,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: theme.spacing.base,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      minHeight: 44,
+    },
+    loadMoreButtonText: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.blue,
+    },
+    loadingMoreContainer: {
+      alignItems: "center",
+      paddingVertical: theme.spacing.base,
+    },
+    loadingMoreText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+    },
+  });

@@ -1,28 +1,33 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
   View,
-  Text,
+  Text as RNText,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   ActivityIndicator,
   RefreshControl,
   TextInput,
   Platform,
   Image,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
-import { useAuth } from '../auth/authContext';
-import { getGroups, Group } from '../api/groupApi';
-import { EmptyState } from '../components/EmptyState';
-import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
-import { SkeletonGroupList } from '../components/SkeletonLoader';
-import { Header } from '../components/Header';
-import { Icon } from '../components/Icon';
-import { Avatar } from '../components/Avatar';
-import { useBottomNavPadding } from '../hooks/useBottomNavPadding';
-import { getAvatarUrl } from '../utils/avatar';
+  Animated,
+  Pressable,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useAuth } from "../auth/authContext";
+import { getGroups, Group } from "../api/groupApi";
+import { EmptyState } from "../components/EmptyState";
+import { ErrorState } from "../components/ErrorState";
+import { useDataFetch } from "../hooks/useDataFetch";
+import { getUserFriendlyErrorMessage } from "../components/ErrorState";
+import { SkeletonGroupList } from "../components/SkeletonLoader";
+import { Header } from "../components/Header";
+import { Icon } from "../components/Icon";
+import { Avatar } from "../components/Avatar";
+import { ScreenWrapper } from "../components/ScreenWrapper";
+import { getAvatarUrl } from "../utils/avatar";
+import { useTheme } from "../theme";
 
 interface GroupListScreenProps {
   onCreateGroup: () => void;
@@ -41,80 +46,105 @@ export function GroupListScreen({
   onNavigateToNotifications,
   onNavigateToSettings,
 }: GroupListScreenProps) {
+  const { theme, resolvedMode } = useTheme();
+  const styles = useMemo(() => createStyles(theme, resolvedMode), [theme, resolvedMode]);
   const { token, user } = useAuth();
   const [groups, setGroups] = useState<Group[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [offset, setOffset] = useState(0);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<TextInput>(null);
   const limit = 20;
-  const bottomPadding = useBottomNavPadding(true);
 
+  // Animation value for card shimmer
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
+
+  // Start shimmer animation loop
   useEffect(() => {
-    loadGroups(true);
-  }, [token]);
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnim, {
+          toValue: 1,
+          duration: 3000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmerAnim, {
+          toValue: 0,
+          duration: 3000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
 
-  async function loadGroups(reset: boolean = false) {
-    if (!token) return;
+  // Fetch groups (initial load and refresh)
+  const { loading, refreshing, error, refresh, refetch } = useDataFetch<
+    Group[]
+  >({
+    fetchFn: async () => {
+      if (!token) throw new Error("Not authenticated");
+      const data = await getGroups(token, limit, 0);
+      // Handle paginated response
+      let groupsList: Group[] = [];
+      if (Array.isArray(data)) {
+        groupsList = data;
+        setHasMore(false);
+      } else {
+        groupsList = data.groups || [];
+        setHasMore(data.hasMore || false);
+      }
+      setGroups(groupsList);
+      setOffset(groupsList.length);
+      return groupsList;
+    },
+    immediate: true,
+    deps: [token],
+  });
+
+  // Handle refresh
+  const handleRefresh = async () => {
+    setOffset(0);
+    setHasMore(false);
+    await refresh();
+  };
+
+  // Handle load more
+  async function loadMore() {
+    if (loadingMore || !hasMore || !token) return;
 
     try {
-      if (reset) {
-        setLoading(true);
-        setOffset(0);
+      setLoadingMore(true);
+      const nextOffset = offset;
+      const data = await getGroups(token, limit, nextOffset);
+
+      let groupsList: Group[] = [];
+      if (Array.isArray(data)) {
+        groupsList = data;
+        setHasMore(false);
       } else {
-        setLoadingMore(true);
+        groupsList = data.groups || [];
+        setHasMore(data.hasMore || false);
       }
-      setError(null);
-      const currentOffset = reset ? 0 : offset;
-      const groupsData = await getGroups(token, limit, currentOffset);
-      
-      // Handle paginated response
-      let groupsList: Group[];
-      let paginationInfo: { hasMore: boolean; total: number } | null = null;
-      
-      if (Array.isArray(groupsData)) {
-        groupsList = groupsData;
+
+      // Append to existing groups
+      if (groupsList.length > 0) {
+        setGroups((prev) => [...prev, ...groupsList]);
+        setOffset((prev) => prev + groupsList.length);
       } else {
-        groupsList = groupsData.groups || [];
-        paginationInfo = {
-          hasMore: groupsData.hasMore || false,
-          total: groupsData.total || 0,
-        };
-      }
-      
-      if (reset) {
-        setGroups(groupsList);
-        setOffset(limit);
-      } else {
-        setGroups(prev => [...prev, ...groupsList]);
-        setOffset(prev => prev + limit);
-      }
-      
-      if (paginationInfo) {
-        setHasMore(paginationInfo.hasMore);
+        setHasMore(false);
       }
     } catch (err) {
-      setError(getUserFriendlyErrorMessage(err));
+      console.error("Failed to load more groups:", err);
     } finally {
-      setLoading(false);
       setLoadingMore(false);
-      setRefreshing(false);
     }
   }
 
-  async function loadMore() {
-    if (loadingMore || !hasMore) return;
-    await loadGroups(false);
-  }
-
-  function getUserDisplayName(groupUser: Group['createdByUser']): string {
-    if (!groupUser) return 'Unknown';
-    if (groupUser.id === user?.id) return 'you';
-    return groupUser.profile?.displayName || groupUser.email || 'Unknown';
+  function getUserDisplayName(groupUser: Group["createdByUser"]): string {
+    if (!groupUser) return "Unknown";
+    if (groupUser.id === user?.id) return "you";
+    return groupUser.profile?.displayName || groupUser.email || "Unknown";
   }
 
   // Filter groups by search query
@@ -122,15 +152,16 @@ export function GroupListScreen({
     if (!searchQuery.trim()) {
       return groups;
     }
-    return groups.filter(group =>
-      group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      group.description?.toLowerCase().includes(searchQuery.toLowerCase())
+    return groups.filter(
+      (group) =>
+        group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        group.description?.toLowerCase().includes(searchQuery.toLowerCase()),
     );
   }, [groups, searchQuery]);
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <>
         <Header
           title="Circles"
           onBack={onBack}
@@ -138,50 +169,56 @@ export function GroupListScreen({
           onNavigateToNotifications={onNavigateToNotifications}
           onNavigateToSettings={onNavigateToSettings}
         />
-        <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-          <View style={styles.content}>
+        <ScreenWrapper scroll>
+          <View style={styles.loadingContent}>
             <SkeletonGroupList count={5} />
           </View>
-        </ScrollView>
-      </SafeAreaView>
+        </ScreenWrapper>
+      </>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <>
       <Header
         title="Circles"
         onBack={onBack}
-        rightContent={
+        rightActions={
           <TouchableOpacity
-            onPress={onCreateGroup}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onCreateGroup();
+            }}
             style={styles.headerButton}
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel="Create new circle"
           >
-            <MaterialIcons name="add" size={24} color="#6366F1" />
+            <MaterialIcons name="add" size={24} color={theme.colors.primary} />
           </TouchableOpacity>
         }
         onNavigateToProfile={onNavigateToProfile}
         onNavigateToNotifications={onNavigateToNotifications}
         onNavigateToSettings={onNavigateToSettings}
       />
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
+      <ScreenWrapper
+        scroll
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => loadGroups(true)}
-            tintColor="#6366F1"
-            colors={['#6366F1']}
+            onRefresh={refresh}
+            tintColor={theme.colors.primary}
+            colors={[theme.colors.primary]}
           />
         }
         onScroll={(e) => {
-          const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+          const { layoutMeasurement, contentOffset, contentSize } =
+            e.nativeEvent;
           const paddingToBottom = 20;
-          if (layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom) {
+          if (
+            layoutMeasurement.height + contentOffset.y >=
+            contentSize.height - paddingToBottom
+          ) {
             if (hasMore && !loadingMore) {
               loadMore();
             }
@@ -189,12 +226,12 @@ export function GroupListScreen({
         }}
         scrollEventThrottle={400}
       >
-        <View style={styles.content}>
+          {/* Consistent header-to-content gap */}
           {error && (
             <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{error}</Text>
-              <TouchableOpacity style={styles.retryButton} onPress={() => loadGroups(true)}>
-                <Text style={styles.retryButtonText}>Retry</Text>
+              <RNText style={styles.errorText}>{error}</RNText>
+              <TouchableOpacity style={styles.retryButton} onPress={refetch}>
+                <RNText style={styles.retryButtonText}>Retry</RNText>
               </TouchableOpacity>
             </View>
           )}
@@ -202,40 +239,57 @@ export function GroupListScreen({
           {/* Search Bar */}
           {groups.length > 0 && (
             <View style={styles.searchContainer}>
-              <Icon name="search" size={20} color="#6B7280" />
+              <Icon
+                name="search"
+                size={20}
+                color={theme.colors.textSecondary}
+              />
               <TextInput
                 ref={searchInputRef}
                 style={styles.searchInput}
                 placeholder="Search circles..."
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={theme.colors.textTertiary}
                 returnKeyType="search"
               />
               {searchQuery.length > 0 && (
                 <TouchableOpacity
                   onPress={() => {
-                    setSearchQuery('');
+                    setSearchQuery("");
                     searchInputRef.current?.blur();
                   }}
                   activeOpacity={0.7}
                 >
-                  <Icon name="close" size={20} color="#6B7280" />
+                  <Icon
+                    name="close"
+                    size={20}
+                    color={theme.colors.textSecondary}
+                  />
                 </TouchableOpacity>
               )}
             </View>
           )}
 
-          {/* Create Circle Button - Prominent */}
+          {/* Create Circle Button - Prominent with Gradient + Haptics */}
           {filteredGroups.length > 0 && (
-            <TouchableOpacity
-              style={styles.createCircleButton}
-              onPress={onCreateGroup}
-              activeOpacity={0.8}
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                onCreateGroup();
+              }}
+              style={styles.createCircleButtonWrapper}
             >
-              <MaterialIcons name="add" size={24} color="#FFFFFF" />
-              <Text style={styles.createCircleButtonText}>Create Circle</Text>
-            </TouchableOpacity>
+              <LinearGradient
+                colors={[theme.colors.primary, theme.colors.primaryDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.createCircleButton}
+              >
+                <MaterialIcons name="add" size={24} color={theme.colors.white} />
+                <RNText style={styles.createCircleButtonText}>Create Circle</RNText>
+              </LinearGradient>
+            </Pressable>
           )}
 
           {filteredGroups.length === 0 && groups.length > 0 ? (
@@ -262,104 +316,190 @@ export function GroupListScreen({
               // Get first 4 members for avatar preview
               const previewMembers = (group.members || []).slice(0, 4);
               const remainingMembers = Math.max(0, memberCount - 4);
-              
+
               // Generate group color based on name (consistent)
               const groupInitial = group.name.charAt(0).toUpperCase();
               const groupColors = [
-                { bg: '#EEF2FF', icon: '#6366F1' }, // Indigo
-                { bg: '#FDF2F8', icon: '#EC4899' }, // Pink
-                { bg: '#F0FDF4', icon: '#10B981' }, // Green
-                { bg: '#FEF3C7', icon: '#F59E0B' }, // Amber
-                { bg: '#E0E7FF', icon: '#8B5CF6' }, // Purple
-                { bg: '#DBEAFE', icon: '#3B82F6' }, // Blue
+                {
+                  bg: theme.colors.primaryBackground,
+                  icon: theme.colors.primary,
+                }, // Indigo
+                { bg: theme.colors.errorBackground, icon: theme.colors.error }, // Red/Pink
+                {
+                  bg: theme.colors.successBackground,
+                  icon: theme.colors.success,
+                }, // Green
+                {
+                  bg: theme.colors.warningBackground,
+                  icon: theme.colors.warning,
+                }, // Amber
+                {
+                  bg: theme.colors.primaryBackground,
+                  icon: theme.colors.primary,
+                }, // Purple (using primary)
+                { bg: theme.colors.blueBackground, icon: theme.colors.blue }, // Blue
               ];
               const colorIndex = group.name.charCodeAt(0) % groupColors.length;
               const groupColor = groupColors[colorIndex];
-              
+
               // Calculate activity level (for now based on expenses, later can include all features)
-              const activityLevel = expenseCount > 10 ? 'high' : expenseCount > 0 ? 'medium' : 'low';
+              const activityLevel =
+                expenseCount > 10
+                  ? "high"
+                  : expenseCount > 0
+                    ? "medium"
+                    : "low";
 
               return (
-                <TouchableOpacity
+                <Pressable
                   key={group.id}
-                  style={styles.groupCard}
-                  onPress={() => onViewGroup(group.id)}
-                  activeOpacity={0.7}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    onViewGroup(group.id);
+                  }}
+                  style={({ pressed }) => [
+                    styles.groupCard,
+                    pressed && styles.groupCardPressed,
+                  ]}
                 >
+                  {/* Subtle glassy gradient overlay */}
+                  <LinearGradient
+                    colors={[
+                      'rgba(255, 255, 255, 0.05)',
+                      'rgba(255, 255, 255, 0.02)',
+                    ]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.groupCardGlassOverlay}
+                  />
+
                   {/* Group Icon/Header Section */}
                   <View style={styles.groupCardHeader}>
-                    <View style={{ position: 'relative' }}>
+                    <View style={{ position: "relative" }}>
                       <Avatar
                         avatarUrl={getAvatarUrl(group.avatarUrl || null)}
                         displayName={group.name}
                         size={56}
-                        />
+                      />
                       {/* Group Icon Badge */}
                       {group.icon && (
                         <View style={styles.groupIconBadge}>
                           <MaterialIcons
                             name={group.icon as any}
                             size={16}
-                            color="#6366F1"
+                            color={theme.colors.primary}
                           />
                         </View>
                       )}
                     </View>
                     <View style={styles.groupHeaderContent}>
                       <View style={styles.groupTitleRow}>
-                        <Text style={styles.groupName}>{group.name}</Text>
-                        {activityLevel === 'high' && (
+                        <RNText style={styles.groupName}>{group.name}</RNText>
+                        {activityLevel === "high" && (
                           <View style={styles.activityBadge}>
                             <View style={styles.activityDot} />
-                            <Text style={styles.activityBadgeText}>Active</Text>
+                            <RNText style={styles.activityBadgeText}>Active</RNText>
                           </View>
                         )}
                       </View>
-                      {group.description && group.description.trim() && group.description.trim() !== 'Check' && (
-                        <Text style={styles.groupDescription} numberOfLines={1}>
-                          {group.description}
-                        </Text>
-                      )}
+                      {group.description &&
+                        group.description.trim() &&
+                        group.description.trim() !== "Check" && (
+                          <RNText
+                            style={styles.groupDescription}
+                            numberOfLines={1}
+                          >
+                            {group.description}
+                          </RNText>
+                        )}
                     </View>
-                    <MaterialIcons name="chevron-right" size={24} color="#9CA3AF" />
+                    <MaterialIcons
+                      name="chevron-right"
+                      size={24}
+                      color={theme.colors.textTertiary}
+                    />
                   </View>
 
                   {/* Activity Stats Grid - All 4 Features */}
                   <View style={styles.activityStatsGrid}>
                     <View style={styles.activityStatItem}>
-                      <View style={[styles.activityStatIcon, { backgroundColor: '#EEF2FF' }]}>
-                        <MaterialIcons name="receipt" size={18} color="#6366F1" />
+                      <View
+                        style={[
+                          styles.activityStatIcon,
+                          { backgroundColor: theme.colors.primaryBackground },
+                        ]}
+                      >
+                        <MaterialIcons
+                          name="receipt"
+                          size={18}
+                          color={theme.colors.primary}
+                        />
                       </View>
                       <View style={styles.activityStatContent}>
-                        <Text style={styles.activityStatValue}>{expenseCount}</Text>
-                        <Text style={styles.activityStatLabel}>Billchops</Text>
+                        <RNText style={styles.activityStatValue}>
+                          {expenseCount}
+                        </RNText>
+                        <RNText style={styles.activityStatLabel}>Billchops</RNText>
                       </View>
                     </View>
                     <View style={styles.activityStatItem}>
-                      <View style={[styles.activityStatIcon, { backgroundColor: '#F0FDF4' }]}>
-                        <MaterialIcons name="check-circle" size={18} color="#10B981" />
+                      <View
+                        style={[
+                          styles.activityStatIcon,
+                          { backgroundColor: theme.colors.successBackground },
+                        ]}
+                      >
+                        <MaterialIcons
+                          name="check-circle"
+                          size={18}
+                          color={theme.colors.success}
+                        />
                       </View>
                       <View style={styles.activityStatContent}>
-                        <Text style={styles.activityStatValue}>{choreCount}</Text>
-                        <Text style={styles.activityStatLabel}>Chores</Text>
+                        <RNText style={styles.activityStatValue}>
+                          {choreCount}
+                        </RNText>
+                        <RNText style={styles.activityStatLabel}>Chores</RNText>
                       </View>
                     </View>
                     <View style={styles.activityStatItem}>
-                      <View style={[styles.activityStatIcon, { backgroundColor: '#DBEAFE' }]}>
-                        <MaterialIcons name="directions-car" size={18} color="#3B82F6" />
+                      <View
+                        style={[
+                          styles.activityStatIcon,
+                          { backgroundColor: theme.colors.blueBackground },
+                        ]}
+                      >
+                        <MaterialIcons
+                          name="directions-car"
+                          size={18}
+                          color={theme.colors.blue}
+                        />
                       </View>
                       <View style={styles.activityStatContent}>
-                        <Text style={styles.activityStatValue}>{rideCount}</Text>
-                        <Text style={styles.activityStatLabel}>Rides</Text>
+                        <RNText style={styles.activityStatValue}>
+                          {rideCount}
+                        </RNText>
+                        <RNText style={styles.activityStatLabel}>Rides</RNText>
                       </View>
                     </View>
                     <View style={styles.activityStatItem}>
-                      <View style={[styles.activityStatIcon, { backgroundColor: '#FDF2F8' }]}>
-                        <MaterialIcons name="chat" size={18} color="#EC4899" />
+                      <View
+                        style={[
+                          styles.activityStatIcon,
+                          { backgroundColor: theme.colors.errorBackground },
+                        ]}
+                      >
+                        <MaterialIcons
+                          name="chat"
+                          size={18}
+                          color={theme.colors.error}
+                        />
                       </View>
                       <View style={styles.activityStatContent}>
-                        <Text style={styles.activityStatValue}>{messageCount}</Text>
-                        <Text style={styles.activityStatLabel}>Messages</Text>
+                        <RNText style={styles.activityStatValue}>
+                          {messageCount}
+                        </RNText>
+                        <RNText style={styles.activityStatLabel}>Messages</RNText>
                       </View>
                     </View>
                   </View>
@@ -369,7 +509,10 @@ export function GroupListScreen({
                     <View style={styles.membersPreview}>
                       <View style={styles.avatarsContainer}>
                         {previewMembers.map((member, index) => {
-                          const displayName = member.user?.profile?.displayName || member.user?.email || 'Unknown';
+                          const displayName =
+                            member.user?.profile?.displayName ||
+                            member.user?.email ||
+                            "Unknown";
                           return (
                             <View
                               key={member.id}
@@ -383,25 +526,34 @@ export function GroupListScreen({
                                 displayName={displayName}
                                 size={36}
                                 borderWidth={2}
-                                borderColor="#FFFFFF"
+                                borderColor={theme.colors.background}
                               />
                             </View>
                           );
                         })}
                         {remainingMembers > 0 && (
-                          <View style={[styles.avatarWrapper, styles.avatarMore, { marginLeft: -8 }]}>
+                          <View
+                            style={[
+                              styles.avatarWrapper,
+                              styles.avatarMore,
+                              { marginLeft: -8 },
+                            ]}
+                          >
                             <View style={styles.avatarMoreContainer}>
-                              <Text style={styles.avatarMoreText}>+{remainingMembers}</Text>
+                              <RNText style={styles.avatarMoreText}>
+                                +{remainingMembers}
+                              </RNText>
                             </View>
                           </View>
                         )}
                       </View>
-                      <Text style={styles.membersPreviewText}>
-                        {memberCount} member{memberCount !== 1 ? 's' : ''} • Created by {getUserDisplayName(group.createdByUser)}
-                      </Text>
+                      <RNText style={styles.membersPreviewText}>
+                        {memberCount} member{memberCount !== 1 ? "s" : ""} •
+                        Created by {getUserDisplayName(group.createdByUser)}
+                      </RNText>
                     </View>
                   )}
-                </TouchableOpacity>
+                </Pressable>
               );
             })
           )}
@@ -413,366 +565,354 @@ export function GroupListScreen({
               activeOpacity={0.7}
             >
               {loadingMore ? (
-                <ActivityIndicator size="small" color="#6366F1" />
+                <ActivityIndicator size="small" color={theme.colors.primary} />
               ) : (
-                <Text style={styles.loadMoreButtonText}>Load More</Text>
+                <RNText style={styles.loadMoreButtonText}>Load More</RNText>
               )}
             </TouchableOpacity>
           )}
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+      </ScreenWrapper>
+    </>
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollContent: {
-    paddingBottom: 24, // lg: 24px
-  },
-  content: {
-    paddingHorizontal: 16, // base: 16px (matching Billchop patterns)
-    paddingTop: 16,
-  },
-  headerButton: {
-    padding: 8,
-    minWidth: 44,
-    minHeight: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24, // lg: 24px
-  },
-  loadingText: {
-    marginTop: 16, // md: 16px
-    fontSize: 16, // Body: 16px
-    color: '#6B7280', // Gray-500
-  },
-  errorContainer: {
-    padding: 16, // md: 16px
-    backgroundColor: '#FEF2F2', // Red-50
-    borderRadius: 8, // Button: 8px
-    marginBottom: 16, // md: 16px
-  },
-  errorText: {
-    fontSize: 14, // Body: 14px
-    color: '#EF4444', // Red-500
-    marginBottom: 8, // sm: 8px
-  },
-  retryButton: {
-    backgroundColor: '#EF4444', // Red-500
-    borderRadius: 8, // Button: 8px
-    paddingVertical: 12, // Button: 12px vertical
-    paddingHorizontal: 24, // Button: 24px horizontal
-    minHeight: 44, // Button: 44px touch target
-    alignSelf: 'flex-start',
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontSize: 16, // Button: 16px
-    fontWeight: '500', // Medium
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    gap: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    color: '#111827',
-    padding: 0,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    padding: 32, // xl: 32px
-  },
-  emptyText: {
-    fontSize: 20, // H3: 20px
-    fontWeight: '600', // Semi-bold
-    color: '#374151', // Gray-700
-    marginBottom: 8, // sm: 8px
-  },
-  emptySubtext: {
-    fontSize: 16, // Body: 16px
-    color: '#6B7280', // Gray-500
-    textAlign: 'center',
-    marginBottom: 24, // lg: 24px
-  },
-  emptyButton: {
-    backgroundColor: '#2563EB', // Primary Blue
-    borderRadius: 8, // Button: 8px
-    paddingVertical: 12, // Button: 12px vertical
-    paddingHorizontal: 24, // Button: 24px horizontal
-    minHeight: 44, // Button: 44px touch target
-  },
-  emptyButtonText: {
-    color: '#fff',
-    fontSize: 16, // Button: 16px
-    fontWeight: '500', // Medium
-  },
-  createCircleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#6366F1',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    marginBottom: 16,
-    gap: 8,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#6366F1',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  createCircleButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: -0.2,
-  },
-  groupCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  groupCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    gap: 12,
-  },
-  groupIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexShrink: 0,
-    overflow: 'hidden',
-  },
-  groupImage: {
-    width: '100%',
-    height: '100%',
-  },
-  groupIconBadge: {
-    position: 'absolute',
-    bottom: -4,
-    right: -4,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#E5E7EB',
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.2,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  groupIconText: {
-    fontSize: 20,
-    fontWeight: '700',
-    letterSpacing: -0.5,
-  },
-  groupHeaderContent: {
-    flex: 1,
-    gap: 4,
-  },
-  groupTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  groupName: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-    letterSpacing: -0.3,
-    flex: 1,
-  },
-  activityBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F0FDF4',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  activityDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#10B981',
-  },
-  activityBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#10B981',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  groupDescription: {
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '400',
-  },
-  activityStatsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  activityStatItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-    minWidth: '45%',
-  },
-  activityStatIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexShrink: 0,
-  },
-  activityStatContent: {
-    flex: 1,
-  },
-  activityStatValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-    letterSpacing: -0.3,
-  },
-  activityStatValueEmpty: {
-    color: '#9CA3AF',
-    opacity: 0.6,
-  },
-  activityStatLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  membersPreview: {
-    gap: 12,
-  },
-  avatarsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  avatarWrapper: {
-    borderRadius: 18,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  avatarMore: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  avatarMoreContainer: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarMoreText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#6B7280',
-  },
-  membersPreviewText: {
-    fontSize: 13,
-    color: '#6B7280',
-    fontWeight: '400',
-  },
-  loadMoreButton: {
-    backgroundColor: '#6366F1',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    marginTop: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 44,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#6366F1',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  loadMoreButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-});
-
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"], resolvedMode: ReturnType<typeof useTheme>["resolvedMode"]) =>
+  StyleSheet.create({
+    loadingContent: {
+      marginTop: theme.spacing.headerContentGap || theme.spacing.base,
+    },
+    headerButton: {
+      padding: theme.spacing.sm,
+      minWidth: 44,
+      minHeight: 44,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: theme.spacing.xl,
+    },
+    loadingText: {
+      marginTop: theme.spacing.base,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textSecondary,
+    },
+    errorContainer: {
+      padding: theme.spacing.base,
+      backgroundColor: theme.colors.errorBackground,
+      borderRadius: theme.radii.md,
+      marginTop: theme.spacing.headerContentGap || theme.spacing.base,
+      marginBottom: theme.spacing.base,
+    },
+    errorText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.error,
+      marginBottom: theme.spacing.sm,
+    },
+    retryButton: {
+      backgroundColor: theme.colors.error,
+      borderRadius: theme.radii.md,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.xl,
+      minHeight: 44,
+      alignSelf: "flex-start",
+    },
+    retryButtonText: {
+      color: theme.colors.textInverse,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    searchContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: theme.colors.backgroundSecondary,
+      borderRadius: theme.radii.lg,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+      marginTop: theme.spacing.headerContentGap || theme.spacing.base,
+      marginBottom: theme.spacing.md,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      gap: theme.spacing.sm,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textPrimary,
+      padding: 0,
+    },
+    emptyContainer: {
+      alignItems: "center",
+      padding: theme.spacing["2xl"],
+    },
+    emptyText: {
+      fontSize: theme.typography.fontSize.xl,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+      marginBottom: theme.spacing.sm,
+    },
+    emptySubtext: {
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textSecondary,
+      textAlign: "center",
+      marginBottom: theme.spacing.xl,
+    },
+    emptyButton: {
+      backgroundColor: theme.colors.blue,
+      borderRadius: theme.radii.md,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.xl,
+      minHeight: 44,
+    },
+    emptyButtonText: {
+      color: theme.colors.textInverse,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    createCircleButtonWrapper: {
+      marginBottom: theme.spacing.base,
+      borderRadius: theme.radii.lg,
+      overflow: 'hidden',
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.primary,
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.3,
+          shadowRadius: 12,
+        },
+        android: {
+          elevation: 6,
+        },
+      }),
+    },
+    createCircleButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.lg,
+      gap: theme.spacing.sm,
+    },
+    createCircleButtonText: {
+      color: theme.colors.textInverse,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.bold,
+      letterSpacing: -0.2,
+    },
+    groupCard: {
+      backgroundColor: theme.colors.background,
+      borderRadius: theme.radii.xl,
+      padding: theme.spacing.base,
+      marginBottom: theme.spacing.base,
+      overflow: 'hidden',
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.primary,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.1,
+          shadowRadius: 10,
+        },
+        android: {
+          elevation: 4,
+        },
+      }),
+      borderWidth: 1.5,
+      borderColor: resolvedMode === 'light' 
+        ? 'rgba(0, 0, 0, 0.06)' 
+        : 'rgba(255, 255, 255, 0.08)',
+    },
+    groupCardPressed: {
+      transform: [{ scale: 0.98 }],
+      opacity: 0.9,
+    },
+    groupCardGlassOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 0,
+    },
+    groupCardHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: theme.spacing.base,
+      gap: theme.spacing.md,
+      zIndex: 1,
+    },
+    groupIconContainer: {
+      width: 48,
+      height: 48,
+      borderRadius: theme.radii.lg,
+      justifyContent: "center",
+      alignItems: "center",
+      flexShrink: 0,
+      overflow: "hidden",
+    },
+    groupImage: {
+      width: "100%",
+      height: "100%",
+    },
+    groupIconBadge: {
+      position: "absolute",
+      bottom: -4,
+      right: -4,
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: theme.colors.background,
+      borderWidth: 2,
+      borderColor: theme.colors.border,
+      justifyContent: "center",
+      alignItems: "center",
+      ...theme.shadows.sm,
+    },
+    groupIconText: {
+      fontSize: theme.typography.fontSize.xl,
+      fontWeight: theme.typography.fontWeight.bold,
+      letterSpacing: -0.5,
+    },
+    groupHeaderContent: {
+      flex: 1,
+      gap: theme.spacing.xs,
+    },
+    groupTitleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.sm,
+    },
+    groupName: {
+      fontSize: theme.typography.fontSize.lg,
+      fontWeight: theme.typography.fontWeight.bold,
+      color: theme.colors.textPrimary,
+      letterSpacing: -0.3,
+      flex: 1,
+    },
+    activityBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: theme.colors.successBackground,
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: theme.spacing.xs,
+      borderRadius: 12,
+      gap: theme.spacing.xs,
+    },
+    activityDot: {
+      width: 6,
+      height: 6,
+      borderRadius: theme.radii.xs,
+      backgroundColor: theme.colors.success,
+    },
+    activityBadgeText: {
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.success,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    groupDescription: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+      fontWeight: theme.typography.fontWeight.normal,
+    },
+    activityStatsGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: theme.spacing.md,
+      marginBottom: theme.spacing.base,
+      paddingBottom: theme.spacing.base,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.gray100,
+    },
+    activityStatItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      flex: 1,
+      minWidth: "45%",
+    },
+    activityStatIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 10,
+      justifyContent: "center",
+      alignItems: "center",
+      flexShrink: 0,
+    },
+    activityStatContent: {
+      flex: 1,
+    },
+    activityStatValue: {
+      fontSize: theme.typography.fontSize.lg,
+      fontWeight: theme.typography.fontWeight.bold,
+      color: theme.colors.textPrimary,
+      letterSpacing: -0.3,
+    },
+    activityStatValueEmpty: {
+      color: theme.colors.textTertiary,
+      opacity: 0.6,
+    },
+    activityStatLabel: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.textSecondary,
+      fontWeight: theme.typography.fontWeight.medium,
+      marginTop: 2,
+    },
+    membersPreview: {
+      gap: theme.spacing.md,
+      zIndex: 1,
+    },
+    avatarsContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    avatarWrapper: {
+      borderRadius: 18,
+      borderWidth: 2,
+      borderColor: theme.colors.background,
+    },
+    avatarMore: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: theme.colors.backgroundTertiary,
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 2,
+      borderColor: theme.colors.background,
+    },
+    avatarMoreContainer: {
+      width: "100%",
+      height: "100%",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    avatarMoreText: {
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.bold,
+      color: theme.colors.textSecondary,
+    },
+    membersPreviewText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+      fontWeight: theme.typography.fontWeight.normal,
+    },
+    loadMoreButton: {
+      backgroundColor: theme.colors.primary,
+      borderRadius: theme.radii.lg,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.xl,
+      marginTop: theme.spacing.base,
+      alignItems: "center",
+      justifyContent: "center",
+      minHeight: 44,
+      ...theme.shadows.button,
+    },
+    loadMoreButtonText: {
+      color: theme.colors.textInverse,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+  });

@@ -11,15 +11,20 @@ export class UserProfileResponseDto {
       expenseScore: number;
       choreScore: number;
       communityScore: number;
-      financeScore: number;
-      listingScore: number;
+      reliabilityScore: number;
+      responsivenessScore: number;
+      accountTrustScore: number;
     };
   } | null;
-  friendStatus: 'none' | 'pending_incoming' | 'pending_outgoing' | 'accepted' | 'blocked';
+  friendStatus:
+    | 'none'
+    | 'pending_incoming'
+    | 'pending_outgoing'
+    | 'accepted'
+    | 'blocked';
   mutualFriendsCount: number;
   listingsCount: number; // Public listings only
   sharedGroupsCount: number; // Groups both users are in
   profileVisibility: 'public' | 'friends' | 'private';
   trustScoreVisibility: 'public' | 'friends' | 'private';
 }
-

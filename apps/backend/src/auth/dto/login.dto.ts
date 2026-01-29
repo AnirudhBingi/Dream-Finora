@@ -1,4 +1,4 @@
-import { IsNotEmpty, Matches } from 'class-validator';
+import { IsNotEmpty } from 'class-validator';
 
 export class LoginDto {
   @IsNotEmpty({ message: 'Email or mobile number is required' })
@@ -8,4 +8,3 @@ export class LoginDto {
   @IsNotEmpty({ message: 'Password is required' })
   password: string;
 }
-

@@ -1,4 +1,12 @@
-import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, Min, Max } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsEnum,
+  IsDateString,
+  Min,
+  Max,
+} from 'class-validator';
 
 export class UpdateBudgetDto {
   @IsString()
@@ -36,4 +44,3 @@ export class UpdateBudgetDto {
   @IsOptional()
   warningThreshold?: number;
 }
-

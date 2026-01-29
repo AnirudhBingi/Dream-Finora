@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,20 +10,22 @@ import {
   Image,
   TextInput,
   Platform,
-} from 'react-native';
-import { SafeAreaView as RNSafeAreaView } from 'react-native-safe-area-context';
-import { getConversations, Conversation } from '../api/messagingApi';
-import { useAuth } from '../auth/authContext';
-import { Avatar } from '../components/Avatar';
-import { getAvatarUrl } from '../utils/avatar';
-import { EmptyState } from '../components/EmptyState';
-import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
-import { SkeletonConversationList } from '../components/SkeletonLoader';
-import { Header } from '../components/Header';
-import { MaterialIcons } from '@expo/vector-icons';
-import { RefreshControl } from 'react-native';
-import { getUnreadCount } from '../api/notificationApi';
-import { setBadgeCount } from '../services/pushNotifications';
+} from "react-native";
+import { SafeAreaView as RNSafeAreaView } from "react-native-safe-area-context";
+import { getConversations, Conversation } from "../api/messagingApi";
+import { useAuth } from "../auth/authContext";
+import { Avatar } from "../components/Avatar";
+import { getAvatarUrl } from "../utils/avatar";
+import { EmptyState } from "../components/EmptyState";
+import { ErrorState } from "../components/ErrorState";
+import { useDataFetch } from "../hooks/useDataFetch";
+import { SkeletonConversationList } from "../components/SkeletonLoader";
+import { Header } from "../components/Header";
+import { MaterialIcons } from "@expo/vector-icons";
+import { RefreshControl } from "react-native";
+import { getUnreadCount } from "../api/notificationApi";
+import { setBadgeCount } from "../services/pushNotifications";
+import { useTheme } from "../theme";
 
 interface ConversationListScreenProps {
   navigation?: {
@@ -37,7 +39,7 @@ interface ConversationListScreenProps {
   onNavigateToSettings?: () => void;
 }
 
-export default function ConversationListScreen({ 
+export default function ConversationListScreen({
   navigation,
   onBack,
   onNewMessage,
@@ -45,72 +47,82 @@ export default function ConversationListScreen({
   onNavigateToNotifications,
   onNavigateToSettings,
 }: ConversationListScreenProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { token, user } = useAuth();
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
 
-  const loadConversations = async (isRefresh = false, isPolling = false) => {
-    if (!token) return;
-
-    try {
-      setError(null);
-      if (isRefresh) {
-        setRefreshing(true);
-      } else if (!isPolling) {
-        // Only show loading state on initial load, not during polling
-        setLoading(true);
-      }
+  const {
+    data: conversationsData,
+    loading,
+    refreshing,
+    error,
+    refresh,
+    refetch,
+  } = useDataFetch<Conversation[]>({
+    fetchFn: async () => {
+      if (!token) throw new Error("No authentication token");
       const data = await getConversations(token);
       // Handle both array response and object with conversations/groups property
       let conversationsList: Conversation[] = [];
       if (Array.isArray(data)) {
         conversationsList = data;
-      } else if (data && typeof data === 'object') {
-        // Check for common response wrapper patterns
-        conversationsList = (data as any).conversations || (data as any).groups || [];
+      } else if (data && typeof data === "object") {
+        conversationsList =
+          (data as any).conversations || (data as any).groups || [];
       }
-      setConversations(conversationsList);
-      
+
       // Update notification badge count after loading conversations
-      if (token) {
-        try {
-          const unreadCount = await getUnreadCount(token);
-          await setBadgeCount(unreadCount);
-        } catch (err) {
-          console.error('Failed to update badge count:', err);
+      try {
+        const unreadCount = await getUnreadCount(token);
+        await setBadgeCount(unreadCount);
+      } catch (err: any) {
+        if (
+          err?.message &&
+          !err.message.includes("timeout") &&
+          !err.message.includes("timed out")
+        ) {
+          console.error("Failed to update badge count:", err);
         }
       }
-    } catch (err: any) {
-      // Only show error on initial load or refresh, not during polling
-      if (!isPolling) {
-        setError(getUserFriendlyErrorMessage(err));
-        setConversations([]); // Set empty array on error
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
 
+      return conversationsList;
+    },
+    immediate: true,
+    deps: [token],
+  });
+
+  const conversations = conversationsData ?? [];
+
+  // Poll for new conversations every 5 seconds (silently, without loading state)
   useEffect(() => {
-    loadConversations();
+    if (!token) return;
 
-    // Poll for new conversations every 5 seconds (silently, without loading state)
-    const interval = setInterval(() => loadConversations(false, true), 5000);
+    const interval = setInterval(() => {
+      // Silently refetch - the hook handles the data update
+      refetch().catch((err) => {
+        // Silently fail during polling
+        console.error("Polling error:", err);
+      });
+    }, 5000);
+
     return () => clearInterval(interval);
-  }, [token]);
+  }, [token, refetch]);
 
   // Filter conversations based on search query
   const filteredConversations = conversations.filter((conv) => {
     if (!searchQuery.trim()) return true;
     const query = searchQuery.toLowerCase();
-    const displayName = conv.otherParticipant?.profile?.displayName || conv.otherParticipant?.email || '';
-    const lastMessage = conv.lastMessage?.content || '';
-    return displayName.toLowerCase().includes(query) || lastMessage.toLowerCase().includes(query);
+    const displayName =
+      conv.otherParticipant?.profile?.displayName ||
+      conv.otherParticipant?.email ||
+      "";
+    const lastMessage = conv.lastMessage?.content || "";
+    return (
+      displayName.toLowerCase().includes(query) ||
+      lastMessage.toLowerCase().includes(query)
+    );
   });
 
   const formatTime = (dateString: string) => {
@@ -121,7 +133,7 @@ export default function ConversationListScreen({
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMins < 1) return 'Just now';
+    if (diffMins < 1) return "Just now";
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
@@ -129,14 +141,14 @@ export default function ConversationListScreen({
   };
 
   const renderConversation = ({ item }: { item: Conversation }) => {
-    const isGroupChat = item.type === 'group' || item.group !== null;
+    const isGroupChat = item.type === "group" || item.group !== null;
     const otherUser = item.otherParticipant;
     const group = item.group;
-    
+
     // Get display name - group chat or direct chat
-    let displayName = 'Unknown';
+    let displayName = "Unknown";
     let avatarUrl: string | null | undefined = null;
-    
+
     if (isGroupChat && group) {
       displayName = group.name;
       avatarUrl = group.avatarUrl;
@@ -146,12 +158,12 @@ export default function ConversationListScreen({
         displayName = otherUser.profile.displayName;
       } else if (otherUser.email) {
         // Extract name from email (part before @) and capitalize
-        const emailName = otherUser.email.split('@')[0];
+        const emailName = otherUser.email.split("@")[0];
         displayName = emailName.charAt(0).toUpperCase() + emailName.slice(1);
       }
       avatarUrl = otherUser.profile?.avatarUrl;
     }
-    
+
     const lastMessage = item.lastMessage;
     const hasUnread = item.unreadCount > 0;
 
@@ -160,7 +172,7 @@ export default function ConversationListScreen({
         style={styles.conversationItem}
         onPress={() => {
           if (navigation?.navigate) {
-            navigation.navigate('MessageThread', {
+            navigation.navigate("MessageThread", {
               chatId: item.id,
               otherUser: isGroupChat ? null : otherUser,
               group: isGroupChat ? group : null,
@@ -175,7 +187,7 @@ export default function ConversationListScreen({
             displayName={displayName}
             size={56}
             borderWidth={2}
-            borderColor="#FFFFFF"
+            borderColor={theme.colors.background}
           />
         ) : (
           <Avatar
@@ -183,12 +195,17 @@ export default function ConversationListScreen({
             displayName={displayName}
             size={56}
             borderWidth={2}
-            borderColor="#FFFFFF"
+            borderColor={theme.colors.background}
           />
         )}
         <View style={styles.conversationContent}>
           <View style={styles.conversationHeader}>
-            <Text style={[styles.conversationName, hasUnread && styles.conversationNameUnread]}>
+            <Text
+              style={[
+                styles.conversationName,
+                hasUnread && styles.conversationNameUnread,
+              ]}
+            >
               {displayName}
             </Text>
             {lastMessage && (
@@ -204,19 +221,20 @@ export default function ConversationListScreen({
                   {(() => {
                     // Try to get sender name from participants (simplified)
                     // In a real implementation, we'd need sender info in lastMessage
-                    return 'Someone: ';
+                    return "Someone: ";
                   })()}
                 </Text>
               )}
-              <Text 
-                style={[styles.lastMessage, hasUnread && styles.lastMessageUnread]} 
+              <Text
+                style={[
+                  styles.lastMessage,
+                  hasUnread && styles.lastMessageUnread,
+                ]}
                 numberOfLines={1}
               >
                 {lastMessage.content}
               </Text>
-              {hasUnread && (
-                <View style={styles.unreadDot} />
-              )}
+              {hasUnread && <View style={styles.unreadDot} />}
             </View>
           ) : (
             <Text style={styles.noMessages}>No messages yet</Text>
@@ -225,7 +243,7 @@ export default function ConversationListScreen({
         {hasUnread && (
           <View style={styles.unreadBadge}>
             <Text style={styles.unreadText}>
-              {item.unreadCount > 99 ? '99+' : item.unreadCount}
+              {item.unreadCount > 99 ? "99+" : item.unreadCount}
             </Text>
           </View>
         )}
@@ -243,7 +261,7 @@ export default function ConversationListScreen({
 
   if (loading) {
     return (
-      <RNSafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <RNSafeAreaView style={styles.container} edges={["top", "left", "right"]}>
         <Header
           title="Messages"
           onBack={handleBack}
@@ -257,7 +275,7 @@ export default function ConversationListScreen({
   }
 
   return (
-    <RNSafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <RNSafeAreaView style={styles.container} edges={["top", "left", "right"]}>
       <Header
         title="Messages"
         onBack={handleBack}
@@ -267,17 +285,17 @@ export default function ConversationListScreen({
               onPress={() => {
                 if (showSearch) {
                   // Clear search when closing
-                  setSearchQuery('');
+                  setSearchQuery("");
                 }
                 setShowSearch(!showSearch);
               }}
               style={styles.headerIconButton}
               activeOpacity={0.7}
             >
-              <MaterialIcons 
-                name={showSearch ? "close" : "search"} 
-                size={28} 
-                color="#FFFFFF" 
+              <MaterialIcons
+                name={showSearch ? "close" : "search"}
+                size={28}
+                color={theme.colors.white}
               />
             </TouchableOpacity>
             <TouchableOpacity
@@ -285,13 +303,13 @@ export default function ConversationListScreen({
                 if (onNewMessage) {
                   onNewMessage();
                 } else if (navigation?.navigate) {
-                  navigation.navigate('NewConversation');
+                  navigation.navigate("NewConversation");
                 }
               }}
               style={styles.headerIconButton}
               activeOpacity={0.7}
             >
-              <MaterialIcons name="edit" size={28} color="#FFFFFF" />
+              <MaterialIcons name="edit" size={28} color={theme.colors.white} />
             </TouchableOpacity>
           </View>
         }
@@ -300,29 +318,37 @@ export default function ConversationListScreen({
         showSettings={false}
       />
       {error ? (
-        <ErrorState message={error} onRetry={() => loadConversations(false)} />
+        <ErrorState message={error} onRetry={refetch} />
       ) : (
         <>
           {/* Search Bar - Only show when search icon is clicked */}
           {showSearch && (
             <View style={styles.searchContainer}>
               <View style={styles.searchBar}>
-                <MaterialIcons name="search" size={20} color="#9CA3AF" />
+                <MaterialIcons
+                  name="search"
+                  size={20}
+                  color={theme.colors.textTertiary}
+                />
                 <TextInput
                   style={styles.searchInput}
                   placeholder="Search conversations..."
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={theme.colors.textTertiary}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                   autoFocus={true}
                 />
                 {searchQuery.length > 0 && (
                   <TouchableOpacity
-                    onPress={() => setSearchQuery('')}
+                    onPress={() => setSearchQuery("")}
                     style={styles.searchClear}
                     activeOpacity={0.7}
                   >
-                    <MaterialIcons name="close" size={18} color="#9CA3AF" />
+                    <MaterialIcons
+                      name="close"
+                      size={18}
+                      color={theme.colors.textTertiary}
+                    />
                   </TouchableOpacity>
                 )}
               </View>
@@ -330,7 +356,11 @@ export default function ConversationListScreen({
           )}
           {filteredConversations.length === 0 && conversations.length > 0 ? (
             <View style={styles.emptySearchContainer}>
-              <MaterialIcons name="search-off" size={48} color="#9CA3AF" />
+              <MaterialIcons
+                name="search-off"
+                size={48}
+                color={theme.colors.textTertiary}
+              />
               <Text style={styles.emptySearchText}>No conversations found</Text>
               <Text style={styles.emptySearchSubtext}>
                 Try adjusting your search
@@ -339,11 +369,16 @@ export default function ConversationListScreen({
           ) : filteredConversations.length === 0 ? (
             <View style={styles.emptyContainer}>
               <View style={styles.emptyIconContainer}>
-                <MaterialIcons name="chat-bubble-outline" size={64} color="#9CA3AF" />
+                <MaterialIcons
+                  name="chat-bubble-outline"
+                  size={64}
+                  color={theme.colors.textTertiary}
+                />
               </View>
               <Text style={styles.emptyTitle}>No conversations yet</Text>
               <Text style={styles.emptyMessage}>
-                Start chatting with your friends, groups, or people from listings
+                Start chatting with your friends, groups, or people from
+                listings
               </Text>
               <TouchableOpacity
                 style={styles.emptyActionButton}
@@ -351,12 +386,16 @@ export default function ConversationListScreen({
                   if (onNewMessage) {
                     onNewMessage();
                   } else if (navigation?.navigate) {
-                    navigation.navigate('NewConversation');
+                    navigation.navigate("NewConversation");
                   }
                 }}
                 activeOpacity={0.7}
               >
-                <MaterialIcons name="add" size={20} color="#FFFFFF" />
+                <MaterialIcons
+                  name="add"
+                  size={20}
+                  color={theme.colors.white}
+                />
                 <Text style={styles.emptyActionButtonText}>New Message</Text>
               </TouchableOpacity>
             </View>
@@ -368,8 +407,8 @@ export default function ConversationListScreen({
               refreshControl={
                 <RefreshControl
                   refreshing={refreshing}
-                  onRefresh={() => loadConversations(true)}
-                  tintColor="#6366F1"
+                  onRefresh={refresh}
+                  tintColor={theme.colors.primary}
                 />
               }
               contentContainerStyle={styles.listContent}
@@ -381,285 +420,279 @@ export default function ConversationListScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-  },
-  searchContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: '#111827',
-    padding: 0,
-  },
-  searchClear: {
-    padding: 4,
-  },
-  emptySearchContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  emptySearchText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    marginTop: 16,
-    marginBottom: 4,
-  },
-  emptySearchSubtext: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  headerIconButton: {
-    position: 'relative',
-    padding: 8,
-    minWidth: 44,
-    minHeight: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#4F46E5',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  emptyIconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  emptyTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 8,
-    textAlign: 'center',
-    letterSpacing: -0.3,
-  },
-  emptyMessage: {
-    fontSize: 15,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 32,
-    lineHeight: 22,
-    paddingHorizontal: 16,
-  },
-  emptyActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#6366F1',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 12,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#6366F1',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  emptyActionButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  errorContainer: {
-    padding: 16,
-    backgroundColor: '#FFEBEE',
-    margin: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  errorText: {
-    color: '#C62828',
-    marginBottom: 8,
-  },
-  retryText: {
-    color: '#007AFF',
-    fontWeight: '600',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#666666',
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#999999',
-    textAlign: 'center',
-  },
-  listContent: {
-    padding: 16,
-    paddingTop: 8,
-  },
-  conversationItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    marginBottom: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  conversationContent: {
-    flex: 1,
-    marginLeft: 12,
-    gap: 4,
-  },
-  conversationHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  conversationName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    letterSpacing: -0.2,
-  },
-  conversationNameUnread: {
-    fontWeight: '700',
-  },
-  conversationTime: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '400',
-  },
-  lastMessageRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  lastMessage: {
-    flex: 1,
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 20,
-  },
-  lastMessageUnread: {
-    color: '#111827',
-    fontWeight: '500',
-  },
-  noMessages: {
-    fontSize: 14,
-    color: '#9CA3AF',
-    fontStyle: 'italic',
-  },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#6366F1',
-  },
-  unreadBadge: {
-    backgroundColor: '#6366F1',
-    borderRadius: 12,
-    minWidth: 24,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    marginLeft: 8,
-  },
-  unreadText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  groupAvatarContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  groupAvatarImage: {
-    width: '100%',
-    height: '100%',
-  },
-  groupAvatarText: {
-    fontSize: 24,
-    fontWeight: '700',
-    letterSpacing: -0.5,
-  },
-  lastMessageSender: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6366F1',
-    marginRight: 4,
-  },
-});
-
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.backgroundSecondary,
+    },
+    searchContainer: {
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 8,
+      backgroundColor: theme.colors.background,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+    },
+    searchBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: theme.colors.backgroundTertiary,
+      borderRadius: theme.spacing.md,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: 10,
+      gap: theme.spacing.sm,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textPrimary,
+      padding: 0,
+    },
+    searchClear: {
+      padding: 4,
+    },
+    emptySearchContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 32,
+    },
+    emptySearchText: {
+      fontSize: theme.typography.fontSize.lg,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+      marginTop: theme.spacing.base,
+      marginBottom: 4,
+    },
+    emptySearchSubtext: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+    },
+    headerActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    headerIconButton: {
+      position: "relative",
+      padding: 8,
+      minWidth: 44,
+      minHeight: 44,
+      justifyContent: "center",
+      alignItems: "center",
+      borderRadius: 22,
+      backgroundColor: theme.colors.surfaceOverlay,
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.primaryDark,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.2,
+          shadowRadius: 4,
+        },
+        android: {
+          elevation: 3,
+        },
+      }),
+    },
+    emptyContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 32,
+    },
+    emptyIconContainer: {
+      width: 120,
+      height: 120,
+      borderRadius: 60,
+      backgroundColor: theme.colors.backgroundTertiary,
+      justifyContent: "center",
+      alignItems: "center",
+      marginBottom: theme.spacing.xl,
+    },
+    emptyTitle: {
+      fontSize: theme.typography.fontSize["2xl"] + 2,
+      fontWeight: theme.typography.fontWeight.bold,
+      color: theme.colors.textPrimary,
+      marginBottom: theme.spacing.sm,
+      textAlign: "center",
+      letterSpacing: -0.3,
+    },
+    emptyMessage: {
+      fontSize: theme.typography.fontSize.sm + 1,
+      color: theme.colors.textSecondary,
+      textAlign: "center",
+      marginBottom: theme.spacing["2xl"],
+      lineHeight: 22,
+      paddingHorizontal: theme.spacing.base,
+    },
+    emptyActionButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.sm,
+      backgroundColor: theme.colors.primary,
+      paddingHorizontal: theme.spacing.xl,
+      paddingVertical: 14,
+      borderRadius: theme.spacing.md,
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.primary,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.2,
+          shadowRadius: 4,
+        },
+        android: {
+          elevation: 3,
+        },
+      }),
+    },
+    emptyActionButtonText: {
+      color: theme.colors.white,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    errorContainer: {
+      padding: theme.spacing.base,
+      backgroundColor: theme.colors.errorBackground,
+      margin: theme.spacing.base,
+      borderRadius: theme.spacing.sm,
+      alignItems: "center",
+    },
+    errorText: {
+      color: theme.colors.error,
+      marginBottom: theme.spacing.sm,
+    },
+    retryText: {
+      color: theme.colors.blue,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    emptyText: {
+      fontSize: 18,
+      fontWeight: "600",
+      color: theme.colors.textSecondary,
+      marginBottom: 8,
+    },
+    emptySubtext: {
+      fontSize: 14,
+      color: theme.colors.textTertiary,
+      textAlign: "center",
+    },
+    listContent: {
+      padding: 16,
+      paddingTop: 8,
+    },
+    conversationItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: theme.colors.background,
+      padding: theme.spacing.base,
+      marginBottom: theme.spacing.md,
+      borderRadius: theme.spacing.base,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.black,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.05,
+          shadowRadius: 8,
+        },
+        android: {
+          elevation: 2,
+        },
+      }),
+    },
+    conversationContent: {
+      flex: 1,
+      marginLeft: theme.spacing.md,
+      gap: 4,
+    },
+    conversationHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    conversationName: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+      letterSpacing: -0.2,
+    },
+    conversationNameUnread: {
+      fontWeight: theme.typography.fontWeight.bold,
+    },
+    conversationTime: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.textSecondary,
+      fontWeight: theme.typography.fontWeight.normal,
+    },
+    lastMessageRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.sm,
+    },
+    lastMessage: {
+      flex: 1,
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+      lineHeight: 20,
+    },
+    lastMessageUnread: {
+      color: theme.colors.textPrimary,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    noMessages: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textTertiary,
+      fontStyle: "italic",
+    },
+    unreadDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: theme.colors.primary,
+    },
+    unreadBadge: {
+      backgroundColor: theme.colors.primary,
+      borderRadius: theme.spacing.md,
+      minWidth: 24,
+      height: 24,
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: theme.spacing.sm,
+      marginLeft: theme.spacing.sm,
+    },
+    unreadText: {
+      color: theme.colors.white,
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.bold,
+    },
+    groupAvatarContainer: {
+      width: 56,
+      height: 56,
+      borderRadius: 16,
+      justifyContent: "center",
+      alignItems: "center",
+      overflow: "hidden",
+    },
+    groupAvatarImage: {
+      width: "100%",
+      height: "100%",
+    },
+    groupAvatarText: {
+      fontSize: 24,
+      fontWeight: "700",
+      letterSpacing: -0.5,
+    },
+    lastMessageSender: {
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.primary,
+      marginRight: 4,
+    },
+  });

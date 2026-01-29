@@ -13,4 +13,3 @@ import { TrustScoreModule } from '../trust-score/trust-score.module';
   exports: [FriendService],
 })
 export class FriendModule {}
-

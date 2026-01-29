@@ -1,6 +1,6 @@
-import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
-import Constants from 'expo-constants';
+import * as Notifications from "expo-notifications";
+import { Platform } from "react-native";
+import Constants from "expo-constants";
 
 // Configure how notifications are handled when app is in foreground
 Notifications.setNotificationHandler({
@@ -8,6 +8,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -22,22 +24,23 @@ export interface PushNotificationToken {
  */
 export async function requestPushNotificationPermissions(): Promise<boolean> {
   try {
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    const { status: existingStatus } =
+      await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 
-    if (existingStatus !== 'granted') {
+    if (existingStatus !== "granted") {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
 
-    if (finalStatus !== 'granted') {
-      console.warn('Push notification permission not granted');
+    if (finalStatus !== "granted") {
+      console.warn("Push notification permission not granted");
       return false;
     }
 
     return true;
   } catch (error) {
-    console.error('Error requesting push notification permissions:', error);
+    console.error("Error requesting push notification permissions:", error);
     return false;
   }
 }
@@ -50,14 +53,16 @@ export async function getPushNotificationToken(): Promise<string | null> {
   try {
     const hasPermission = await requestPushNotificationPermissions();
     if (!hasPermission) {
-      console.log('[PushNotifications] Permission not granted, skipping token request');
+      console.log(
+        "[PushNotifications] Permission not granted, skipping token request",
+      );
       return null;
     }
 
     // Get project ID from Constants or environment
     // For Expo Go, this is usually available in Constants.expoConfig
     // For standalone builds, it should be in app.json or environment variable
-    const projectId = 
+    const projectId =
       Constants.expoConfig?.extra?.eas?.projectId ||
       process.env.EXPO_PROJECT_ID ||
       Constants.expoConfig?.extra?.projectId;
@@ -75,15 +80,20 @@ export async function getPushNotificationToken(): Promise<string | null> {
     } catch (tokenError: any) {
       // If projectId is missing and that's the error, log and return null
       // This is expected in Expo Go development mode
-      if (tokenError?.message?.includes('projectId')) {
-        console.log('[PushNotifications] projectId not available (Expo Go mode) - push notifications disabled for development');
+      if (tokenError?.message?.includes("projectId")) {
+        console.log(
+          "[PushNotifications] projectId not available (Expo Go mode) - push notifications disabled for development",
+        );
         return null;
       }
       // Re-throw other errors
       throw tokenError;
     }
   } catch (error) {
-    console.error('[PushNotifications] Error getting push notification token:', error);
+    console.error(
+      "[PushNotifications] Error getting push notification token:",
+      error,
+    );
     return null;
   }
 }
@@ -101,10 +111,10 @@ export async function registerDeviceForPushNotifications(): Promise<PushNotifica
 
     return {
       token,
-      deviceId: '', // Device ID not needed for Expo push notifications
+      deviceId: "", // Device ID not needed for Expo push notifications
     };
   } catch (error) {
-    console.error('Error registering device for push notifications:', error);
+    console.error("Error registering device for push notifications:", error);
     return null;
   }
 }
@@ -115,13 +125,18 @@ export async function registerDeviceForPushNotifications(): Promise<PushNotifica
  */
 export function setupNotificationListeners(
   onNotificationReceived: (notification: Notifications.Notification) => void,
-  onNotificationTapped: (notification: Notifications.NotificationResponse) => void,
+  onNotificationTapped: (
+    notification: Notifications.NotificationResponse,
+  ) => void,
 ) {
   // Listener for notifications received while app is in foreground
-  const receivedListener = Notifications.addNotificationReceivedListener(onNotificationReceived);
+  const receivedListener = Notifications.addNotificationReceivedListener(
+    onNotificationReceived,
+  );
 
   // Listener for when user taps on a notification
-  const responseListener = Notifications.addNotificationResponseReceivedListener(onNotificationTapped);
+  const responseListener =
+    Notifications.addNotificationResponseReceivedListener(onNotificationTapped);
 
   return () => {
     receivedListener.remove();
@@ -168,4 +183,3 @@ export async function getBadgeCount(): Promise<number> {
 export async function setBadgeCount(count: number) {
   await Notifications.setBadgeCountAsync(count);
 }
-

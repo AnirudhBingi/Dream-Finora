@@ -14,10 +14,31 @@ import { ExpenseModule } from '../expense/expense.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
 
 @Module({
-  imports: [PrismaModule, SharedModule, forwardRef(() => ExpenseModule), AnalyticsModule],
-  controllers: [FinanceController, BudgetController, GoalController, LoanController],
-  providers: [BudgetService, GoalService, LoanService, FinanceService, FinancialAdvisorService],
-  exports: [FinanceService, BudgetService, GoalService, LoanService, FinancialAdvisorService],
+  imports: [
+    PrismaModule,
+    SharedModule,
+    forwardRef(() => ExpenseModule),
+    AnalyticsModule,
+  ],
+  controllers: [
+    FinanceController,
+    BudgetController,
+    GoalController,
+    LoanController,
+  ],
+  providers: [
+    BudgetService,
+    GoalService,
+    LoanService,
+    FinanceService,
+    FinancialAdvisorService,
+  ],
+  exports: [
+    FinanceService,
+    BudgetService,
+    GoalService,
+    LoanService,
+    FinancialAdvisorService,
+  ],
 })
 export class FinanceModule {}
-

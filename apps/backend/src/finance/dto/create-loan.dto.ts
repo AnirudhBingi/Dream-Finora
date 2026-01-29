@@ -1,4 +1,12 @@
-import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, Min, IsInt } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsEnum,
+  IsDateString,
+  Min,
+  IsInt,
+} from 'class-validator';
 
 export class CreateLoanDto {
   @IsString()
@@ -51,4 +59,3 @@ export class CreateLoanDto {
   @IsOptional()
   context?: 'local' | 'home';
 }
-

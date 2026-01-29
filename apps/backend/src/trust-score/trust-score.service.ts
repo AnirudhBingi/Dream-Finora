@@ -8,11 +8,18 @@ export interface TrustScoreBreakdown {
   expenseScore: number;
   choreScore: number;
   communityScore: number;
+  reliabilityScore: number;
+  responsivenessScore: number;
+  accountTrustScore: number;
   breakdown: {
     expense: {
       onTimeSettlementRate: number;
       recentActivityBonus: number;
       volumeBonus: number;
+      organizerCompletionRate: number;
+      organizerBonus: number;
+      payerCompletionRate: number;
+      payerBonus: number;
       rawScore: number;
     };
     chore: {
@@ -21,12 +28,25 @@ export interface TrustScoreBreakdown {
       pointsBonus: number;
       streakBonus: number;
       achievementsBonus: number;
+      organizerCompletionRate: number;
+      organizerBonus: number;
       rawScore: number;
     };
     community: {
       listingSuccessRate: number;
       engagementRate: number;
+      postEngagementRate: number;
+      postActivityBonus: number;
+      rawScore: number;
+    };
+    responsiveness: {
       responseRate: number;
+      rawScore: number;
+    };
+    accountTrust: {
+      emailVerified: boolean;
+      profileCompletionRate: number;
+      tenureScore: number;
       rawScore: number;
     };
   };
@@ -36,12 +56,54 @@ export interface TrustScoreBreakdown {
 export class TrustScoreService {
   constructor(private prisma: PrismaService) {}
 
+  private getPublicTrustScoreWhere(): Prisma.TrustScoreWhereInput {
+    return {
+      OR: [
+        {
+          User: {
+            UserProfile: {
+              trustScoreVisibility: 'public',
+            },
+          },
+        },
+        {
+          User: {
+            UserProfile: {
+              is: null,
+            },
+          },
+        },
+      ],
+    };
+  }
+
+  private getPeriodStart(period: 'all-time' | 'weekly' | 'monthly') {
+    const now = new Date();
+    if (period === 'monthly') {
+      return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    }
+    if (period === 'weekly') {
+      const day = now.getUTCDay();
+      const diff = (day === 0 ? -6 : 1) - day;
+      const start = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+      );
+      start.setUTCDate(start.getUTCDate() + diff);
+      return start;
+    }
+    return new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+  }
+
   /**
-   * Calculate complete trust score based on expense, chore, and community metrics
-   * Formula:
-   * - Expense Score (40%): onTimeSettlementRate * 0.5 + recentActivityBonus * 0.3 + volumeBonus * 0.2
-   * - Chore Score (30%): completionRate * 0.4 + onTimeRate * 0.3 + pointsBonus * 0.3
-   * - Community Score (30%): listingSuccessRate * 0.5 + engagementRate * 0.3 + responseRate * 0.2
+   * Calculate complete trust score based on reliability, community value,
+   * responsiveness, and account trust.
+   * Weights:
+   * - Reliability (70%): Expense (35%) + Chore (35%)
+   * - Community (15%): Listing success + engagement
+   * - Responsiveness (10%): Message response rate
+   * - Account trust (5%): Verification, profile completeness, tenure
    */
   async calculateTrustScore(userId: string): Promise<number> {
     const breakdown = await this.calculateTrustScoreBreakdown(userId);
@@ -57,14 +119,25 @@ export class TrustScoreService {
     const expenseScoreData = await this.calculateExpenseScore(userId);
     const choreScoreData = await this.calculateChoreScore(userId);
     const communityScoreData = await this.calculateCommunityScore(userId);
+    const responsivenessScoreData =
+      await this.calculateResponsivenessScore(userId);
+    const accountTrustScoreData = await this.calculateAccountTrustScore(userId);
 
     // Calculate weighted scores
-    const expenseScore = expenseScoreData.rawScore * 0.4; // 40% weight
-    const choreScore = choreScoreData.rawScore * 0.3; // 30% weight
-    const communityScore = communityScoreData.rawScore * 0.3; // 30% weight
+    const expenseScore = expenseScoreData.rawScore * 0.35; // 35% weight
+    const choreScore = choreScoreData.rawScore * 0.35; // 35% weight
+    const reliabilityScore = expenseScore + choreScore;
+    const communityScore = communityScoreData.rawScore * 0.15; // 15% weight
+    const responsivenessScore = responsivenessScoreData.rawScore * 0.1; // 10% weight
+    const accountTrustScore = accountTrustScoreData.rawScore * 0.05; // 5% weight
 
     const total = Math.min(
-      Math.round(expenseScore + choreScore + communityScore),
+      Math.round(
+        reliabilityScore +
+          communityScore +
+          responsivenessScore +
+          accountTrustScore,
+      ),
       100,
     );
 
@@ -73,10 +146,15 @@ export class TrustScoreService {
       expenseScore,
       choreScore,
       communityScore,
+      reliabilityScore,
+      responsivenessScore,
+      accountTrustScore,
       breakdown: {
         expense: expenseScoreData,
         chore: choreScoreData,
         community: communityScoreData,
+        responsiveness: responsivenessScoreData,
+        accountTrust: accountTrustScoreData,
       },
     };
   }
@@ -104,14 +182,23 @@ export class TrustScoreService {
       },
     });
 
-    if (splits.length === 0) {
-      return {
-        onTimeSettlementRate: 0,
-        recentActivityBonus: 0,
-        volumeBonus: 0,
-        rawScore: 0,
-      };
-    }
+    const createdExpenses = await this.prisma.expense.findMany({
+      where: {
+        createdBy: userId,
+      },
+      include: {
+        ExpenseSplit: true,
+      },
+    });
+
+    const paidByExpenses = await this.prisma.expense.findMany({
+      where: {
+        paidBy: userId,
+      },
+      include: {
+        ExpenseSplit: true,
+      },
+    });
 
     // Calculate on-time settlement rate (paid within 7 days of expense creation)
     const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
@@ -140,11 +227,37 @@ export class TrustScoreService {
     // Calculate volume bonus (normalized: 10+ transactions = 1.0, scaled down)
     const volumeBonus = Math.min(splits.length / 10, 1.0);
 
+    function getSettlementRate(
+      expenses: Array<{ ExpenseSplit: { isPaid: boolean }[] }>,
+    ) {
+      const totalSplits = expenses.reduce(
+        (sum, expense) => sum + expense.ExpenseSplit.length,
+        0,
+      );
+      const paidSplits = expenses.reduce(
+        (sum, expense) =>
+          sum + expense.ExpenseSplit.filter((split) => split.isPaid).length,
+        0,
+      );
+      return totalSplits > 0 ? paidSplits / totalSplits : 0;
+    }
+
+    const organizerCompletionRate = getSettlementRate(createdExpenses);
+    const organizerVolumeBonus = Math.min(createdExpenses.length / 5, 1.0);
+    const organizerBonus =
+      organizerCompletionRate * 0.7 + organizerVolumeBonus * 0.3;
+
+    const payerCompletionRate = getSettlementRate(paidByExpenses);
+    const payerVolumeBonus = Math.min(paidByExpenses.length / 5, 1.0);
+    const payerBonus = payerCompletionRate * 0.7 + payerVolumeBonus * 0.3;
+
     // Calculate raw score (0-100)
     const rawScore = Math.round(
-      (onTimeSettlementRate * 0.5 +
-        recentActivityBonus * 0.3 +
-        volumeBonus * 0.2) *
+      (onTimeSettlementRate * 0.35 +
+        recentActivityBonus * 0.2 +
+        volumeBonus * 0.1 +
+        organizerBonus * 0.2 +
+        payerBonus * 0.15) *
         100,
     );
 
@@ -152,6 +265,10 @@ export class TrustScoreService {
       onTimeSettlementRate,
       recentActivityBonus,
       volumeBonus,
+      organizerCompletionRate,
+      organizerBonus,
+      payerCompletionRate,
+      payerBonus,
       rawScore,
     };
   }
@@ -207,6 +324,8 @@ export class TrustScoreService {
         pointsBonus: 0,
         streakBonus: 0,
         achievementsBonus: 0,
+        organizerCompletionRate: 0,
+        organizerBonus: 0,
         rawScore: 0,
       };
     }
@@ -255,14 +374,29 @@ export class TrustScoreService {
       streak,
     );
 
+    const createdChores = await this.prisma.chore.findMany({
+      where: { createdBy: userId },
+      include: { ChoreCompletion: true },
+    });
+    const organizerCompletions = createdChores.filter((chore) =>
+      chore.ChoreCompletion.some((completion) => completion.userId !== userId),
+    );
+    const organizerCompletionRate =
+      createdChores.length > 0
+        ? organizerCompletions.length / createdChores.length
+        : 0;
+    const organizerVolumeBonus = Math.min(createdChores.length / 5, 1.0);
+    const organizerBonus =
+      organizerCompletionRate * 0.7 + organizerVolumeBonus * 0.3;
+
     // Calculate raw score (0-100)
-    // Weights: completionRate (35%), onTimeRate (25%), pointsBonus (20%), streakBonus (10%), achievementsBonus (10%)
     const rawScore = Math.round(
-      (completionRate * 0.35 +
-        onTimeRate * 0.25 +
-        pointsBonus * 0.2 +
+      (completionRate * 0.3 +
+        onTimeRate * 0.2 +
+        pointsBonus * 0.15 +
         streakBonus * 0.1 +
-        achievementsBonus * 0.1) *
+        achievementsBonus * 0.1 +
+        organizerBonus * 0.15) *
         100,
     );
 
@@ -272,6 +406,8 @@ export class TrustScoreService {
       pointsBonus,
       streakBonus,
       achievementsBonus,
+      organizerCompletionRate,
+      organizerBonus,
       rawScore,
     };
   }
@@ -378,15 +514,26 @@ export class TrustScoreService {
   /**
    * Calculate community score (max 100 points, weighted to 30%)
    * Components:
-   * - Listing success rate (50%): Percentage of listings marked as completed/closed
-   * - Engagement rate (30%): Number of listings created (normalized)
-   * - Response rate (20%): Percentage of messages responded to within 24 hours
+   * - Listing success rate (60%): Percentage of listings marked as completed/closed
+   * - Engagement rate (40%): Number of listings created (normalized)
    */
   private async calculateCommunityScore(userId: string) {
     // Get all listings by user
     const listings = await this.prisma.listing.findMany({
       where: {
         userId,
+      },
+    });
+
+    const posts = await this.prisma.post.findMany({
+      where: {
+        userId,
+      },
+      select: {
+        likesCount: true,
+        commentsCount: true,
+        sharesCount: true,
+        createdAt: true,
       },
     });
 
@@ -401,8 +548,50 @@ export class TrustScoreService {
     // Calculate engagement rate (normalized: 10+ listings = 1.0)
     const engagementRate = Math.min(listings.length / 10, 1.0);
 
-    // Calculate response rate (messages responded to within 24 hours)
-    // Get all chats where user is a participant
+    const postEngagementTotal = posts.reduce(
+      (sum, post) =>
+        sum + post.likesCount + post.commentsCount * 2 + post.sharesCount * 3,
+      0,
+    );
+    const postEngagementRate =
+      posts.length > 0
+        ? Math.min(postEngagementTotal / (posts.length * 10), 1.0)
+        : 0;
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const recentPosts = posts.filter((post) => post.createdAt >= thirtyDaysAgo);
+    let postActivityBonus = 0;
+    if (recentPosts.length >= 5) {
+      postActivityBonus = 1.0;
+    } else if (recentPosts.length >= 1) {
+      postActivityBonus = 0.5;
+    }
+
+    // Calculate raw score (0-100)
+    // Multiply by 100 first, then round to avoid rounding small decimals to 0
+    const rawScore = Math.round(
+      (listingSuccessRate * 0.4 +
+        engagementRate * 0.2 +
+        postEngagementRate * 0.3 +
+        postActivityBonus * 0.1) *
+        100,
+    );
+
+    return {
+      listingSuccessRate,
+      engagementRate,
+      postEngagementRate,
+      postActivityBonus,
+      rawScore,
+    };
+  }
+
+  /**
+   * Calculate responsiveness score (max 100 points)
+   * Components:
+   * - Response rate (100%): Percentage of messages responded to within 24 hours
+   */
+  private async calculateResponsivenessScore(userId: string) {
     const chatParticipants = await this.prisma.chatParticipant.findMany({
       where: {
         userId,
@@ -420,22 +609,16 @@ export class TrustScoreService {
       },
     });
 
-    // Count messages received (from others) and check if user responded within 24 hours
     let messagesReceived = 0;
     let responsesWithin24h = 0;
     const twentyFourHoursInMs = 24 * 60 * 60 * 1000;
 
     for (const participant of chatParticipants) {
       const messages = participant.Chat.Message;
-
       for (let i = 0; i < messages.length; i++) {
         const message = messages[i];
-
-        // If message is from someone else, count it as received
         if (message.senderId !== userId) {
           messagesReceived++;
-
-          // Check if user responded within 24 hours (look for next message from user)
           for (let j = i + 1; j < messages.length; j++) {
             const nextMessage = messages[j];
             if (nextMessage.senderId === userId) {
@@ -444,7 +627,7 @@ export class TrustScoreService {
               if (timeToRespond <= twentyFourHoursInMs) {
                 responsesWithin24h++;
               }
-              break; // Only count the first response
+              break;
             }
           }
         }
@@ -452,19 +635,69 @@ export class TrustScoreService {
     }
 
     const responseRate =
-      messagesReceived > 0 ? responsesWithin24h / messagesReceived : 0;
+      messagesReceived > 0 ? responsesWithin24h / messagesReceived : 0.5;
+    const rawScore = Math.round(responseRate * 100);
 
-    // Calculate raw score (0-100)
-    // Multiply by 100 first, then round to avoid rounding small decimals to 0
+    return {
+      responseRate,
+      rawScore,
+    };
+  }
+
+  /**
+   * Calculate account trust score (max 100 points)
+   * Components:
+   * - Email verified (40%)
+   * - Profile completeness (30%)
+   * - Account tenure (30%)
+   */
+  private async calculateAccountTrustScore(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        UserProfile: true,
+      },
+    });
+
+    if (!user) {
+      return {
+        emailVerified: false,
+        profileCompletionRate: 0,
+        tenureScore: 0,
+        rawScore: 0,
+      };
+    }
+
+    const emailVerified = Boolean(user.emailVerified);
+    const profileFields = [
+      user.UserProfile?.displayName,
+      user.UserProfile?.avatarUrl,
+      user.UserProfile?.bio,
+    ];
+    const completedFields = profileFields.filter(
+      (field) => field != null && field !== '',
+    ).length;
+    const profileCompletionRate = completedFields / profileFields.length;
+
+    const accountAgeDays = Math.max(
+      0,
+      Math.floor(
+        (Date.now() - user.createdAt.getTime()) / (1000 * 60 * 60 * 24),
+      ),
+    );
+    const tenureScore = Math.min(accountAgeDays / 180, 1);
+
     const rawScore = Math.round(
-      (listingSuccessRate * 0.5 + engagementRate * 0.3 + responseRate * 0.2) *
+      (Number(emailVerified) * 0.4 +
+        profileCompletionRate * 0.3 +
+        tenureScore * 0.3) *
         100,
     );
 
     return {
-      listingSuccessRate,
-      engagementRate,
-      responseRate,
+      emailVerified,
+      profileCompletionRate,
+      tenureScore,
       rawScore,
     };
   }
@@ -599,6 +832,9 @@ export class TrustScoreService {
       expenseScore: breakdownData.expenseScore,
       choreScore: breakdownData.choreScore,
       communityScore: breakdownData.communityScore,
+      reliabilityScore: breakdownData.reliabilityScore,
+      responsivenessScore: breakdownData.responsivenessScore,
+      accountTrustScore: breakdownData.accountTrustScore,
     };
   }
 
@@ -796,6 +1032,16 @@ export class TrustScoreService {
           'Engage in more expense transactions to increase your volume bonus',
         );
       }
+      if (breakdown.breakdown.expense.organizerBonus < 0.5) {
+        suggestions.push(
+          'Create shared bills and track settlements to improve your reliability score',
+        );
+      }
+      if (breakdown.breakdown.expense.payerBonus < 0.5) {
+        suggestions.push(
+          'Covering group bills and getting them settled boosts your reliability score',
+        );
+      }
     }
 
     // Chore suggestions
@@ -818,6 +1064,11 @@ export class TrustScoreService {
           'Maintain a daily chore completion streak to boost your streak bonus',
         );
       }
+      if (breakdown.breakdown.chore.organizerBonus < 0.5) {
+        suggestions.push(
+          'Create and organize chores so others complete them on time',
+        );
+      }
     }
 
     // Community suggestions
@@ -832,17 +1083,39 @@ export class TrustScoreService {
           'Create more listings to increase your engagement rate',
         );
       }
-      if (breakdown.breakdown.community.responseRate < 0.8) {
+      if (breakdown.breakdown.community.postEngagementRate < 0.4) {
         suggestions.push(
-          'Respond to messages within 24 hours to improve your response rate',
+          'Engage more on posts to boost your community contribution',
         );
       }
+      if (breakdown.breakdown.community.postActivityBonus < 0.5) {
+        suggestions.push(
+          'Post more consistently to improve your activity score',
+        );
+      }
+    }
+
+    // Responsiveness suggestions
+    if (breakdown.breakdown.responsiveness.rawScore < 70) {
+      if (breakdown.breakdown.responsiveness.responseRate < 0.7) {
+        suggestions.push(
+          'Respond to messages within 24 hours to improve your responsiveness score',
+        );
+      }
+    }
+
+    // Account trust suggestions
+    if (!breakdown.breakdown.accountTrust.emailVerified) {
+      suggestions.push('Verify your email to boost your account trust score');
+    }
+    if (breakdown.breakdown.accountTrust.profileCompletionRate < 0.7) {
+      suggestions.push('Complete your profile to improve account trust');
     }
 
     // What affects score breakdown
     const affectsScore = {
       expense: {
-        weight: 40,
+        weight: 35,
         components: [
           {
             name: 'On-time settlement rate',
@@ -856,10 +1129,18 @@ export class TrustScoreService {
             name: 'Transaction volume',
             impact: breakdown.breakdown.expense.volumeBonus * 20,
           },
+          {
+            name: 'Shared bill organization',
+            impact: breakdown.breakdown.expense.organizerBonus * 20,
+          },
+          {
+            name: 'Primary payer reliability',
+            impact: breakdown.breakdown.expense.payerBonus * 15,
+          },
         ],
       },
       chore: {
-        weight: 30,
+        weight: 35,
         components: [
           {
             name: 'Completion rate',
@@ -881,26 +1162,82 @@ export class TrustScoreService {
             name: 'Achievements',
             impact: breakdown.breakdown.chore.achievementsBonus * 10,
           },
+          {
+            name: 'Chore organizer reliability',
+            impact: breakdown.breakdown.chore.organizerBonus * 15,
+          },
         ],
       },
       community: {
-        weight: 30,
+        weight: 15,
         components: [
           {
             name: 'Listing success rate',
-            impact: breakdown.breakdown.community.listingSuccessRate * 50,
+            impact: breakdown.breakdown.community.listingSuccessRate * 40,
           },
           {
             name: 'Engagement rate',
-            impact: breakdown.breakdown.community.engagementRate * 30,
+            impact: breakdown.breakdown.community.engagementRate * 20,
           },
           {
+            name: 'Post engagement',
+            impact: breakdown.breakdown.community.postEngagementRate * 30,
+          },
+          {
+            name: 'Post activity',
+            impact: breakdown.breakdown.community.postActivityBonus * 10,
+          },
+        ],
+      },
+      responsiveness: {
+        weight: 10,
+        components: [
+          {
             name: 'Message response rate',
-            impact: breakdown.breakdown.community.responseRate * 20,
+            impact: breakdown.breakdown.responsiveness.responseRate * 100,
+          },
+        ],
+      },
+      accountTrust: {
+        weight: 5,
+        components: [
+          {
+            name: 'Email verification',
+            impact: breakdown.breakdown.accountTrust.emailVerified ? 40 : 0,
+          },
+          {
+            name: 'Profile completeness',
+            impact: breakdown.breakdown.accountTrust.profileCompletionRate * 30,
+          },
+          {
+            name: 'Account tenure',
+            impact: breakdown.breakdown.accountTrust.tenureScore * 30,
           },
         ],
       },
     };
+
+    const historyByDay = new Map<
+      string,
+      { score: number; createdAt: Date; reason: string | null }
+    >();
+    const historyAscending = [...history].reverse();
+    historyAscending.forEach((entry) => {
+      const dayKey = entry.createdAt.toISOString().slice(0, 10);
+      historyByDay.set(dayKey, {
+        score: entry.score,
+        createdAt: entry.createdAt,
+        reason: entry.reason,
+      });
+    });
+    const dailyHistory = Array.from(historyByDay.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-7)
+      .map(([, entry]) => ({
+        score: entry.score,
+        timestamp: entry.createdAt,
+        reason: entry.reason,
+      }));
 
     return {
       currentScore: breakdown.total,
@@ -913,11 +1250,7 @@ export class TrustScoreService {
       breakdown: breakdown.breakdown,
       affectsScore,
       suggestions,
-      history: history.slice(0, 30).map((h) => ({
-        score: h.score,
-        timestamp: h.createdAt,
-        reason: h.reason,
-      })),
+      history: dailyHistory,
     };
   }
 
@@ -1003,5 +1336,431 @@ export class TrustScoreService {
         'Community activity',
       );
     }
+  }
+
+  /**
+   * Get global leaderboard (top users by FinScore)
+   * Only includes users with public trust score visibility
+   */
+  async getLeaderboard(options?: {
+    limit?: number;
+    offset?: number;
+    category?: 'overall' | 'expense' | 'chore' | 'community';
+  }): Promise<{
+    users: Array<{
+      userId: string;
+      displayName: string;
+      avatarUrl: string | null;
+      finscore: number;
+      rank: number;
+      badge?: string;
+    }>;
+    total: number;
+    userRank: number | null;
+  }> {
+    const limit = options?.limit || 100;
+    const offset = options?.offset || 0;
+
+    // Calculate category-specific scores if needed
+    let rankedUsers: Array<{
+      userId: string;
+      displayName: string;
+      avatarUrl: string | null;
+      finscore: number;
+      rank: number;
+      badge?: string;
+    }> = [];
+
+    if (options?.category && options.category !== 'overall') {
+      const publicScores = await this.prisma.trustScore.findMany({
+        where: this.getPublicTrustScoreWhere(),
+        include: {
+          User: {
+            select: {
+              id: true,
+              email: true,
+              UserProfile: {
+                select: {
+                  displayName: true,
+                  avatarUrl: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          score: 'desc',
+        },
+      });
+
+      // For category-specific leaderboards, need to calculate breakdowns
+      const scoresWithBreakdowns = await Promise.all(
+        publicScores.map(async (ts) => {
+          const breakdown = await this.calculateTrustScoreBreakdown(ts.userId);
+          let categoryScore = 0;
+
+          if (options.category === 'expense') {
+            categoryScore = breakdown.expenseScore;
+          } else if (options.category === 'chore') {
+            categoryScore = breakdown.choreScore;
+          } else if (options.category === 'community') {
+            categoryScore = breakdown.communityScore;
+          }
+
+          return {
+            userId: ts.userId,
+            displayName: ts.User.UserProfile?.displayName || ts.User.email,
+            avatarUrl: ts.User.UserProfile?.avatarUrl || null,
+            finscore: Math.round(categoryScore),
+          };
+        }),
+      );
+
+      // Sort by category score
+      scoresWithBreakdowns.sort((a, b) => b.finscore - a.finscore);
+
+      rankedUsers = scoresWithBreakdowns.map((user, index) => ({
+        ...user,
+        rank: index + 1,
+        badge: this.getRankBadge(index + 1),
+      }));
+    } else {
+      const [total, trustScores] = await Promise.all([
+        this.prisma.trustScore.count({
+          where: this.getPublicTrustScoreWhere(),
+        }),
+        this.prisma.trustScore.findMany({
+          where: this.getPublicTrustScoreWhere(),
+          include: {
+            User: {
+              select: {
+                id: true,
+                email: true,
+                UserProfile: {
+                  select: {
+                    displayName: true,
+                    avatarUrl: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: {
+            score: 'desc',
+          },
+          skip: offset,
+          take: limit,
+        }),
+      ]);
+
+      // Overall leaderboard (use existing score)
+      rankedUsers = trustScores.map((ts, index) => ({
+        userId: ts.userId,
+        displayName: ts.User.UserProfile?.displayName || ts.User.email,
+        avatarUrl: ts.User.UserProfile?.avatarUrl || null,
+        finscore: ts.score,
+        rank: offset + index + 1,
+        badge: this.getRankBadge(offset + index + 1),
+      }));
+      return {
+        users: rankedUsers,
+        total,
+        userRank: null,
+      };
+    }
+
+    const total = rankedUsers.length;
+    const paginatedUsers = rankedUsers.slice(offset, offset + limit);
+
+    return {
+      users: paginatedUsers,
+      total,
+      userRank: null, // Will be set by caller if userId provided
+    };
+  }
+
+  /**
+   * Get user's rank in leaderboard
+   */
+  async getUserRank(
+    userId: string,
+    category?: 'overall' | 'expense' | 'chore' | 'community',
+  ): Promise<number | null> {
+    // Check if user's trust score is public
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        UserProfile: {
+          select: {
+            trustScoreVisibility: true,
+          },
+        },
+      },
+    });
+
+    if (!user || user.UserProfile?.trustScoreVisibility === 'private') {
+      return null;
+    }
+
+    if (category && category !== 'overall') {
+      const publicScores = await this.prisma.trustScore.findMany({
+        where: this.getPublicTrustScoreWhere(),
+        include: {
+          User: {
+            select: {
+              UserProfile: {
+                select: {
+                  trustScoreVisibility: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          score: 'desc',
+        },
+      });
+
+      // For category-specific, need to calculate breakdowns
+      const scoresWithBreakdowns = await Promise.all(
+        publicScores.map(async (ts) => {
+          const breakdown = await this.calculateTrustScoreBreakdown(ts.userId);
+          let categoryScore = 0;
+
+          if (category === 'expense') {
+            categoryScore = breakdown.expenseScore;
+          } else if (category === 'chore') {
+            categoryScore = breakdown.choreScore;
+          } else if (category === 'community') {
+            categoryScore = breakdown.communityScore;
+          }
+
+          return {
+            userId: ts.userId,
+            score: Math.round(categoryScore),
+          };
+        }),
+      );
+
+      scoresWithBreakdowns.sort((a, b) => b.score - a.score);
+      const userIndex = scoresWithBreakdowns.findIndex(
+        (u) => u.userId === userId,
+      );
+      return userIndex >= 0 ? userIndex + 1 : null;
+    } else {
+      const trustScore = await this.prisma.trustScore.findUnique({
+        where: { userId },
+      });
+      if (!trustScore) {
+        return null;
+      }
+
+      const higherCount = await this.prisma.trustScore.count({
+        where: {
+          ...this.getPublicTrustScoreWhere(),
+          score: {
+            gt: trustScore.score,
+          },
+        },
+      });
+
+      return higherCount + 1;
+    }
+  }
+
+  async getRankHistory(
+    userId: string,
+    options?: {
+      limit?: number;
+      category?: 'overall' | 'expense' | 'chore' | 'community';
+      period?: 'all-time' | 'weekly' | 'monthly';
+    },
+  ) {
+    const category = options?.category || 'overall';
+    const period = options?.period || 'all-time';
+    const date = this.getPeriodStart(period);
+
+    const [rank, totalUsers] = await Promise.all([
+      this.getUserRank(userId, category),
+      this.prisma.trustScore.count({ where: this.getPublicTrustScoreWhere() }),
+    ]);
+
+    if (rank) {
+      await this.prisma.trustScoreRankHistory.upsert({
+        where: {
+          userId_category_period_date: {
+            userId,
+            category,
+            period,
+            date,
+          },
+        },
+        update: {
+          rank,
+          totalUsers,
+        },
+        create: {
+          id: randomUUID(),
+          userId,
+          category,
+          period,
+          date,
+          rank,
+          totalUsers,
+        },
+      });
+    }
+
+    return this.prisma.trustScoreRankHistory.findMany({
+      where: {
+        userId,
+        category,
+        period,
+      },
+      orderBy: {
+        date: 'desc',
+      },
+      take: options?.limit || 30,
+    });
+  }
+
+  /**
+   * Get friends leaderboard
+   */
+  async getFriendsLeaderboard(userId: string): Promise<
+    Array<{
+      userId: string;
+      displayName: string;
+      avatarUrl: string | null;
+      finscore: number;
+      rank: number;
+    }>
+  > {
+    // Get user's friends
+    const friendships = await this.prisma.friend.findMany({
+      where: {
+        OR: [
+          { userId, status: 'accepted' },
+          { friendId: userId, status: 'accepted' },
+        ],
+      },
+      include: {
+        User_Friend_userIdToUser: {
+          include: {
+            UserProfile: true,
+          },
+        },
+        User_Friend_friendIdToUser: {
+          include: {
+            UserProfile: true,
+          },
+        },
+      },
+    });
+
+    // Get trust scores for friends (and user)
+    const friendIds = friendships.map((f) =>
+      f.userId === userId ? f.friendId : f.userId,
+    );
+    const allUserIds = [userId, ...friendIds];
+
+    const trustScores = await Promise.all(
+      allUserIds.map(async (id) => {
+        const trustScore = await this.getOrCreateTrustScore(id);
+        const user = await this.prisma.user.findUnique({
+          where: { id },
+          include: {
+            UserProfile: true,
+          },
+        });
+
+        // Check visibility
+        if (
+          user?.UserProfile?.trustScoreVisibility === 'private' &&
+          id !== userId
+        ) {
+          return null;
+        }
+
+        return {
+          userId: id,
+          displayName:
+            user?.UserProfile?.displayName || user?.email || 'Unknown',
+          avatarUrl: user?.UserProfile?.avatarUrl || null,
+          finscore: trustScore.score,
+          isCurrentUser: id === userId,
+        };
+      }),
+    );
+
+    // Filter out nulls and sort
+    const validScores = trustScores.filter((s) => s !== null) as Array<{
+      userId: string;
+      displayName: string;
+      avatarUrl: string | null;
+      finscore: number;
+      isCurrentUser: boolean;
+    }>;
+
+    validScores.sort((a, b) => b.finscore - a.finscore);
+
+    // Assign ranks
+    return validScores.map((user, index) => ({
+      userId: user.userId,
+      displayName: user.isCurrentUser ? 'You' : user.displayName,
+      avatarUrl: user.avatarUrl,
+      finscore: user.finscore,
+      rank: index + 1,
+    }));
+  }
+
+  /**
+   * Get rank badge (e.g., "#1", "Top 10", "Top 50")
+   */
+  private getRankBadge(rank: number): string | undefined {
+    if (rank === 1) return '#1';
+    if (rank === 2) return '#2';
+    if (rank === 3) return '#3';
+    if (rank <= 10) return 'Top 10';
+    if (rank <= 50) return 'Top 50';
+    if (rank <= 100) return 'Top 100';
+    return undefined;
+  }
+
+  async getShareRank(
+    userId: string,
+    category?: 'overall' | 'expense' | 'chore' | 'community',
+  ) {
+    const rank = await this.getUserRank(userId, category);
+    if (!rank) {
+      return {
+        rank: null,
+        totalUsers: 0,
+        percentile: null,
+        shareText: null,
+      };
+    }
+
+    const totalUsers = await this.prisma.trustScore.count({
+      where: this.getPublicTrustScoreWhere(),
+    });
+    const percentile =
+      totalUsers > 0 ? Math.round((1 - rank / totalUsers) * 100) : null;
+
+    const trustScore = await this.getOrCreateTrustScore(userId);
+    const badge = this.getRankBadge(rank);
+    const label =
+      category && category !== 'overall' ? `${category} FinScore` : 'FinScore';
+
+    const shareText = badge
+      ? `I'm ${badge} (#${rank}) on ${label} with a score of ${trustScore.score}.`
+      : `I'm ranked #${rank} on ${label} with a score of ${trustScore.score}.`;
+
+    return {
+      rank,
+      totalUsers,
+      percentile,
+      shareText,
+    };
   }
 }

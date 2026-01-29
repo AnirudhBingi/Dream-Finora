@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from './getApiBaseUrl';
+import { api } from "./client";
 
 export interface Message {
   id: string;
@@ -51,72 +51,44 @@ export interface SendMessageDto {
 }
 
 export async function getConversations(token: string): Promise<Conversation[]> {
-  const response = await fetch(`${getApiBaseUrl()}/messaging/conversations`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch conversations' }));
-    throw new Error(error.message || `Failed to fetch conversations: ${response.status}`);
-  }
-
-  return response.json();
+  return api.get<Conversation[]>("/messaging/conversations", { token });
 }
 
 export async function createGroupChat(
   token: string,
   groupId: string,
 ): Promise<Conversation> {
-  const response = await fetch(`${getApiBaseUrl()}/messaging/conversations/group/${groupId}`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to create group chat' }));
-    throw new Error(error.message || `Failed to create group chat: ${response.status}`);
-  }
-
-  const chat = await response.json();
+  const chat = await api.post<any>(
+    `/messaging/conversations/group/${groupId}`,
+    undefined,
+    { token },
+  );
   // Transform to Conversation format
   return {
     id: chat.id,
-    type: 'group',
+    type: "group",
     otherParticipant: null,
-    group: chat.Group ? {
-      id: chat.Group.id,
-      name: chat.Group.name,
-      description: chat.Group.description,
-      avatarUrl: chat.Group.avatarUrl,
-    } : null,
+    group: chat.Group
+      ? {
+          id: chat.Group.id,
+          name: chat.Group.name,
+          description: chat.Group.description,
+          avatarUrl: chat.Group.avatarUrl,
+        }
+      : null,
     lastMessage: null,
     unreadCount: 0,
     updatedAt: chat.updatedAt || new Date().toISOString(),
   };
 }
 
-export async function getMessages(token: string, chatId: string): Promise<Message[]> {
-  const response = await fetch(`${getApiBaseUrl()}/messaging/conversations/${chatId}/messages`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+export async function getMessages(
+  token: string,
+  chatId: string,
+): Promise<Message[]> {
+  return api.get<Message[]>(`/messaging/conversations/${chatId}/messages`, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch messages' }));
-    throw new Error(error.message || `Failed to fetch messages: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export async function sendMessage(
@@ -124,21 +96,11 @@ export async function sendMessage(
   chatId: string,
   content: string,
 ): Promise<Message> {
-  const response = await fetch(`${getApiBaseUrl()}/messaging/conversations/${chatId}/messages`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ content }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to send message' }));
-    throw new Error(error.message || `Failed to send message: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<Message>(
+    `/messaging/conversations/${chatId}/messages`,
+    { content },
+    { token },
+  );
 }
 
 export async function startConversation(
@@ -146,30 +108,12 @@ export async function startConversation(
   otherUserId: string,
   initialMessage?: string,
 ): Promise<Conversation> {
-  const url = new URL(`${getApiBaseUrl()}/messaging/conversations/start`);
-  url.searchParams.append('userId', otherUserId);
-
-  // If no initial message, send empty object to avoid validation errors
-  // The backend will create the conversation without sending a message
-  const body = initialMessage 
-    ? JSON.stringify({ content: initialMessage })
-    : JSON.stringify({});
-
-  const response = await fetch(url.toString(), {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: body,
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to start conversation' }));
-    throw new Error(error.message || `Failed to start conversation: ${response.status}`);
-  }
-
-  return response.json();
+  const body = initialMessage ? { content: initialMessage } : {};
+  return api.post<Conversation>(
+    `/messaging/conversations/start?userId=${otherUserId}`,
+    body,
+    { token },
+  );
 }
 
 export async function editMessage(
@@ -178,21 +122,11 @@ export async function editMessage(
   messageId: string,
   content: string,
 ): Promise<Message> {
-  const response = await fetch(`${getApiBaseUrl()}/messaging/conversations/${chatId}/messages/${messageId}`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ content }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to edit message' }));
-    throw new Error(error.message || `Failed to edit message: ${response.status}`);
-  }
-
-  return response.json();
+  return api.put<Message>(
+    `/messaging/conversations/${chatId}/messages/${messageId}`,
+    { content },
+    { token },
+  );
 }
 
 export async function deleteMessage(
@@ -200,20 +134,10 @@ export async function deleteMessage(
   chatId: string,
   messageId: string,
 ): Promise<Message> {
-  const response = await fetch(`${getApiBaseUrl()}/messaging/conversations/${chatId}/messages/${messageId}`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to delete message' }));
-    throw new Error(error.message || `Failed to delete message: ${response.status}`);
-  }
-
-  return response.json();
+  return api.delete<Message>(
+    `/messaging/conversations/${chatId}/messages/${messageId}`,
+    { token },
+  );
 }
 
 export async function markMessageAsRead(
@@ -221,18 +145,9 @@ export async function markMessageAsRead(
   chatId: string,
   messageId: string,
 ): Promise<Message> {
-  const response = await fetch(`${getApiBaseUrl()}/messaging/conversations/${chatId}/messages/${messageId}/read`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to mark message as read' }));
-    throw new Error(error.message || `Failed to mark message as read: ${response.status}`);
-  }
-
-  return response.json();
+  return api.put<Message>(
+    `/messaging/conversations/${chatId}/messages/${messageId}/read`,
+    undefined,
+    { token },
+  );
 }

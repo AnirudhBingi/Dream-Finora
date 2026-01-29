@@ -8,4 +8,3 @@ export class UpdateEmailDto {
   @IsNotEmpty({ message: 'Password is required' })
   password: string;
 }
-

@@ -11,5 +11,3 @@ import { TrustScoreModule } from '../trust-score/trust-score.module';
   exports: [ProfileService],
 })
 export class ProfileModule {}
-
-

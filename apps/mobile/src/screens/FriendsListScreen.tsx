@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -9,10 +9,10 @@ import {
   RefreshControl,
   Alert,
   Platform,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
-import { useAuth } from '../auth/authContext';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useAuth } from "../auth/authContext";
 import {
   getFriends,
   getPendingRequests,
@@ -21,12 +21,15 @@ import {
   removeFriend,
   Friend,
   FriendRequests,
-} from '../api/friendApi';
-import { EmptyState } from '../components/EmptyState';
-import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
-import { SkeletonFriendList } from '../components/SkeletonLoader';
-import { Header } from '../components/Header';
-import { Avatar } from '../components/Avatar';
+} from "../api/friendApi";
+import { EmptyState } from "../components/EmptyState";
+import { ErrorState } from "../components/ErrorState";
+import { useDataFetch } from "../hooks/useDataFetch";
+import { useAsyncOperation } from "../hooks/useAsyncOperation";
+import { SkeletonFriendList } from "../components/SkeletonLoader";
+import { Header } from "../components/Header";
+import { Avatar } from "../components/Avatar";
+import { useTheme } from "../theme";
 
 interface FriendsListScreenProps {
   onBack: () => void;
@@ -38,8 +41,8 @@ interface FriendsListScreenProps {
   onNavigateToSettings?: () => void;
 }
 
-export function FriendsListScreen({ 
-  onBack, 
+export function FriendsListScreen({
+  onBack,
   onSearchFriends,
   onAddNewFriends,
   onNavigateToUserProfile,
@@ -47,100 +50,107 @@ export function FriendsListScreen({
   onNavigateToNotifications,
   onNavigateToSettings,
 }: FriendsListScreenProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { token } = useAuth();
-  const [friends, setFriends] = useState<Friend[]>([]);
-  const [requests, setRequests] = useState<FriendRequests>({ incoming: [], outgoing: [] });
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'friends' | 'requests'>('friends');
+  const [activeTab, setActiveTab] = useState<"friends" | "requests">("friends");
 
-  useEffect(() => {
-    loadData();
-  }, [token]);
-
-  async function loadData() {
-    if (!token) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-      const [friendsData, requestsData] = await Promise.all([
-        getFriends(token),
-        getPendingRequests(token),
-      ]);
-      setFriends(friendsData);
-      setRequests(requestsData);
-    } catch (err) {
-      setError(getUserFriendlyErrorMessage(err));
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+  interface FriendsData {
+    friends: Friend[];
+    requests: FriendRequests;
   }
 
-  async function handleAcceptRequest(friendshipId: string) {
-    if (!token) return;
+  const { data, loading, refreshing, error, refresh, refetch } =
+    useDataFetch<FriendsData>({
+      fetchFn: async () => {
+        if (!token) throw new Error("No authentication token");
+        const [friendsData, requestsData] = await Promise.all([
+          getFriends(token),
+          getPendingRequests(token),
+        ]);
+        return {
+          friends: friendsData,
+          requests: requestsData,
+        };
+      },
+      immediate: true,
+      deps: [token],
+    });
 
-    try {
+  const friends = data?.friends ?? [];
+  const requests = data?.requests ?? { incoming: [], outgoing: [] };
+
+  const { execute: executeAcceptRequest } = useAsyncOperation({
+    operationFn: async (friendshipId: string) => {
+      if (!token) throw new Error("No authentication token");
       await acceptFriendRequest(token, friendshipId);
-      await loadData();
-    } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to accept request');
-    }
+      return null;
+    },
+    onSuccess: () => {
+      refetch();
+    },
+  });
+
+  const { execute: executeRejectRequest } = useAsyncOperation({
+    operationFn: async (friendshipId: string) => {
+      if (!token) throw new Error("No authentication token");
+      await rejectFriendRequest(token, friendshipId);
+      return null;
+    },
+    onSuccess: () => {
+      refetch();
+    },
+  });
+
+  function handleAcceptRequest(friendshipId: string) {
+    executeAcceptRequest(friendshipId);
   }
 
-  async function handleRejectRequest(friendshipId: string) {
-    if (!token) return;
-
+  function handleRejectRequest(friendshipId: string) {
     Alert.alert(
-      'Reject Request',
-      'Are you sure you want to reject this friend request?',
+      "Reject Request",
+      "Are you sure you want to reject this friend request?",
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Reject',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await rejectFriendRequest(token, friendshipId);
-              await loadData();
-            } catch (err) {
-              Alert.alert('Error', err instanceof Error ? err.message : 'Failed to reject request');
-            }
-          },
+          text: "Reject",
+          style: "destructive",
+          onPress: () => executeRejectRequest(friendshipId),
         },
       ],
     );
   }
 
-  async function handleRemoveFriend(friendshipId: string, friendName: string) {
-    if (!token) return;
+  const { execute: executeRemoveFriend } = useAsyncOperation({
+    operationFn: async (friendshipId: string) => {
+      if (!token) throw new Error("No authentication token");
+      await removeFriend(token, friendshipId);
+      return null;
+    },
+    onSuccess: () => {
+      refetch();
+    },
+  });
 
+  function handleRemoveFriend(friendshipId: string, friendName: string) {
     Alert.alert(
-      'Remove Friend',
+      "Remove Friend",
       `Are you sure you want to remove ${friendName} from your friends?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await removeFriend(token, friendshipId);
-              await loadData();
-            } catch (err) {
-              Alert.alert('Error', err instanceof Error ? err.message : 'Failed to remove friend');
-            }
-          },
+          text: "Remove",
+          style: "destructive",
+          onPress: () => executeRemoveFriend(friendshipId),
         },
       ],
     );
   }
 
-
   function getUserDisplayName(friend: Friend): string {
-    return friend?.friend?.profile?.displayName || friend?.friend?.email || 'Unknown';
+    return (
+      friend?.friend?.profile?.displayName || friend?.friend?.email || "Unknown"
+    );
   }
 
   function formatDate(dateString: string): string {
@@ -149,15 +159,18 @@ export function FriendsListScreen({
     const diffMs = now.getTime() - date.getTime();
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
+    if (diffDays === 0) return "Today";
+    if (diffDays === 1) return "Yesterday";
     if (diffDays < 7) return `${diffDays} days ago`;
-    return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date);
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+    }).format(date);
   }
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <Header
           title="Friends"
           onBack={onBack}
@@ -166,7 +179,7 @@ export function FriendsListScreen({
           onNavigateToSettings={onNavigateToSettings}
         />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#6366F1" />
+          <ActivityIndicator size="large" color={theme.colors.primary} />
           <Text style={styles.loadingText}>Loading friends...</Text>
         </View>
       </SafeAreaView>
@@ -175,7 +188,7 @@ export function FriendsListScreen({
 
   if (error) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <Header
           title="Friends"
           onBack={onBack}
@@ -183,7 +196,7 @@ export function FriendsListScreen({
           onNavigateToNotifications={onNavigateToNotifications}
           onNavigateToSettings={onNavigateToSettings}
         />
-        <ErrorState message={error} onRetry={loadData} />
+        <ErrorState message={error} onRetry={refetch} />
       </SafeAreaView>
     );
   }
@@ -193,7 +206,7 @@ export function FriendsListScreen({
   const hasRequests = hasIncomingRequests || hasOutgoingRequests;
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <Header
         title="Friends"
         onBack={onBack}
@@ -205,21 +218,31 @@ export function FriendsListScreen({
       {/* Tabs */}
       <View style={styles.tabs}>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'friends' && styles.tabActive]}
-          onPress={() => setActiveTab('friends')}
+          style={[styles.tab, activeTab === "friends" && styles.tabActive]}
+          onPress={() => setActiveTab("friends")}
           activeOpacity={0.7}
         >
-          <Text style={[styles.tabText, activeTab === 'friends' && styles.tabTextActive]}>
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === "friends" && styles.tabTextActive,
+            ]}
+          >
             Friends ({friends.length})
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'requests' && styles.tabActive]}
-          onPress={() => setActiveTab('requests')}
+          style={[styles.tab, activeTab === "requests" && styles.tabActive]}
+          onPress={() => setActiveTab("requests")}
           activeOpacity={0.7}
         >
           <View style={styles.tabWithBadge}>
-            <Text style={[styles.tabText, activeTab === 'requests' && styles.tabTextActive]}>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === "requests" && styles.tabTextActive,
+              ]}
+            >
               Requests
             </Text>
             {hasIncomingRequests && (
@@ -234,9 +257,11 @@ export function FriendsListScreen({
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={refresh} />
+        }
       >
-        {activeTab === 'friends' ? (
+        {activeTab === "friends" ? (
           <>
             {/* Add New Friends Button */}
             {onAddNewFriends && (
@@ -245,11 +270,17 @@ export function FriendsListScreen({
                 onPress={onAddNewFriends}
                 activeOpacity={0.8}
               >
-                <MaterialIcons name="person-add" size={20} color="#FFFFFF" />
-                <Text style={styles.addNewFriendsButtonText}>Add New Friends</Text>
+                <MaterialIcons
+                  name="person-add"
+                  size={20}
+                  color={theme.colors.white}
+                />
+                <Text style={styles.addNewFriendsButtonText}>
+                  Add New Friends
+                </Text>
               </TouchableOpacity>
             )}
-            
+
             {friends.length === 0 ? (
               <EmptyState
                 icon="people-outline"
@@ -277,10 +308,15 @@ export function FriendsListScreen({
                       size={48}
                     />
                     <View style={styles.friendDetails}>
-                      <Text style={styles.friendName}>{getUserDisplayName(friend)}</Text>
-                      {!friend?.friend?.profile?.displayName && friend?.friend?.email && (
-                        <Text style={styles.friendEmail}>{friend.friend.email}</Text>
-                      )}
+                      <Text style={styles.friendName}>
+                        {getUserDisplayName(friend)}
+                      </Text>
+                      {!friend?.friend?.profile?.displayName &&
+                        friend?.friend?.email && (
+                          <Text style={styles.friendEmail}>
+                            {friend.friend.email}
+                          </Text>
+                        )}
                     </View>
                   </View>
                   <TouchableOpacity
@@ -291,13 +327,17 @@ export function FriendsListScreen({
                     }}
                     activeOpacity={0.7}
                   >
-                    <MaterialIcons name="person-remove" size={20} color="#EF4444" />
+                    <MaterialIcons
+                      name="person-remove"
+                      size={20}
+                      color={theme.colors.error}
+                    />
                   </TouchableOpacity>
                 </TouchableOpacity>
               ))
             )}
           </>
-        ) : activeTab === 'requests' ? (
+        ) : activeTab === "requests" ? (
           <>
             {!hasRequests ? (
               <EmptyState
@@ -310,11 +350,17 @@ export function FriendsListScreen({
                 {hasIncomingRequests && (
                   <View style={styles.section}>
                     <View style={styles.sectionHeader}>
-                      <MaterialIcons name="inbox" size={20} color="#6366F1" />
+                      <MaterialIcons
+                        name="inbox"
+                        size={20}
+                        color={theme.colors.primary}
+                      />
                       <Text style={styles.sectionTitle}>Incoming Requests</Text>
                       {hasIncomingRequests && (
                         <View style={styles.sectionBadge}>
-                          <Text style={styles.sectionBadgeText}>{requests.incoming.length}</Text>
+                          <Text style={styles.sectionBadgeText}>
+                            {requests.incoming.length}
+                          </Text>
                         </View>
                       )}
                     </View>
@@ -335,16 +381,25 @@ export function FriendsListScreen({
                               avatarUrl={request?.friend?.profile?.avatarUrl}
                               displayName={getUserDisplayName(request)}
                               size={48}
-                              borderColor="#6366F1"
+                              borderColor={theme.colors.primary}
                               borderWidth={2}
                             />
                             <View style={styles.friendDetails}>
-                              <Text style={styles.friendName}>{getUserDisplayName(request)}</Text>
-                              {!request?.friend?.profile?.displayName && request?.friend?.email && (
-                                <Text style={styles.friendEmail}>{request.friend.email}</Text>
-                              )}
+                              <Text style={styles.friendName}>
+                                {getUserDisplayName(request)}
+                              </Text>
+                              {!request?.friend?.profile?.displayName &&
+                                request?.friend?.email && (
+                                  <Text style={styles.friendEmail}>
+                                    {request.friend.email}
+                                  </Text>
+                                )}
                               <View style={styles.requestTimeContainer}>
-                                <MaterialIcons name="schedule" size={14} color="#9CA3AF" />
+                                <MaterialIcons
+                                  name="schedule"
+                                  size={14}
+                                  color={theme.colors.textTertiary}
+                                />
                                 <Text style={styles.requestTime}>
                                   {formatDate(request.createdAt)}
                                 </Text>
@@ -360,8 +415,14 @@ export function FriendsListScreen({
                               }}
                               activeOpacity={0.8}
                             >
-                              <MaterialIcons name="check" size={18} color="#FFFFFF" />
-                              <Text style={styles.actionButtonText}>Accept</Text>
+                              <MaterialIcons
+                                name="check"
+                                size={18}
+                                color={theme.colors.white}
+                              />
+                              <Text style={styles.actionButtonText}>
+                                Accept
+                              </Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                               style={[styles.actionButton, styles.rejectButton]}
@@ -371,8 +432,14 @@ export function FriendsListScreen({
                               }}
                               activeOpacity={0.8}
                             >
-                              <MaterialIcons name="close" size={18} color="#FFFFFF" />
-                              <Text style={styles.actionButtonText}>Reject</Text>
+                              <MaterialIcons
+                                name="close"
+                                size={18}
+                                color={theme.colors.white}
+                              />
+                              <Text style={styles.actionButtonText}>
+                                Reject
+                              </Text>
                             </TouchableOpacity>
                           </View>
                         </View>
@@ -384,7 +451,11 @@ export function FriendsListScreen({
                 {hasOutgoingRequests && (
                   <View style={styles.section}>
                     <View style={styles.sectionHeader}>
-                      <MaterialIcons name="send" size={20} color="#6B7280" />
+                      <MaterialIcons
+                        name="send"
+                        size={20}
+                        color={theme.colors.textSecondary}
+                      />
                       <Text style={styles.sectionTitle}>Outgoing Requests</Text>
                     </View>
                     {requests.outgoing.map((request) => (
@@ -404,16 +475,25 @@ export function FriendsListScreen({
                               avatarUrl={request?.friend?.profile?.avatarUrl}
                               displayName={getUserDisplayName(request)}
                               size={48}
-                              borderColor="#F59E0B"
+                              borderColor={theme.colors.warning}
                               borderWidth={2}
                             />
                             <View style={styles.friendDetails}>
-                              <Text style={styles.friendName}>{getUserDisplayName(request)}</Text>
-                              {!request?.friend?.profile?.displayName && request?.friend?.email && (
-                                <Text style={styles.friendEmail}>{request.friend.email}</Text>
-                              )}
+                              <Text style={styles.friendName}>
+                                {getUserDisplayName(request)}
+                              </Text>
+                              {!request?.friend?.profile?.displayName &&
+                                request?.friend?.email && (
+                                  <Text style={styles.friendEmail}>
+                                    {request.friend.email}
+                                  </Text>
+                                )}
                               <View style={styles.requestTimeContainer}>
-                                <MaterialIcons name="schedule" size={14} color="#9CA3AF" />
+                                <MaterialIcons
+                                  name="schedule"
+                                  size={14}
+                                  color={theme.colors.textTertiary}
+                                />
                                 <Text style={styles.requestTime}>
                                   Sent {formatDate(request.createdAt)}
                                 </Text>
@@ -421,7 +501,11 @@ export function FriendsListScreen({
                             </View>
                           </View>
                           <View style={styles.pendingBadge}>
-                            <MaterialIcons name="hourglass-empty" size={16} color="#F59E0B" />
+                            <MaterialIcons
+                              name="hourglass-empty"
+                              size={16}
+                              color={theme.colors.warning}
+                            />
                             <Text style={styles.pendingText}>Pending</Text>
                           </View>
                         </View>
@@ -438,345 +522,311 @@ export function FriendsListScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-  },
-  headerActionButton: {
-    padding: 8,
-    minWidth: 44,
-    minHeight: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  tabs: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  tabActive: {
-    borderBottomColor: '#6366F1',
-  },
-  tabText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#6B7280',
-  },
-  tabTextActive: {
-    color: '#6366F1',
-    fontWeight: '600',
-  },
-  tabWithBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  badge: {
-    backgroundColor: '#EF4444',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-  },
-  badgeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#6B7280',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  errorText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#EF4444',
-    textAlign: 'center',
-  },
-  retryButton: {
-    marginTop: 16,
-    backgroundColor: '#6366F1',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 48,
-    minHeight: 300,
-  },
-  emptyText: {
-    marginTop: 16,
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  emptySubtext: {
-    marginTop: 8,
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-  addButton: {
-    marginTop: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-  },
-  addButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    flex: 1,
-  },
-  sectionBadge: {
-    backgroundColor: '#6366F1',
-    borderRadius: 12,
-    minWidth: 24,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-  },
-  sectionBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  friendCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  requestCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  incomingRequestCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#6366F1',
-  },
-  outgoingRequestCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#F59E0B',
-  },
-  requestCardContent: {
-    padding: 16,
-  },
-  friendInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  friendDetails: {
-    flex: 1,
-  },
-  friendName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  friendEmail: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  requestTimeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 6,
-  },
-  requestTime: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    fontWeight: '500',
-  },
-  friendActions: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-  },
-  removeButton: {
-    padding: 8,
-  },
-  requestActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 16,
-  },
-  actionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    minHeight: 44,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.15,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  acceptButton: {
-    backgroundColor: '#10B981',
-  },
-  rejectButton: {
-    backgroundColor: '#EF4444',
-  },
-  actionButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  pendingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#FEF3C7',
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: '#FCD34D',
-  },
-  pendingText: {
-    color: '#F59E0B',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  unblockButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: '#EFF6FF',
-  },
-  unblockButtonText: {
-    color: '#2563EB',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  addNewFriendsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#6366F1',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    marginBottom: 16,
-    gap: 8,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#6366F1',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  addNewFriendsButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-});
-
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.backgroundSecondary,
+    },
+    headerActionButton: {
+      padding: theme.spacing.sm,
+      minWidth: 44,
+      minHeight: 44,
+      justifyContent: "center",
+      alignItems: "center",
+      borderRadius: 22,
+      backgroundColor: theme.colors.overlayLight,
+    },
+    tabs: {
+      flexDirection: "row",
+      backgroundColor: theme.colors.background,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+    },
+    tab: {
+      flex: 1,
+      paddingVertical: theme.spacing.md,
+      alignItems: "center",
+      borderBottomWidth: 2,
+      borderBottomColor: "transparent",
+    },
+    tabActive: {
+      borderBottomColor: theme.colors.primary,
+    },
+    tabText: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.textSecondary,
+    },
+    tabTextActive: {
+      color: theme.colors.primary,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    tabWithBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.sm,
+    },
+    badge: {
+      backgroundColor: theme.colors.error,
+      borderRadius: 10,
+      minWidth: 20,
+      height: 20,
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 6,
+    },
+    badgeText: {
+      color: theme.colors.textInverse,
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    container: {
+      flex: 1,
+    },
+    scrollContent: {
+      padding: theme.spacing.base,
+      paddingBottom: theme.spacing["2xl"],
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: theme.spacing.xl,
+    },
+    loadingText: {
+      marginTop: theme.spacing.base,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textSecondary,
+    },
+    errorContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: theme.spacing.xl,
+    },
+    errorText: {
+      marginTop: theme.spacing.base,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.error,
+      textAlign: "center",
+    },
+    retryButton: {
+      marginTop: theme.spacing.base,
+      backgroundColor: theme.colors.primary,
+      borderRadius: 12,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.xl,
+      minHeight: 44,
+    },
+    retryButtonText: {
+      color: theme.colors.textInverse,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    emptyContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: theme.spacing["4xl"],
+      minHeight: 300,
+    },
+    emptyText: {
+      marginTop: theme.spacing.base,
+      fontSize: theme.typography.fontSize.xl,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.gray700,
+    },
+    emptySubtext: {
+      marginTop: theme.spacing.sm,
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+      textAlign: "center",
+    },
+    addButton: {
+      marginTop: theme.spacing.xl,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.sm,
+      backgroundColor: theme.colors.blue,
+      borderRadius: 8,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.xl,
+      minHeight: 44,
+    },
+    addButtonText: {
+      color: theme.colors.textInverse,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    section: {
+      marginBottom: theme.spacing.xl,
+    },
+    sectionHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.sm,
+      marginBottom: theme.spacing.md,
+    },
+    sectionTitle: {
+      fontSize: theme.typography.fontSize.lg,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+      flex: 1,
+    },
+    sectionBadge: {
+      backgroundColor: theme.colors.primary,
+      borderRadius: 12,
+      minWidth: 24,
+      height: 24,
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: theme.spacing.sm,
+    },
+    sectionBadgeText: {
+      color: theme.colors.textInverse,
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    friendCard: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      backgroundColor: theme.colors.background,
+      borderRadius: 12,
+      padding: theme.spacing.base,
+      marginBottom: theme.spacing.md,
+      ...theme.shadows.sm,
+    },
+    requestCard: {
+      backgroundColor: theme.colors.background,
+      borderRadius: 16,
+      marginBottom: theme.spacing.md,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      ...theme.shadows.sm,
+    },
+    incomingRequestCard: {
+      borderLeftWidth: 4,
+      borderLeftColor: theme.colors.primary,
+    },
+    outgoingRequestCard: {
+      borderLeftWidth: 4,
+      borderLeftColor: theme.colors.warning,
+    },
+    requestCardContent: {
+      padding: theme.spacing.base,
+    },
+    friendInfo: {
+      flexDirection: "row",
+      alignItems: "center",
+      flex: 1,
+    },
+    friendDetails: {
+      flex: 1,
+    },
+    friendName: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+      marginBottom: theme.spacing.xs,
+    },
+    friendEmail: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+    },
+    requestTimeContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      marginTop: 6,
+    },
+    requestTime: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.textTertiary,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    friendActions: {
+      flexDirection: "row",
+      gap: theme.spacing.sm,
+      alignItems: "center",
+    },
+    removeButton: {
+      padding: theme.spacing.sm,
+    },
+    requestActions: {
+      flexDirection: "row",
+      gap: theme.spacing.md,
+      marginTop: theme.spacing.base,
+    },
+    actionButton: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      borderRadius: 12,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.base,
+      minHeight: 44,
+      ...theme.shadows.sm,
+    },
+    acceptButton: {
+      backgroundColor: theme.colors.success,
+    },
+    rejectButton: {
+      backgroundColor: theme.colors.error,
+    },
+    actionButtonText: {
+      color: theme.colors.textInverse,
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    pendingBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      backgroundColor: theme.colors.warningBackground,
+      borderRadius: 12,
+      paddingVertical: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.md,
+      borderWidth: 1,
+      borderColor: theme.colors.warning,
+    },
+    pendingText: {
+      color: theme.colors.warning,
+      fontSize: 13,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    unblockButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingVertical: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.md,
+      borderRadius: 8,
+      backgroundColor: theme.colors.blueBackground,
+    },
+    unblockButtonText: {
+      color: theme.colors.blue,
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    addNewFriendsButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.colors.primary,
+      borderRadius: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 20,
+      marginBottom: theme.spacing.base,
+      gap: theme.spacing.sm,
+      ...theme.shadows.button,
+    },
+    addNewFriendsButtonText: {
+      color: theme.colors.textInverse,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+  });

@@ -1,12 +1,12 @@
-import { getApiBaseUrl } from './getApiBaseUrl';
+import { api } from "./client";
 
 export interface FinanceTransaction {
   id: string;
   userId: string;
   accountId?: string | null; // Optional for backward compatibility
-  type: 'income' | 'expense';
+  type: "income" | "expense";
   amount: number;
-  context: 'local' | 'home';
+  context: "local" | "home";
   // Income fields
   source?: string | null; // For income: "Salary", "Freelance", "Gift", etc.
   // Expense fields
@@ -25,9 +25,9 @@ export interface FinanceTransaction {
 }
 
 export interface CreateTransactionDto {
-  type: 'income' | 'expense';
+  type: "income" | "expense";
   amount: number;
-  context: 'local' | 'home';
+  context: "local" | "home";
   // Income fields
   source?: string; // For income: "Salary", "Freelance", "Gift", etc.
   // Expense fields
@@ -73,99 +73,45 @@ export async function createTransaction(
   token: string,
   data: CreateTransactionDto,
 ): Promise<FinanceTransaction> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/transactions`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to create transaction' }));
-    throw new Error(error.message || `Failed to create transaction: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<FinanceTransaction>("/finance/transactions", data, { token });
 }
 
 export async function getTransactions(
   token: string,
-  context?: 'local' | 'home',
+  context?: "local" | "home",
   includeBillchop?: boolean,
 ): Promise<FinanceTransaction[]> {
   const params = new URLSearchParams();
-  if (context) {
-    params.append('context', context);
-  }
-  if (includeBillchop) {
-    params.append('includeBillchop', 'true');
-  }
-  const url = `${getApiBaseUrl()}/finance/transactions${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch transactions' }));
-    throw new Error(error.message || `Failed to fetch transactions: ${response.status}`);
-  }
-
-  return response.json();
+  if (context) params.append("context", context);
+  if (includeBillchop) params.append("includeBillchop", "true");
+  const endpoint = params.toString()
+    ? `/finance/transactions?${params.toString()}`
+    : "/finance/transactions";
+  return api.get<FinanceTransaction[]>(endpoint, { token });
 }
 
 export async function getTransactionById(
   token: string,
   transactionId: string,
 ): Promise<FinanceTransaction> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/transactions/${transactionId}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  return api.get<FinanceTransaction>(`/finance/transactions/${transactionId}`, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch transaction' }));
-    throw new Error(error.message || `Failed to fetch transaction: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export async function getBalance(
   token: string,
-  context?: 'local' | 'home',
+  context?: "local" | "home",
   includeBillchop?: boolean,
 ): Promise<BalanceInfo> {
   const params = new URLSearchParams();
-  if (context) {
-    params.append('context', context);
-  }
-  if (includeBillchop !== undefined) {
-    params.append('includeBillchop', includeBillchop ? 'true' : 'false');
-  }
-  const url = `${getApiBaseUrl()}/finance/balance${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch balance' }));
-    throw new Error(error.message || `Failed to fetch balance: ${response.status}`);
-  }
-
-  return response.json();
+  if (context) params.append("context", context);
+  if (includeBillchop !== undefined)
+    params.append("includeBillchop", includeBillchop ? "true" : "false");
+  const endpoint = params.toString()
+    ? `/finance/balance?${params.toString()}`
+    : "/finance/balance";
+  return api.get<BalanceInfo>(endpoint, { token });
 }
 
 export async function getCombinedBalance(
@@ -173,67 +119,35 @@ export async function getCombinedBalance(
   primaryCurrency?: string,
 ): Promise<CombinedBalanceInfo> {
   const params = new URLSearchParams();
-  params.append('combined', 'true');
-  if (primaryCurrency) {
-    params.append('primaryCurrency', primaryCurrency);
-  }
-  const url = `${getApiBaseUrl()}/finance/balance?${params.toString()}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  params.append("combined", "true");
+  if (primaryCurrency) params.append("primaryCurrency", primaryCurrency);
+  return api.get<CombinedBalanceInfo>(`/finance/balance?${params.toString()}`, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch combined balance' }));
-    throw new Error(error.message || `Failed to fetch combined balance: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export async function suggestCategory(
   token: string,
   description: string,
-  type: 'income' | 'expense',
+  type: "income" | "expense",
 ): Promise<{ category: string | null }> {
-  const params = new URLSearchParams({ description, type });
-  const response = await fetch(`${getApiBaseUrl()}/finance/suggest-category?${params}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
+  try {
+    return await api.get<{ category: string | null }>(
+      `/finance/suggest-category?description=${encodeURIComponent(description)}&type=${type}`,
+      { token },
+    );
+  } catch {
     return { category: null };
   }
-
-  return response.json();
 }
 
 export async function getCategories(token: string): Promise<Categories> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/categories`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch categories' }));
-    throw new Error(error.message || `Failed to fetch categories: ${response.status}`);
-  }
-
-  return response.json();
+  return api.get<Categories>("/finance/categories", { token });
 }
 
 export interface UpdateTransactionDto {
   amount?: number;
-  context?: 'local' | 'home';
+  context?: "local" | "home";
   source?: string; // For income
   category?: string; // For expense
   description?: string;
@@ -245,41 +159,21 @@ export async function updateTransaction(
   transactionId: string,
   data: UpdateTransactionDto,
 ): Promise<FinanceTransaction> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/transactions/${transactionId}`, {
-    method: 'PATCH',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to update transaction' }));
-    throw new Error(error.message || `Failed to update transaction: ${response.status}`);
-  }
-
-  return response.json();
+  return api.patch<FinanceTransaction>(
+    `/finance/transactions/${transactionId}`,
+    data,
+    { token },
+  );
 }
 
 export async function deleteTransaction(
   token: string,
   transactionId: string,
 ): Promise<{ success: boolean }> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/transactions/${transactionId}`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to delete transaction' }));
-    throw new Error(error.message || `Failed to delete transaction: ${response.status}`);
-  }
-
-  return response.json();
+  return api.delete<{ success: boolean }>(
+    `/finance/transactions/${transactionId}`,
+    { token },
+  );
 }
 
 // Account interfaces and functions
@@ -289,7 +183,7 @@ export interface FinanceAccount {
   name: string;
   currency: string;
   balance: number;
-  context: 'local' | 'home';
+  context: "local" | "home";
   accountType: string;
   createdAt: string;
   updatedAt: string;
@@ -299,14 +193,14 @@ export interface FinanceAccount {
 export interface CreateAccountDto {
   name: string;
   currency?: string;
-  context?: 'local' | 'home';
+  context?: "local" | "home";
   accountType?: string;
 }
 
 export interface UpdateAccountDto {
   name?: string;
   currency?: string;
-  context?: 'local' | 'home';
+  context?: "local" | "home";
   accountType?: string;
 }
 
@@ -314,66 +208,24 @@ export async function createAccount(
   token: string,
   data: CreateAccountDto,
 ): Promise<FinanceAccount> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/accounts`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to create account' }));
-    throw new Error(error.message || `Failed to create account: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<FinanceAccount>("/finance/accounts", data, { token });
 }
 
 export async function getAccounts(
   token: string,
-  context?: 'local' | 'home',
+  context?: "local" | "home",
 ): Promise<FinanceAccount[]> {
-  const params = new URLSearchParams();
-  if (context) {
-    params.append('context', context);
-  }
-  const url = `${getApiBaseUrl()}/finance/accounts${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch accounts' }));
-    throw new Error(error.message || `Failed to fetch accounts: ${response.status}`);
-  }
-
-  return response.json();
+  const endpoint = context
+    ? `/finance/accounts?context=${context}`
+    : "/finance/accounts";
+  return api.get<FinanceAccount[]>(endpoint, { token });
 }
 
 export async function getAccountById(
   token: string,
   accountId: string,
 ): Promise<FinanceAccount> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/accounts/${accountId}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch account' }));
-    throw new Error(error.message || `Failed to fetch account: ${response.status}`);
-  }
-
-  return response.json();
+  return api.get<FinanceAccount>(`/finance/accounts/${accountId}`, { token });
 }
 
 export async function updateAccount(
@@ -381,41 +233,18 @@ export async function updateAccount(
   accountId: string,
   data: UpdateAccountDto,
 ): Promise<FinanceAccount> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/accounts/${accountId}`, {
-    method: 'PATCH',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
+  return api.patch<FinanceAccount>(`/finance/accounts/${accountId}`, data, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to update account' }));
-    throw new Error(error.message || `Failed to update account: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export async function deleteAccount(
   token: string,
   accountId: string,
 ): Promise<{ success: boolean }> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/accounts/${accountId}`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  return api.delete<{ success: boolean }>(`/finance/accounts/${accountId}`, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to delete account' }));
-    throw new Error(error.message || `Failed to delete account: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 // Finance History interfaces and functions
@@ -432,50 +261,31 @@ export interface FinanceHistory {
 
 export async function getFinanceHistory(
   token: string,
-  context?: 'local' | 'home',
+  context?: "local" | "home",
   accountId?: string,
   limit?: number,
   offset?: number,
 ): Promise<FinanceHistory> {
   const params = new URLSearchParams();
-  if (context) {
-    params.append('context', context);
-  }
-  if (accountId) {
-    params.append('accountId', accountId);
-  }
-  if (limit !== undefined) {
-    params.append('limit', limit.toString());
-  }
-  if (offset !== undefined) {
-    params.append('offset', offset.toString());
-  }
-  const url = `${getApiBaseUrl()}/finance/history${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch finance history' }));
-    throw new Error(error.message || `Failed to fetch finance history: ${response.status}`);
-  }
-
-  return response.json();
+  if (context) params.append("context", context);
+  if (accountId) params.append("accountId", accountId);
+  if (limit !== undefined) params.append("limit", limit.toString());
+  if (offset !== undefined) params.append("offset", offset.toString());
+  const endpoint = params.toString()
+    ? `/finance/history?${params.toString()}`
+    : "/finance/history";
+  return api.get<FinanceHistory>(endpoint, { token });
 }
 
 // Budget interfaces and functions
 export interface Budget {
   id: string;
   userId: string;
-  context: 'local' | 'home';
+  context: "local" | "home";
   name: string;
   category?: string | null;
   amount: number;
-  period: 'weekly' | 'monthly' | 'yearly';
+  period: "weekly" | "monthly" | "yearly";
   startDate: string;
   endDate?: string | null;
   accountId?: string | null;
@@ -498,7 +308,7 @@ export interface BudgetTracking {
   period: string;
   spent: number;
   budgeted: number;
-  status: 'on_track' | 'warning' | 'exceeded';
+  status: "on_track" | "warning" | "exceeded";
   lastWarningAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -508,19 +318,19 @@ export interface CreateBudgetDto {
   name: string;
   category?: string;
   amount: number;
-  period?: 'weekly' | 'monthly' | 'yearly';
+  period?: "weekly" | "monthly" | "yearly";
   startDate: string;
   endDate?: string;
   accountId?: string;
   warningThreshold?: number;
-  context?: 'local' | 'home';
+  context?: "local" | "home";
 }
 
 export interface UpdateBudgetDto {
   name?: string;
   category?: string;
   amount?: number;
-  period?: 'weekly' | 'monthly' | 'yearly';
+  period?: "weekly" | "monthly" | "yearly";
   startDate?: string;
   endDate?: string;
   accountId?: string;
@@ -531,66 +341,24 @@ export async function createBudget(
   token: string,
   data: CreateBudgetDto,
 ): Promise<Budget> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/budgets`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to create budget' }));
-    throw new Error(error.message || `Failed to create budget: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<Budget>("/finance/budgets", data, { token });
 }
 
 export async function getBudgets(
   token: string,
-  context?: 'local' | 'home',
+  context?: "local" | "home",
 ): Promise<Budget[]> {
-  const params = new URLSearchParams();
-  if (context) {
-    params.append('context', context);
-  }
-  const url = `${getApiBaseUrl()}/finance/budgets${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch budgets' }));
-    throw new Error(error.message || `Failed to fetch budgets: ${response.status}`);
-  }
-
-  return response.json();
+  const endpoint = context
+    ? `/finance/budgets?context=${context}`
+    : "/finance/budgets";
+  return api.get<Budget[]>(endpoint, { token });
 }
 
 export async function getBudgetById(
   token: string,
   budgetId: string,
 ): Promise<Budget> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/budgets/${budgetId}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch budget' }));
-    throw new Error(error.message || `Failed to fetch budget: ${response.status}`);
-  }
-
-  return response.json();
+  return api.get<Budget>(`/finance/budgets/${budgetId}`, { token });
 }
 
 export async function updateBudget(
@@ -598,41 +366,16 @@ export async function updateBudget(
   budgetId: string,
   data: UpdateBudgetDto,
 ): Promise<Budget> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/budgets/${budgetId}`, {
-    method: 'PATCH',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to update budget' }));
-    throw new Error(error.message || `Failed to update budget: ${response.status}`);
-  }
-
-  return response.json();
+  return api.patch<Budget>(`/finance/budgets/${budgetId}`, data, { token });
 }
 
 export async function deleteBudget(
   token: string,
   budgetId: string,
 ): Promise<{ success: boolean }> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/budgets/${budgetId}`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  return api.delete<{ success: boolean }>(`/finance/budgets/${budgetId}`, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to delete budget' }));
-    throw new Error(error.message || `Failed to delete budget: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export async function getBudgetTracking(
@@ -640,39 +383,24 @@ export async function getBudgetTracking(
   budgetId: string,
   period?: string,
 ): Promise<BudgetTracking> {
-  const params = new URLSearchParams();
-  if (period) {
-    params.append('period', period);
-  }
-  const url = `${getApiBaseUrl()}/finance/budgets/${budgetId}/tracking${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch budget tracking' }));
-    throw new Error(error.message || `Failed to fetch budget tracking: ${response.status}`);
-  }
-
-  return response.json();
+  const endpoint = period
+    ? `/finance/budgets/${budgetId}/tracking?period=${period}`
+    : `/finance/budgets/${budgetId}/tracking`;
+  return api.get<BudgetTracking>(endpoint, { token });
 }
 
 // Financial Goal interfaces and functions
 export interface FinancialGoal {
   id: string;
   userId: string;
-  context: 'local' | 'home';
+  context: "local" | "home";
   name: string;
   targetAmount: number;
   currentAmount: number;
   targetDate?: string | null;
-  category: 'savings' | 'debt' | 'purchase' | 'investment';
-  priority: 'low' | 'medium' | 'high';
-  status: 'active' | 'completed' | 'paused' | 'cancelled';
+  category: "savings" | "debt" | "purchase" | "investment";
+  priority: "low" | "medium" | "high";
+  status: "active" | "completed" | "paused" | "cancelled";
   accountId?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -708,10 +436,10 @@ export interface CreateGoalDto {
   targetAmount: number;
   currentAmount?: number;
   targetDate?: string;
-  category?: 'savings' | 'debt' | 'purchase' | 'investment';
-  priority?: 'low' | 'medium' | 'high';
+  category?: "savings" | "debt" | "purchase" | "investment";
+  priority?: "low" | "medium" | "high";
   accountId?: string;
-  context?: 'local' | 'home';
+  context?: "local" | "home";
 }
 
 export interface UpdateGoalDto {
@@ -719,10 +447,10 @@ export interface UpdateGoalDto {
   targetAmount?: number;
   currentAmount?: number;
   targetDate?: string;
-  category?: 'savings' | 'debt' | 'purchase' | 'investment';
-  priority?: 'low' | 'medium' | 'high';
+  category?: "savings" | "debt" | "purchase" | "investment";
+  priority?: "low" | "medium" | "high";
   accountId?: string;
-  status?: 'active' | 'completed' | 'paused' | 'cancelled';
+  status?: "active" | "completed" | "paused" | "cancelled";
 }
 
 export interface AddContributionDto {
@@ -736,70 +464,28 @@ export async function createGoal(
   token: string,
   data: CreateGoalDto,
 ): Promise<FinancialGoal> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/goals`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to create goal' }));
-    throw new Error(error.message || `Failed to create goal: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<FinancialGoal>("/finance/goals", data, { token });
 }
 
 export async function getGoals(
   token: string,
-  context?: 'local' | 'home',
+  context?: "local" | "home",
   status?: string,
 ): Promise<FinancialGoal[]> {
   const params = new URLSearchParams();
-  if (context) {
-    params.append('context', context);
-  }
-  if (status) {
-    params.append('status', status);
-  }
-  const url = `${getApiBaseUrl()}/finance/goals${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch goals' }));
-    throw new Error(error.message || `Failed to fetch goals: ${response.status}`);
-  }
-
-  return response.json();
+  if (context) params.append("context", context);
+  if (status) params.append("status", status);
+  const endpoint = params.toString()
+    ? `/finance/goals?${params.toString()}`
+    : "/finance/goals";
+  return api.get<FinancialGoal[]>(endpoint, { token });
 }
 
 export async function getGoalById(
   token: string,
   goalId: string,
 ): Promise<FinancialGoal> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/goals/${goalId}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch goal' }));
-    throw new Error(error.message || `Failed to fetch goal: ${response.status}`);
-  }
-
-  return response.json();
+  return api.get<FinancialGoal>(`/finance/goals/${goalId}`, { token });
 }
 
 export async function updateGoal(
@@ -807,41 +493,16 @@ export async function updateGoal(
   goalId: string,
   data: UpdateGoalDto,
 ): Promise<FinancialGoal> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/goals/${goalId}`, {
-    method: 'PATCH',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to update goal' }));
-    throw new Error(error.message || `Failed to update goal: ${response.status}`);
-  }
-
-  return response.json();
+  return api.patch<FinancialGoal>(`/finance/goals/${goalId}`, data, { token });
 }
 
 export async function deleteGoal(
   token: string,
   goalId: string,
 ): Promise<{ success: boolean }> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/goals/${goalId}`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  return api.delete<{ success: boolean }>(`/finance/goals/${goalId}`, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to delete goal' }));
-    throw new Error(error.message || `Failed to delete goal: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export async function addContribution(
@@ -849,21 +510,11 @@ export async function addContribution(
   goalId: string,
   data: AddContributionDto,
 ): Promise<FinancialGoal> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/goals/${goalId}/contributions`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to add contribution' }));
-    throw new Error(error.message || `Failed to add contribution: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<FinancialGoal>(
+    `/finance/goals/${goalId}/contributions`,
+    data,
+    { token },
+  );
 }
 
 export async function deleteContribution(
@@ -871,20 +522,10 @@ export async function deleteContribution(
   goalId: string,
   contributionId: string,
 ): Promise<FinancialGoal> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/goals/${goalId}/contributions/${contributionId}`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to delete contribution' }));
-    throw new Error(error.message || `Failed to delete contribution: ${response.status}`);
-  }
-
-  return response.json();
+  return api.delete<FinancialGoal>(
+    `/finance/goals/${goalId}/contributions/${contributionId}`,
+    { token },
+  );
 }
 
 // Loan interfaces and functions
@@ -910,7 +551,7 @@ export interface LoanPayment {
 export interface Loan {
   id: string;
   userId: string;
-  context: 'local' | 'home';
+  context: "local" | "home";
   name: string;
   lender: string;
   principalAmount: number;
@@ -921,9 +562,9 @@ export interface Loan {
   remainingMonths: number;
   startDate: string;
   nextPaymentDate: string;
-  paymentFrequency: 'monthly' | 'quarterly' | 'yearly';
+  paymentFrequency: "monthly" | "quarterly" | "yearly";
   accountId?: string | null;
-  status: 'active' | 'completed' | 'paused';
+  status: "active" | "completed" | "paused";
   createdAt: string;
   updatedAt: string;
   completedAt?: string | null;
@@ -947,9 +588,9 @@ export interface CreateLoanDto {
   remainingMonths?: number;
   startDate: string;
   nextPaymentDate: string;
-  paymentFrequency?: 'monthly' | 'quarterly' | 'yearly';
+  paymentFrequency?: "monthly" | "quarterly" | "yearly";
   accountId?: string;
-  context?: 'local' | 'home';
+  context?: "local" | "home";
 }
 
 export interface UpdateLoanDto {
@@ -963,9 +604,9 @@ export interface UpdateLoanDto {
   remainingMonths?: number;
   startDate?: string;
   nextPaymentDate?: string;
-  paymentFrequency?: 'monthly' | 'quarterly' | 'yearly';
+  paymentFrequency?: "monthly" | "quarterly" | "yearly";
   accountId?: string;
-  status?: 'active' | 'completed' | 'paused';
+  status?: "active" | "completed" | "paused";
 }
 
 export interface AddLoanPaymentDto {
@@ -981,70 +622,28 @@ export async function createLoan(
   token: string,
   data: CreateLoanDto,
 ): Promise<Loan> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/loans`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to create loan' }));
-    throw new Error(error.message || `Failed to create loan: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<Loan>("/finance/loans", data, { token });
 }
 
 export async function getLoans(
   token: string,
-  context?: 'local' | 'home',
+  context?: "local" | "home",
   status?: string,
 ): Promise<Loan[]> {
   const params = new URLSearchParams();
-  if (context) {
-    params.append('context', context);
-  }
-  if (status) {
-    params.append('status', status);
-  }
-  const url = `${getApiBaseUrl()}/finance/loans${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch loans' }));
-    throw new Error(error.message || `Failed to fetch loans: ${response.status}`);
-  }
-
-  return response.json();
+  if (context) params.append("context", context);
+  if (status) params.append("status", status);
+  const endpoint = params.toString()
+    ? `/finance/loans?${params.toString()}`
+    : "/finance/loans";
+  return api.get<Loan[]>(endpoint, { token });
 }
 
 export async function getLoanById(
   token: string,
   loanId: string,
 ): Promise<Loan> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/loans/${loanId}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch loan' }));
-    throw new Error(error.message || `Failed to fetch loan: ${response.status}`);
-  }
-
-  return response.json();
+  return api.get<Loan>(`/finance/loans/${loanId}`, { token });
 }
 
 export async function updateLoan(
@@ -1052,41 +651,14 @@ export async function updateLoan(
   loanId: string,
   data: UpdateLoanDto,
 ): Promise<Loan> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/loans/${loanId}`, {
-    method: 'PATCH',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to update loan' }));
-    throw new Error(error.message || `Failed to update loan: ${response.status}`);
-  }
-
-  return response.json();
+  return api.patch<Loan>(`/finance/loans/${loanId}`, data, { token });
 }
 
 export async function deleteLoan(
   token: string,
   loanId: string,
 ): Promise<{ message: string }> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/loans/${loanId}`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to delete loan' }));
-    throw new Error(error.message || `Failed to delete loan: ${response.status}`);
-  }
-
-  return response.json();
+  return api.delete<{ message: string }>(`/finance/loans/${loanId}`, { token });
 }
 
 export async function addLoanPayment(
@@ -1094,21 +666,7 @@ export async function addLoanPayment(
   loanId: string,
   data: AddLoanPaymentDto,
 ): Promise<Loan> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/loans/${loanId}/payments`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to add loan payment' }));
-    throw new Error(error.message || `Failed to add loan payment: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<Loan>(`/finance/loans/${loanId}/payments`, data, { token });
 }
 
 export async function deleteLoanPayment(
@@ -1116,37 +674,26 @@ export async function deleteLoanPayment(
   loanId: string,
   paymentId: string,
 ): Promise<Loan> {
-  const response = await fetch(`${getApiBaseUrl()}/finance/loans/${loanId}/payments/${paymentId}`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  return api.delete<Loan>(`/finance/loans/${loanId}/payments/${paymentId}`, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to delete loan payment' }));
-    throw new Error(error.message || `Failed to delete loan payment: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 // Financial Advisor Interfaces
 export interface FinancialRecommendation {
   id: string;
-  type: 'budget' | 'goal' | 'spending' | 'savings' | 'debt' | 'emergency';
-  priority: 'high' | 'medium' | 'low';
+  type: "budget" | "goal" | "spending" | "savings" | "debt" | "emergency";
+  priority: "high" | "medium" | "low";
   title: string;
   description: string;
   action?: string;
-  impact?: 'high' | 'medium' | 'low';
+  impact?: "high" | "medium" | "low";
   metrics?: {
     current?: number;
     target?: number;
     difference?: number;
     percentage?: number;
-    trend?: 'increasing' | 'decreasing' | 'stable';
+    trend?: "increasing" | "decreasing" | "stable";
     daysRemaining?: number;
     projectedDate?: string;
   };
@@ -1164,9 +711,9 @@ export interface FinancialHealthScore {
   };
   insights: string[];
   trends?: {
-    spendingTrend?: 'increasing' | 'decreasing' | 'stable';
-    savingsTrend?: 'increasing' | 'decreasing' | 'stable';
-    incomeTrend?: 'increasing' | 'decreasing' | 'stable';
+    spendingTrend?: "increasing" | "decreasing" | "stable";
+    savingsTrend?: "increasing" | "decreasing" | "stable";
+    incomeTrend?: "increasing" | "decreasing" | "stable";
   };
   projections?: {
     budgetBurnRate?: number;
@@ -1180,26 +727,10 @@ export interface FinancialHealthScore {
  */
 export async function getRecommendations(
   token: string,
-  context: 'local' | 'home' | 'combined' = 'local',
+  context: "local" | "home" | "combined" = "local",
 ): Promise<FinancialRecommendation[]> {
-  const params = new URLSearchParams();
-  if (context) params.append('context', context);
-
-  const url = `${getApiBaseUrl()}/finance/advisor/recommendations${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch recommendations' }));
-    throw new Error(error.message || `Failed to fetch recommendations: ${response.status}`);
-  }
-
-  return response.json();
+  const endpoint = `/finance/advisor/recommendations?context=${context}`;
+  return api.get<FinancialRecommendation[]>(endpoint, { token });
 }
 
 /**
@@ -1207,25 +738,8 @@ export async function getRecommendations(
  */
 export async function getHealthScore(
   token: string,
-  context: 'local' | 'home' | 'combined' = 'local',
+  context: "local" | "home" | "combined" = "local",
 ): Promise<FinancialHealthScore> {
-  const params = new URLSearchParams();
-  if (context) params.append('context', context);
-
-  const url = `${getApiBaseUrl()}/finance/advisor/health-score${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch health score' }));
-    throw new Error(error.message || `Failed to fetch health score: ${response.status}`);
-  }
-
-  return response.json();
+  const endpoint = `/finance/advisor/health-score?context=${context}`;
+  return api.get<FinancialHealthScore>(endpoint, { token });
 }
-

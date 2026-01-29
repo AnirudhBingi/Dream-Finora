@@ -19,7 +19,11 @@ import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { ListingService } from './listing.service';
-import { CreateListingDto, ListingType, ListingStatus } from './dto/create-listing.dto';
+import {
+  CreateListingDto,
+  ListingType,
+  ListingStatus,
+} from './dto/create-listing.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { CategorizationService } from '../shared/categorization.service';
@@ -47,15 +51,31 @@ export class ListingController {
     @Query('type') type?: ListingType,
     @Query('status') status?: ListingStatus,
     @Query('search') search?: string,
+    @Query('location') location?: string,
+    @Query('userId') userId?: string,
+    @Query('groupId') groupId?: string,
+    @Query('cursor') cursor?: string,
+    @Query('minPrice') minPrice?: string,
+    @Query('maxPrice') maxPrice?: string,
+    @Query('sort') sort?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
     const limitNum = limit ? parseInt(limit, 10) : 50;
     const offsetNum = offset ? parseInt(offset, 10) : 0;
+    const minPriceNum = minPrice ? Number(minPrice) : undefined;
+    const maxPriceNum = maxPrice ? Number(maxPrice) : undefined;
     return this.listingService.getListings(user.userId, {
       type,
       status,
       search,
+      location,
+      userId,
+      groupId,
+      cursor,
+      minPrice: Number.isFinite(minPriceNum) ? minPriceNum : undefined,
+      maxPrice: Number.isFinite(maxPriceNum) ? maxPriceNum : undefined,
+      sort,
       limit: limitNum,
       offset: offsetNum,
     });
@@ -67,12 +87,12 @@ export class ListingController {
   }
 
   @Get('categories')
-  async getCategories() {
+  getCategories() {
     return { categories: this.categorizationService.getItemCategories() };
   }
 
   @Get('suggest-category')
-  async suggestCategory(@Query('title') title: string) {
+  suggestCategory(@Query('title') title: string) {
     if (!title) {
       return { category: null };
     }
@@ -160,9 +180,7 @@ export class ListingController {
 
     // For local development, return relative paths
     // In production, this would be uploaded to S3/Supabase Storage and return full URLs
-    const imageUrls = files.map(
-      (file) => `/uploads/listings/${file.filename}`,
-    );
+    const imageUrls = files.map((file) => `/uploads/listings/${file.filename}`);
 
     // Update listing with new images
     return this.listingService.addListingImages(user.userId, id, imageUrls);
@@ -180,6 +198,11 @@ export class ListingController {
   @Get('favorites')
   async getFavorites(@CurrentUser() user: { userId: string }) {
     return this.listingService.getFavorites(user.userId);
+  }
+
+  @Get(':id/favorites')
+  async getListingFavorites(@Param('id') id: string) {
+    return this.listingService.getListingFavorites(id);
   }
 
   @Get(':id/comments')
@@ -224,4 +247,3 @@ export class ListingController {
     return this.listingService.generateShareLink(id);
   }
 }
-

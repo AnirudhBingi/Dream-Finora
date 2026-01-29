@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Animated, StyleSheet, Easing } from 'react-native';
+import React, { useEffect, useRef, useState } from "react";
+import { Animated, StyleSheet, Easing } from "react-native";
 
 interface ScreenContainerProps {
   children: React.ReactNode;
@@ -10,16 +10,16 @@ interface ScreenContainerProps {
 /**
  * Screen container that provides smooth fade transitions
  * Keeps screens mounted during transition to prevent flickering
- * 
+ *
  * Improved version with:
  * - Better easing for smoother transitions
  * - Optimized rendering (only renders when needed)
  * - Proper cleanup after transitions
  */
-export function ScreenContainer({ 
-  children, 
-  isActive, 
-  duration = 250 
+export function ScreenContainer({
+  children,
+  isActive,
+  duration = 250,
 }: ScreenContainerProps) {
   const opacity = useRef(new Animated.Value(isActive ? 1 : 0)).current;
   const [shouldRender, setShouldRender] = useState(isActive);
@@ -29,12 +29,12 @@ export function ScreenContainer({
   useEffect(() => {
     if (isActive !== previousActive.current) {
       previousActive.current = isActive;
-      
+
       // Cancel any ongoing animation
       if (animationRef.current) {
         animationRef.current.stop();
       }
-      
+
       if (isActive) {
         // Screen is becoming active - render it first, then fade in
         setShouldRender(true);
@@ -86,7 +86,7 @@ export function ScreenContainer({
           opacity,
         },
       ]}
-      pointerEvents={isActive ? 'auto' : 'none'}
+      pointerEvents={isActive ? "auto" : "none"}
     >
       {children}
     </Animated.View>
@@ -98,4 +98,3 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
 });
-

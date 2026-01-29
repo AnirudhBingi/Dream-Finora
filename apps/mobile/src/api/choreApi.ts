@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from './getApiBaseUrl';
+import { api } from "./client";
 
 export interface ChoreCompletion {
   id: string;
@@ -61,9 +61,9 @@ export interface Chore {
   description: string | null;
   category: string | null;
   points: number;
-  status: 'pending' | 'assigned' | 'completed' | 'cancelled';
+  status: "pending" | "assigned" | "completed" | "cancelled";
   assignedTo: string | null;
-  assignmentType: 'single' | 'multiple' | 'open';
+  assignmentType: "single" | "multiple" | "open";
   dueDate: string | null;
   reminderEnabled: boolean;
   reminderHoursBefore: number | null;
@@ -102,7 +102,7 @@ export interface Chore {
   completions?: ChoreCompletion[];
   // Recurring fields
   isRecurring?: boolean;
-  recurrencePattern?: 'daily' | 'weekly' | 'monthly' | 'custom' | null;
+  recurrencePattern?: "daily" | "weekly" | "monthly" | "custom" | null;
   recurrenceConfig?: {
     daysOfWeek?: number[];
     interval?: number;
@@ -117,7 +117,7 @@ export interface Chore {
   occurrencesGenerated?: number;
   // Rotation fields
   rotationEnabled?: boolean;
-  rotationType?: 'round-robin' | null;
+  rotationType?: "round-robin" | null;
   rotation?: ChoreRotationMember[];
 }
 
@@ -130,13 +130,13 @@ export interface CreateChoreDto {
   friendId?: string;
   assignedTo?: string;
   assignedToMultiple?: string[];
-  assignmentType?: 'single' | 'multiple' | 'open';
+  assignmentType?: "single" | "multiple" | "open";
   dueDate?: string;
   reminderHoursBefore?: number; // e.g., 24 for 24 hours before due date
   reminderEnabled?: boolean;
   // Recurring fields
   isRecurring?: boolean;
-  recurrencePattern?: 'daily' | 'weekly' | 'monthly' | 'custom';
+  recurrencePattern?: "daily" | "weekly" | "monthly" | "custom";
   recurrenceConfig?: {
     daysOfWeek?: number[];
     interval?: number;
@@ -148,28 +148,14 @@ export interface CreateChoreDto {
   recurrenceCount?: number;
   // Rotation fields
   rotationEnabled?: boolean;
-  rotationType?: 'round-robin';
+  rotationType?: "round-robin";
 }
 
 export async function createChore(
   token: string,
   data: CreateChoreDto,
 ): Promise<Chore> {
-  const response = await fetch(`${getApiBaseUrl()}/chores`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to create chore' }));
-    throw new Error(error.message || `Failed to create chore: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<Chore>("/chores", data, { token });
 }
 
 export interface PaginatedChoresResponse {
@@ -187,49 +173,32 @@ export async function getChores(
   offset: number = 0,
 ): Promise<PaginatedChoresResponse | Chore[]> {
   const queryParams = new URLSearchParams();
-  queryParams.append('limit', limit.toString());
-  queryParams.append('offset', offset.toString());
-  if (groupId) {
-    queryParams.append('groupId', groupId);
-  }
+  queryParams.append("limit", limit.toString());
+  queryParams.append("offset", offset.toString());
+  if (groupId) queryParams.append("groupId", groupId);
 
-  const response = await fetch(`${getApiBaseUrl()}/chores?${queryParams.toString()}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch chores' }));
-    throw new Error(error.message || `Failed to fetch chores: ${response.status}`);
-  }
-
-  const data = await response.json();
+  const data = await api.get<PaginatedChoresResponse | Chore[]>(
+    `/chores?${queryParams.toString()}`,
+    { token },
+  );
   // Check if response has pagination structure
-  if (data.chores && Array.isArray(data.chores)) {
+  if (
+    data &&
+    typeof data === "object" &&
+    "chores" in data &&
+    Array.isArray((data as any).chores)
+  ) {
     return data as PaginatedChoresResponse;
   }
   // Backward compatibility: return array if not paginated
   return data as Chore[];
 }
 
-export async function getChoreById(token: string, choreId: string): Promise<Chore> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch chore' }));
-    throw new Error(error.message || `Failed to fetch chore: ${response.status}`);
-  }
-
-  return response.json();
+export async function getChoreById(
+  token: string,
+  choreId: string,
+): Promise<Chore> {
+  return api.get<Chore>(`/chores/${choreId}`, { token });
 }
 
 export async function assignChore(
@@ -237,58 +206,25 @@ export async function assignChore(
   choreId: string,
   userId: string,
 ): Promise<Chore> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/assign`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ userId }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to assign chore' }));
-    throw new Error(error.message || `Failed to assign chore: ${response.status}`);
-  }
-
-  return response.json();
+  return api.put<Chore>(`/chores/${choreId}/assign`, { userId }, { token });
 }
 
-export async function grabChore(token: string, choreId: string): Promise<Chore> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/grab`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to grab chore' }));
-    throw new Error(error.message || `Failed to grab chore: ${response.status}`);
-  }
-
-  return response.json();
+export async function grabChore(
+  token: string,
+  choreId: string,
+): Promise<Chore> {
+  return api.put<Chore>(`/chores/${choreId}/grab`, undefined, { token });
 }
 
 export async function completeChore(
   token: string,
   choreId: string,
 ): Promise<Chore & { lastCompletion?: ChoreCompletion }> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/complete`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to complete chore' }));
-    throw new Error(error.message || `Failed to complete chore: ${response.status}`);
-  }
-
-  return response.json();
+  return api.put<Chore & { lastCompletion?: ChoreCompletion }>(
+    `/chores/${choreId}/complete`,
+    undefined,
+    { token },
+  );
 }
 
 export interface UpdateChoreDto {
@@ -301,7 +237,7 @@ export interface UpdateChoreDto {
   reminderHoursBefore?: number;
   // Recurring fields
   isRecurring?: boolean;
-  recurrencePattern?: 'daily' | 'weekly' | 'monthly' | 'custom';
+  recurrencePattern?: "daily" | "weekly" | "monthly" | "custom";
   recurrenceConfig?: {
     daysOfWeek?: number[];
     interval?: number;
@@ -313,7 +249,7 @@ export interface UpdateChoreDto {
   recurrenceCount?: number;
   // Rotation fields
   rotationEnabled?: boolean;
-  rotationType?: 'round-robin';
+  rotationType?: "round-robin";
 }
 
 export async function updateChore(
@@ -321,81 +257,31 @@ export async function updateChore(
   choreId: string,
   data: UpdateChoreDto,
 ): Promise<Chore> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}`, {
-    method: 'PATCH',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to update chore' }));
-    throw new Error(error.message || `Failed to update chore: ${response.status}`);
-  }
-
-  return response.json();
+  return api.patch<Chore>(`/chores/${choreId}`, data, { token });
 }
 
 export async function deleteChore(
   token: string,
   choreId: string,
 ): Promise<{ success: boolean; message: string }> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to delete chore' }));
-    throw new Error(error.message || `Failed to delete chore: ${response.status}`);
-  }
-
-  return response.json();
+  return api.delete<{ success: boolean; message: string }>(
+    `/chores/${choreId}`,
+    { token },
+  );
 }
 
 export async function unassignChore(
   token: string,
   choreId: string,
 ): Promise<Chore> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/unassign`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to unassign chore' }));
-    throw new Error(error.message || `Failed to unassign chore: ${response.status}`);
-  }
-
-  return response.json();
+  return api.put<Chore>(`/chores/${choreId}/unassign`, undefined, { token });
 }
 
 export async function cancelChore(
   token: string,
   choreId: string,
 ): Promise<Chore> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/cancel`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to cancel chore' }));
-    throw new Error(error.message || `Failed to cancel chore: ${response.status}`);
-  }
-
-  return response.json();
+  return api.put<Chore>(`/chores/${choreId}/cancel`, undefined, { token });
 }
 
 export interface ReassignChoreDto {
@@ -408,21 +294,7 @@ export async function reassignChore(
   choreId: string,
   data: ReassignChoreDto,
 ): Promise<Chore> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/reassign`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to reassign chore' }));
-    throw new Error(error.message || `Failed to reassign chore: ${response.status}`);
-  }
-
-  return response.json();
+  return api.put<Chore>(`/chores/${choreId}/reassign`, data, { token });
 }
 
 export interface ChoreHistoryEntry {
@@ -448,20 +320,7 @@ export async function getChoreHistory(
   token: string,
   choreId: string,
 ): Promise<ChoreHistoryEntry[]> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/history`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch chore history' }));
-    throw new Error(error.message || `Failed to fetch chore history: ${response.status}`);
-  }
-
-  return response.json();
+  return api.get<ChoreHistoryEntry[]>(`/chores/${choreId}/history`, { token });
 }
 
 export interface ChoreStats {
@@ -487,20 +346,7 @@ export interface ChoreStats {
 }
 
 export async function getChoreStats(token: string): Promise<ChoreStats> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/stats/me`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch chore stats' }));
-    throw new Error(error.message || `Failed to fetch chore stats: ${response.status}`);
-  }
-
-  return response.json();
+  return api.get<ChoreStats>("/chores/stats/me", { token });
 }
 
 export interface GroupChoreStats {
@@ -535,21 +381,11 @@ export interface GroupChoreStats {
   }>;
 }
 
-export async function getGroupChoreStats(token: string, groupId: string): Promise<GroupChoreStats> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/stats/group/${groupId}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch group chore stats' }));
-    throw new Error(error.message || `Failed to fetch group chore stats: ${response.status}`);
-  }
-
-  return response.json();
+export async function getGroupChoreStats(
+  token: string,
+  groupId: string,
+): Promise<GroupChoreStats> {
+  return api.get<GroupChoreStats>(`/chores/stats/group/${groupId}`, { token });
 }
 
 export interface GroupAchievement {
@@ -569,21 +405,13 @@ export interface GroupAchievements {
   achievements: GroupAchievement[];
 }
 
-export async function getGroupAchievements(token: string, groupId: string): Promise<GroupAchievements> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/groups/${groupId}/achievements`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+export async function getGroupAchievements(
+  token: string,
+  groupId: string,
+): Promise<GroupAchievements> {
+  return api.get<GroupAchievements>(`/chores/groups/${groupId}/achievements`, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch group achievements' }));
-    throw new Error(error.message || `Failed to fetch group achievements: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export interface GroupChoreHistoryEntry {
@@ -610,20 +438,10 @@ export async function getGroupChoreHistory(
   groupId: string,
   limit: number = 50,
 ): Promise<GroupChoreHistoryEntry[]> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/groups/${groupId}/history?limit=${limit}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch group history' }));
-    throw new Error(error.message || `Failed to fetch group history: ${response.status}`);
-  }
-
-  return response.json();
+  return api.get<GroupChoreHistoryEntry[]>(
+    `/chores/groups/${groupId}/history?limit=${limit}`,
+    { token },
+  );
 }
 
 export interface GroupAnalytics {
@@ -649,20 +467,10 @@ export async function getGroupAnalytics(
   groupId: string,
   days: number = 30,
 ): Promise<GroupAnalytics> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/groups/${groupId}/analytics?days=${days}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch group analytics' }));
-    throw new Error(error.message || `Failed to fetch group analytics: ${response.status}`);
-  }
-
-  return response.json();
+  return api.get<GroupAnalytics>(
+    `/chores/groups/${groupId}/analytics?days=${days}`,
+    { token },
+  );
 }
 
 export interface FriendChoreStats {
@@ -685,21 +493,13 @@ export interface FriendChoreStats {
   combinedTotalCompleted: number;
 }
 
-export async function getFriendChoreStats(token: string, friendId: string): Promise<FriendChoreStats> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/stats/friend/${friendId}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+export async function getFriendChoreStats(
+  token: string,
+  friendId: string,
+): Promise<FriendChoreStats> {
+  return api.get<FriendChoreStats>(`/chores/stats/friend/${friendId}`, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch friend chore stats' }));
-    throw new Error(error.message || `Failed to fetch friend chore stats: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export interface LeaderboardEntry {
@@ -717,22 +517,19 @@ export interface LeaderboardEntry {
 export async function getGroupLeaderboard(
   token: string,
   groupId: string,
-  period: 'week' | 'month' | 'all-time' = 'all-time'
-): Promise<{ period: string; groupId: string; leaderboard: LeaderboardEntry[]; updatedAt: string }> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/leaderboard/${groupId}?period=${period}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch leaderboard' }));
-    throw new Error(error.message || `Failed to fetch leaderboard: ${response.status}`);
-  }
-
-  return response.json();
+  period: "week" | "month" | "all-time" = "all-time",
+): Promise<{
+  period: string;
+  groupId: string;
+  leaderboard: LeaderboardEntry[];
+  updatedAt: string;
+}> {
+  return api.get<{
+    period: string;
+    groupId: string;
+    leaderboard: LeaderboardEntry[];
+    updatedAt: string;
+  }>(`/chores/leaderboard/${groupId}?period=${period}`, { token });
 }
 
 export interface CalculatePointsRequest {
@@ -750,21 +547,9 @@ export async function calculateChorePoints(
   token: string,
   data: CalculatePointsRequest,
 ): Promise<CalculatePointsResponse> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/calculate-points`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
+  return api.post<CalculatePointsResponse>("/chores/calculate-points", data, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to calculate points' }));
-    throw new Error(error.message || `Failed to calculate points: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export interface ChoreAssignment {
@@ -790,41 +575,20 @@ export async function assignMultipleChore(
   choreId: string,
   userIds: string[],
 ): Promise<Chore> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/assign-multiple`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ userIds }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to assign chore' }));
-    throw new Error(error.message || `Failed to assign chore: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<Chore>(
+    `/chores/${choreId}/assign-multiple`,
+    { userIds },
+    { token },
+  );
 }
 
 export async function getChoreAssignments(
   token: string,
   choreId: string,
 ): Promise<ChoreAssignment[]> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/assignments`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  return api.get<ChoreAssignment[]>(`/chores/${choreId}/assignments`, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch assignments' }));
-    throw new Error(error.message || `Failed to fetch assignments: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export async function completeChoreAssignment(
@@ -832,20 +596,11 @@ export async function completeChoreAssignment(
   choreId: string,
   assignmentId: string,
 ): Promise<Chore> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/assignments/${assignmentId}/complete`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to complete assignment' }));
-    throw new Error(error.message || `Failed to complete assignment: ${response.status}`);
-  }
-
-  return response.json();
+  return api.put<Chore>(
+    `/chores/${choreId}/assignments/${assignmentId}/complete`,
+    undefined,
+    { token },
+  );
 }
 
 export async function removeChoreAssignment(
@@ -853,20 +608,9 @@ export async function removeChoreAssignment(
   choreId: string,
   assignmentId: string,
 ): Promise<Chore> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/assignments/${assignmentId}`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  return api.delete<Chore>(`/chores/${choreId}/assignments/${assignmentId}`, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to remove assignment' }));
-    throw new Error(error.message || `Failed to remove assignment: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 // Recurring Chore Functions
@@ -880,40 +624,18 @@ export async function getRecurringChoreOccurrences(
   token: string,
   choreId: string,
 ): Promise<RecurringChoreOccurrences> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/occurrences`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  return api.get<RecurringChoreOccurrences>(`/chores/${choreId}/occurrences`, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to get occurrences' }));
-    throw new Error(error.message || `Failed to get occurrences: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export async function stopRecurrence(
   token: string,
   choreId: string,
 ): Promise<Chore> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/recurrence/stop`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  return api.put<Chore>(`/chores/${choreId}/recurrence/stop`, undefined, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to stop recurrence' }));
-    throw new Error(error.message || `Failed to stop recurrence: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export async function skipOccurrence(
@@ -921,41 +643,20 @@ export async function skipOccurrence(
   parentChoreId: string,
   occurrenceId: string,
 ): Promise<{ success: boolean; message: string }> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${parentChoreId}/recurrence/skip`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ occurrenceId }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to skip occurrence' }));
-    throw new Error(error.message || `Failed to skip occurrence: ${response.status}`);
-  }
-
-  return response.json();
+  return api.put<{ success: boolean; message: string }>(
+    `/chores/${parentChoreId}/recurrence/skip`,
+    { occurrenceId },
+    { token },
+  );
 }
 
 export async function generateNextOccurrence(
   token: string,
   choreId: string,
 ): Promise<Chore> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/recurrence/generate`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  return api.post<Chore>(`/chores/${choreId}/recurrence/generate`, undefined, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to generate occurrence' }));
-    throw new Error(error.message || `Failed to generate occurrence: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 // Rotation Functions
@@ -963,20 +664,9 @@ export async function getRotationOrder(
   token: string,
   choreId: string,
 ): Promise<ChoreRotationMember[]> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/rotation`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  return api.get<ChoreRotationMember[]>(`/chores/${choreId}/rotation`, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to get rotation order' }));
-    throw new Error(error.message || `Failed to get rotation order: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export interface RotationScheduleItem {
@@ -991,20 +681,10 @@ export async function getRotationSchedule(
   choreId: string,
   count: number = 10,
 ): Promise<RotationScheduleItem[]> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/rotation/schedule?count=${count}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to get rotation schedule' }));
-    throw new Error(error.message || `Failed to get rotation schedule: ${response.status}`);
-  }
-
-  return response.json();
+  return api.get<RotationScheduleItem[]>(
+    `/chores/${choreId}/rotation/schedule?count=${count}`,
+    { token },
+  );
 }
 
 export async function updateRotationOrder(
@@ -1012,19 +692,7 @@ export async function updateRotationOrder(
   choreId: string,
   userIds: string[],
 ): Promise<void> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/rotation`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ userIds }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to update rotation order' }));
-    throw new Error(error.message || `Failed to update rotation order: ${response.status}`);
-  }
+  await api.put<void>(`/chores/${choreId}/rotation`, { userIds }, { token });
 }
 
 export async function skipUserInRotation(
@@ -1033,19 +701,11 @@ export async function skipUserInRotation(
   userId: string,
   skipUntil: string,
 ): Promise<void> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/rotation/skip`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ userId, skipUntil }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to skip user' }));
-    throw new Error(error.message || `Failed to skip user: ${response.status}`);
-  }
+  await api.post<void>(
+    `/chores/${choreId}/rotation/skip`,
+    { userId, skipUntil },
+    { token },
+  );
 }
 
 export async function removeSkip(
@@ -1053,38 +713,18 @@ export async function removeSkip(
   choreId: string,
   userId: string,
 ): Promise<void> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/rotation/skip/${userId}`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  await api.delete<void>(`/chores/${choreId}/rotation/skip/${userId}`, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to remove skip' }));
-    throw new Error(error.message || `Failed to remove skip: ${response.status}`);
-  }
 }
 
 export async function assignToNextUser(
   token: string,
   choreId: string,
 ): Promise<Chore> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/${choreId}/rotation/assign-next`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  return api.post<Chore>(`/chores/${choreId}/rotation/assign-next`, undefined, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to assign to next user' }));
-    throw new Error(error.message || `Failed to assign to next user: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export interface RotationFairnessResponse {
@@ -1096,19 +736,8 @@ export async function getRotationFairness(
   token: string,
   groupId: string,
 ): Promise<RotationFairnessResponse> {
-  const response = await fetch(`${getApiBaseUrl()}/chores/groups/${groupId}/rotation-fairness`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to get fairness score' }));
-    throw new Error(error.message || `Failed to get fairness score: ${response.status}`);
-  }
-
-  return response.json();
+  return api.get<RotationFairnessResponse>(
+    `/chores/groups/${groupId}/rotation-fairness`,
+    { token },
+  );
 }
-

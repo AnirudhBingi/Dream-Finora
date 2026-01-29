@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationService } from '../notification/notification.service';
 import { EmailService } from '../shared/email.service';
@@ -7,6 +13,21 @@ import { SendFriendRequestDto } from './dto/send-friend-request.dto';
 import { FriendResponseDto } from './dto/friend-response.dto';
 import { randomUUID } from 'crypto';
 import { InviteUserDto } from './dto/invite-user.dto';
+
+type FriendUser = {
+  id: string;
+  email: string;
+  UserProfile: {
+    displayName: string | null;
+    avatarUrl: string | null;
+  } | null;
+};
+
+type FriendshipWithUsers = Prisma.FriendGetPayload<Prisma.FriendDefaultArgs> & {
+  friend?: FriendUser;
+  User_Friend_friendIdToUser?: FriendUser;
+  User_Friend_userIdToUser?: FriendUser;
+};
 
 @Injectable()
 export class FriendService {
@@ -17,10 +38,13 @@ export class FriendService {
     private trustScoreService: TrustScoreService,
   ) {}
 
-  async sendFriendRequest(userId: string, dto: SendFriendRequestDto): Promise<FriendResponseDto> {
+  async sendFriendRequest(
+    userId: string,
+    dto: SendFriendRequestDto,
+  ): Promise<FriendResponseDto> {
     // Determine if identifier is email or mobile number
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dto.friendEmailOrMobile);
-    
+
     // Find friend by email or mobile number
     const friend = isEmail
       ? await this.prisma.user.findUnique({
@@ -52,16 +76,24 @@ export class FriendService {
 
     if (existingFriendship) {
       if (existingFriendship.status === 'blocked') {
-        throw new ConflictException('Cannot send friend request to blocked user');
+        throw new ConflictException(
+          'Cannot send friend request to blocked user',
+        );
       }
       if (existingFriendship.status === 'accepted') {
         throw new ConflictException('Already friends with this user');
       }
-      if (existingFriendship.status === 'pending' && existingFriendship.userId === userId) {
+      if (
+        existingFriendship.status === 'pending' &&
+        existingFriendship.userId === userId
+      ) {
         throw new ConflictException('Friend request already sent');
       }
       // If friend sent request to us, accept it automatically
-      if (existingFriendship.status === 'pending' && existingFriendship.userId === friend.id) {
+      if (
+        existingFriendship.status === 'pending' &&
+        existingFriendship.userId === friend.id
+      ) {
         return this.acceptFriendRequest(userId, existingFriendship.id);
       }
     }
@@ -92,15 +124,14 @@ export class FriendService {
         UserProfile: { select: { displayName: true } },
       },
     });
-    const requesterName = requester?.UserProfile?.displayName || requester?.email || 'Someone';
-    
-    await this.notificationService.notifyFriendRequest(
-      friend.id,
-      userId,
-      requesterName,
-    ).catch(err => {
-      console.error(`Failed to create notification for friend request:`, err);
-    });
+    const requesterName =
+      requester?.UserProfile?.displayName || requester?.email || 'Someone';
+
+    await this.notificationService
+      .notifyFriendRequest(friend.id, userId, requesterName)
+      .catch((err) => {
+        console.error(`Failed to create notification for friend request:`, err);
+      });
 
     return this.mapToFriendResponse(friendship);
   }
@@ -135,7 +166,9 @@ export class FriendService {
       const isUser = f.userId === userId;
       return this.mapToFriendResponse({
         ...f,
-        friend: isUser ? f.User_Friend_friendIdToUser : f.User_Friend_userIdToUser,
+        friend: isUser
+          ? f.User_Friend_friendIdToUser
+          : f.User_Friend_userIdToUser,
       });
     });
   }
@@ -179,12 +212,17 @@ export class FriendService {
     });
 
     return {
-      incoming: incoming.map((f) => this.mapToFriendResponse({ ...f, friend: f.User_Friend_userIdToUser })),
+      incoming: incoming.map((f) =>
+        this.mapToFriendResponse({ ...f, friend: f.User_Friend_userIdToUser }),
+      ),
       outgoing: outgoing.map((f) => this.mapToFriendResponse(f)),
     };
   }
 
-  async acceptFriendRequest(userId: string, friendshipId: string): Promise<FriendResponseDto> {
+  async acceptFriendRequest(
+    userId: string,
+    friendshipId: string,
+  ): Promise<FriendResponseDto> {
     const friendship = await this.prisma.friend.findUnique({
       where: { id: friendshipId },
       include: {
@@ -201,7 +239,9 @@ export class FriendService {
     }
 
     if (friendship.friendId !== userId) {
-      throw new BadRequestException('You can only accept friend requests sent to you');
+      throw new BadRequestException(
+        'You can only accept friend requests sent to you',
+      );
     }
 
     if (friendship.status !== 'pending') {
@@ -231,20 +271,25 @@ export class FriendService {
         UserProfile: { select: { displayName: true } },
       },
     });
-    const accepterName = accepter?.UserProfile?.displayName || accepter?.email || 'Someone';
-    
-    await this.notificationService.notifyFriendAccepted(
-      updated.userId,
-      userId,
-      accepterName,
-    ).catch(err => {
-      console.error(`Failed to create notification for friend acceptance:`, err);
-    });
+    const accepterName =
+      accepter?.UserProfile?.displayName || accepter?.email || 'Someone';
+
+    await this.notificationService
+      .notifyFriendAccepted(updated.userId, userId, accepterName)
+      .catch((err) => {
+        console.error(
+          `Failed to create notification for friend acceptance:`,
+          err,
+        );
+      });
 
     return this.mapToFriendResponse(updated);
   }
 
-  async rejectFriendRequest(userId: string, friendshipId: string): Promise<{ message: string }> {
+  async rejectFriendRequest(
+    userId: string,
+    friendshipId: string,
+  ): Promise<{ message: string }> {
     const friendship = await this.prisma.friend.findUnique({
       where: { id: friendshipId },
     });
@@ -254,7 +299,9 @@ export class FriendService {
     }
 
     if (friendship.friendId !== userId) {
-      throw new BadRequestException('You can only reject friend requests sent to you');
+      throw new BadRequestException(
+        'You can only reject friend requests sent to you',
+      );
     }
 
     if (friendship.status !== 'pending') {
@@ -268,7 +315,10 @@ export class FriendService {
     return { message: 'Friend request rejected' };
   }
 
-  async removeFriend(userId: string, friendshipId: string): Promise<{ message: string }> {
+  async removeFriend(
+    userId: string,
+    friendshipId: string,
+  ): Promise<{ message: string }> {
     const friendship = await this.prisma.friend.findUnique({
       where: { id: friendshipId },
     });
@@ -293,7 +343,10 @@ export class FriendService {
     return { message: 'Friend removed successfully' };
   }
 
-  async blockUser(userId: string, friendId: string): Promise<FriendResponseDto> {
+  async blockUser(
+    userId: string,
+    friendId: string,
+  ): Promise<FriendResponseDto> {
     if (userId === friendId) {
       throw new BadRequestException('Cannot block yourself');
     }
@@ -350,7 +403,10 @@ export class FriendService {
     }
   }
 
-  async unblockUser(userId: string, friendId: string): Promise<{ message: string }> {
+  async unblockUser(
+    userId: string,
+    friendId: string,
+  ): Promise<{ message: string }> {
     if (userId === friendId) {
       throw new BadRequestException('Cannot unblock yourself');
     }
@@ -394,10 +450,15 @@ export class FriendService {
       },
     });
 
-    return blockedFriendships.map((friendship) => this.mapToFriendResponse(friendship));
+    return blockedFriendships.map((friendship) =>
+      this.mapToFriendResponse(friendship),
+    );
   }
 
-  async getMutualFriends(userId: string, targetUserId: string): Promise<FriendResponseDto[]> {
+  async getMutualFriends(
+    userId: string,
+    targetUserId: string,
+  ): Promise<FriendResponseDto[]> {
     // Get user's friends
     const userFriends = await this.prisma.friend.findMany({
       where: {
@@ -447,7 +508,11 @@ export class FriendService {
       where: {
         OR: [
           { userId, friendId: { in: mutualFriendIds }, status: 'accepted' },
-          { friendId: userId, userId: { in: mutualFriendIds }, status: 'accepted' },
+          {
+            friendId: userId,
+            userId: { in: mutualFriendIds },
+            status: 'accepted',
+          },
         ],
       },
       include: {
@@ -464,43 +529,53 @@ export class FriendService {
       },
     });
 
-      return mutualFriends.map((f) => {
-        const isUser = f.userId === userId;
-        return this.mapToFriendResponse({
-          ...f,
-          friend: isUser ? f.User_Friend_friendIdToUser : f.User_Friend_userIdToUser,
-        });
+    return mutualFriends.map((f) => {
+      const isUser = f.userId === userId;
+      return this.mapToFriendResponse({
+        ...f,
+        friend: isUser
+          ? f.User_Friend_friendIdToUser
+          : f.User_Friend_userIdToUser,
       });
+    });
   }
 
-  async searchUsers(userId: string, query: string): Promise<Array<{
-    id: string;
-    email: string;
-    mobileNumber?: string | null;
-    profile?: {
-      displayName: string | null;
-      avatarUrl: string | null;
-    } | null;
-    friendStatus?: 'none' | 'pending' | 'accepted' | 'blocked';
-    trustScore?: {
-      score: number;
-    } | null;
-    trustScoreVisibility?: 'public' | 'friends' | 'private';
-  }>> {
+  async searchUsers(
+    userId: string,
+    query: string,
+  ): Promise<
+    Array<{
+      id: string;
+      email: string;
+      mobileNumber?: string | null;
+      profile?: {
+        displayName: string | null;
+        avatarUrl: string | null;
+      } | null;
+      friendStatus?: 'none' | 'pending' | 'accepted' | 'blocked';
+      trustScore?: {
+        score: number;
+      } | null;
+      trustScoreVisibility?: 'public' | 'friends' | 'private';
+    }>
+  > {
     // Get all existing friendships for this user
     const friendships = await this.prisma.friend.findMany({
       where: {
-        OR: [
-          { userId },
-          { friendId: userId },
-        ],
+        OR: [{ userId }, { friendId: userId }],
       },
     });
 
-    const friendStatusMap = new Map<string, 'pending' | 'accepted' | 'blocked'>();
+    const friendStatusMap = new Map<
+      string,
+      'pending' | 'accepted' | 'blocked'
+    >();
     friendships.forEach((f) => {
       const otherUserId = f.userId === userId ? f.friendId : f.userId;
-      friendStatusMap.set(otherUserId, f.status as 'pending' | 'accepted' | 'blocked');
+      friendStatusMap.set(
+        otherUserId,
+        f.status as 'pending' | 'accepted' | 'blocked',
+      );
     });
 
     // Search users by email, mobile number, or display name
@@ -512,7 +587,11 @@ export class FriendService {
             OR: [
               { email: { contains: query, mode: 'insensitive' } },
               { mobileNumber: { contains: query, mode: 'insensitive' } },
-              { UserProfile: { displayName: { contains: query, mode: 'insensitive' } } },
+              {
+                UserProfile: {
+                  displayName: { contains: query, mode: 'insensitive' },
+                },
+              },
             ],
           },
         ],
@@ -527,7 +606,7 @@ export class FriendService {
     return users.map((user) => {
       const friendStatus = friendStatusMap.get(user.id) || 'none';
       const isFriend = friendStatus === 'accepted';
-      
+
       // Get profile with default values
       const profile = user.UserProfile || {
         id: null,
@@ -542,11 +621,14 @@ export class FriendService {
         createdAt: user.createdAt,
       };
 
-      const trustScoreVisibility = (profile.trustScoreVisibility || 'public') as 'public' | 'friends' | 'private';
-      
+      const trustScoreVisibility = (profile.trustScoreVisibility ||
+        'public') as 'public' | 'friends' | 'private';
+
       // Apply privacy rules for trust score visibility
-      const canSeeTrustScore = trustScoreVisibility === 'public' || (trustScoreVisibility === 'friends' && isFriend);
-      
+      const canSeeTrustScore =
+        trustScoreVisibility === 'public' ||
+        (trustScoreVisibility === 'friends' && isFriend);
+
       // Get trust score if visible
       let trustScore: { score: number } | null = null;
       if (canSeeTrustScore && user.TrustScore) {
@@ -570,8 +652,16 @@ export class FriendService {
     });
   }
 
-  private mapToFriendResponse(friendship: any): FriendResponseDto {
-    const friend = friendship.friend || friendship.User_Friend_friendIdToUser || friendship.User_Friend_userIdToUser;
+  private mapToFriendResponse(
+    friendship: FriendshipWithUsers,
+  ): FriendResponseDto {
+    const friend =
+      friendship.friend ||
+      friendship.User_Friend_friendIdToUser ||
+      friendship.User_Friend_userIdToUser;
+    if (!friend) {
+      throw new Error('Friendship is missing user relations');
+    }
     // friendId should always be the friend's user ID (not the database field value)
     const friendId = friend.id;
     return {
@@ -579,9 +669,19 @@ export class FriendService {
       userId: friendship.userId,
       friendId: friendId,
       status: friendship.status as 'pending' | 'accepted' | 'blocked',
-      createdAt: friendship.createdAt instanceof Date ? friendship.createdAt : new Date(friendship.createdAt),
-      updatedAt: friendship.updatedAt instanceof Date ? friendship.updatedAt : new Date(friendship.updatedAt),
-      acceptedAt: friendship.acceptedAt ? (friendship.acceptedAt instanceof Date ? friendship.acceptedAt : new Date(friendship.acceptedAt)) : null,
+      createdAt:
+        friendship.createdAt instanceof Date
+          ? friendship.createdAt
+          : new Date(friendship.createdAt),
+      updatedAt:
+        friendship.updatedAt instanceof Date
+          ? friendship.updatedAt
+          : new Date(friendship.updatedAt),
+      acceptedAt: friendship.acceptedAt
+        ? friendship.acceptedAt instanceof Date
+          ? friendship.acceptedAt
+          : new Date(friendship.acceptedAt)
+        : null,
       friend: {
         id: friend.id,
         email: friend.email,
@@ -598,11 +698,17 @@ export class FriendService {
   async inviteUserToApp(userId: string, inviteDto: InviteUserDto) {
     // Validate that either email or mobileNumber is provided
     if (!inviteDto.email && !inviteDto.mobileNumber) {
-      throw new BadRequestException('Either email or mobileNumber must be provided');
+      throw new BadRequestException(
+        'Either email or mobileNumber must be provided',
+      );
     }
 
     // Check if user already exists
-    let existingUser: { id: string; email: string; mobileNumber: string | null } | null = null;
+    let existingUser: {
+      id: string;
+      email: string;
+      mobileNumber: string | null;
+    } | null = null;
     if (inviteDto.email) {
       existingUser = await this.prisma.user.findUnique({
         where: { email: inviteDto.email },
@@ -614,7 +720,9 @@ export class FriendService {
     }
 
     if (existingUser) {
-      throw new ConflictException('User with this email/mobile number already exists');
+      throw new ConflictException(
+        'User with this email/mobile number already exists',
+      );
     }
 
     // Check for existing pending invitation
@@ -622,7 +730,9 @@ export class FriendService {
       where: {
         OR: [
           inviteDto.email ? { email: inviteDto.email } : {},
-          inviteDto.mobileNumber ? { mobileNumber: inviteDto.mobileNumber } : {},
+          inviteDto.mobileNumber
+            ? { mobileNumber: inviteDto.mobileNumber }
+            : {},
         ],
         status: 'pending',
         expiresAt: {
@@ -632,7 +742,9 @@ export class FriendService {
     });
 
     if (existingInvitation) {
-      throw new ConflictException('Invitation already sent to this email/mobile number');
+      throw new ConflictException(
+        'Invitation already sent to this email/mobile number',
+      );
     }
 
     // Get inviter info
@@ -672,25 +784,20 @@ export class FriendService {
     // Send email/SMS invitation
     const inviterName = inviter.UserProfile?.displayName || inviter.email;
     if (inviteDto.email) {
-      await this.emailService.sendAppInvitation(
-        inviteDto.email,
-        inviterName,
-        token,
-      ).catch(err => {
-        console.error('Failed to send email invitation:', err);
-        // Don't throw - invitation is still created
-      });
+      await this.emailService
+        .sendAppInvitation(inviteDto.email, inviterName, token)
+        .catch((err) => {
+          console.error('Failed to send email invitation:', err);
+          // Don't throw - invitation is still created
+        });
     }
     if (inviteDto.mobileNumber) {
-      await this.emailService.sendSMSInvitation(
-        inviteDto.mobileNumber,
-        inviterName,
-        token,
-        false,
-      ).catch(err => {
-        console.error('Failed to send SMS invitation:', err);
-        // Don't throw - invitation is still created
-      });
+      await this.emailService
+        .sendSMSInvitation(inviteDto.mobileNumber, inviterName, token, false)
+        .catch((err) => {
+          console.error('Failed to send SMS invitation:', err);
+          // Don't throw - invitation is still created
+        });
     }
 
     return {
@@ -740,7 +847,9 @@ export class FriendService {
     }
 
     if (invitation.status !== 'pending') {
-      throw new BadRequestException('Invitation has already been used or expired');
+      throw new BadRequestException(
+        'Invitation has already been used or expired',
+      );
     }
 
     if (new Date() > invitation.expiresAt) {
@@ -758,7 +867,8 @@ export class FriendService {
     }
 
     const emailMatches = invitation.email && user.email === invitation.email;
-    const mobileMatches = invitation.mobileNumber && user.mobileNumber === invitation.mobileNumber;
+    const mobileMatches =
+      invitation.mobileNumber && user.mobileNumber === invitation.mobileNumber;
 
     if (!emailMatches && !mobileMatches) {
       throw new BadRequestException('This invitation is not for you');
@@ -785,5 +895,89 @@ export class FriendService {
 
     return { success: true };
   }
-}
 
+  async getFriendStats(userId: string, friendId: string) {
+    // Verify friendship exists
+    const friendship = await this.prisma.friend.findFirst({
+      where: {
+        status: 'accepted',
+        OR: [
+          { userId, friendId },
+          { userId: friendId, friendId: userId },
+        ],
+      },
+    });
+
+    if (!friendship) {
+      throw new NotFoundException('Friendship not found');
+    }
+
+    // Get expenses where both users are involved (via ExpenseSplit)
+    const expenses = await this.prisma.expense.findMany({
+      where: {
+        AND: [
+          {
+            ExpenseSplit: {
+              some: { userId },
+            },
+          },
+          {
+            ExpenseSplit: {
+              some: { userId: friendId },
+            },
+          },
+        ],
+      },
+      include: {
+        Ride: {
+          select: {
+            id: true,
+            driverId: true,
+            origin: true,
+            destination: true,
+            type: true,
+            date: true,
+          },
+        },
+      },
+    });
+
+    // Filter ride expenses (expenses with rideId)
+    const rideExpenses = expenses.filter((expense) => expense.rideId !== null);
+
+    // Calculate ride stats
+    const totalRides = rideExpenses.length;
+    const totalSpent = rideExpenses.reduce(
+      (sum, expense) => sum + expense.amount,
+      0,
+    );
+
+    // Calculate rides as driver vs passenger (based on ride's driverId)
+    const ridesAsDriver = rideExpenses.filter(
+      (expense) => expense.Ride && expense.Ride.driverId === userId,
+    ).length;
+    const ridesAsPassenger = totalRides - ridesAsDriver;
+
+    // Get recent routes (last 5)
+    const recentRoutes = rideExpenses
+      .filter((expense) => expense.Ride)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 5)
+      .map((expense) => ({
+        route: `${expense.Ride!.origin} → ${expense.Ride!.destination}`,
+        date:
+          expense.date instanceof Date
+            ? expense.date.toISOString()
+            : new Date(expense.date).toISOString(),
+        cost: expense.amount,
+      }));
+
+    return {
+      totalRides,
+      totalSpentTogether: totalSpent,
+      ridesAsDriver,
+      ridesAsPassenger,
+      recentRoutes,
+    };
+  }
+}

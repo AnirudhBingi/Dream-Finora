@@ -1,4 +1,4 @@
-import { Controller, Get, Res, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { ExportService } from './export.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -48,4 +48,3 @@ export class ExportController {
     res.json(data);
   }
 }
-

@@ -1,4 +1,10 @@
-import { IsString, IsOptional, IsArray, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsArray,
+  IsBoolean,
+  IsIn,
+} from 'class-validator';
 
 export class CreateGroupDto {
   @IsString()
@@ -24,5 +30,8 @@ export class CreateGroupDto {
   @IsOptional()
   @IsString()
   avatarUrl?: string;
-}
 
+  @IsOptional()
+  @IsIn(['public', 'private'])
+  visibility?: 'public' | 'private';
+}

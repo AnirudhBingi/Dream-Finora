@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -8,10 +8,10 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
-import { useAuth } from '../auth/authContext';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useAuth } from "../auth/authContext";
 import {
   getAccountInfo,
   changePassword,
@@ -21,8 +21,11 @@ import {
   ChangePasswordDto,
   UpdateEmailDto,
   DeleteAccountDto,
-} from '../api/accountApi';
-import { Header } from '../components/Header';
+} from "../api/accountApi";
+import { Header } from "../components/Header";
+import { useTheme } from "../theme";
+import { useDataFetch } from "../hooks/useDataFetch";
+import { useAsyncOperation } from "../hooks/useAsyncOperation";
 
 interface AccountSettingsScreenProps {
   onBack: () => void;
@@ -31,153 +34,135 @@ interface AccountSettingsScreenProps {
   onNavigateToSettings?: () => void;
 }
 
-export function AccountSettingsScreen({ 
+export function AccountSettingsScreen({
   onBack,
   onNavigateToProfile,
   onNavigateToNotifications,
   onNavigateToSettings,
 }: AccountSettingsScreenProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { token, logout } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
-  
+
   // Email update state
-  const [newEmail, setNewEmail] = useState('');
-  const [emailPassword, setEmailPassword] = useState('');
-  const [updatingEmail, setUpdatingEmail] = useState(false);
-  
+  const [newEmail, setNewEmail] = useState("");
+  const [emailPassword, setEmailPassword] = useState("");
+
   // Password change state
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [changingPassword, setChangingPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPasswordFields, setShowPasswordFields] = useState(false);
-  
+
   // Delete account state
-  const [deletePassword, setDeletePassword] = useState('');
+  const [deletePassword, setDeletePassword] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deletingAccount, setDeletingAccount] = useState(false);
 
-  useEffect(() => {
-    loadAccountInfo();
-  }, [token]);
-
-  async function loadAccountInfo() {
-    if (!token) return;
-
-    try {
-      setLoading(true);
-      const info = await getAccountInfo(token);
-      setAccountInfo(info);
+  const {
+    data: accountInfo,
+    loading,
+    refetch,
+  } = useDataFetch<AccountInfo>({
+    fetchFn: async () => {
+      if (!token) throw new Error("No authentication token");
+      return getAccountInfo(token);
+    },
+    immediate: true,
+    deps: [token],
+    transform: (info) => {
       setNewEmail(info.email);
-    } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to load account info');
-    } finally {
-      setLoading(false);
-    }
-  }
+      return info;
+    },
+  });
+
+  const { loading: updatingEmail, execute: executeUpdateEmail } =
+    useAsyncOperation({
+      operationFn: async () => {
+        if (!token || !accountInfo)
+          throw new Error("Missing token or account info");
+        if (!newEmail || !emailPassword)
+          throw new Error("Please fill in all fields");
+        if (newEmail === accountInfo.email)
+          throw new Error("Email is the same as current email");
+
+        await updateEmail(token, { email: newEmail, password: emailPassword });
+        return null;
+      },
+      onSuccess: () => {
+        Alert.alert("Success", "Email updated successfully");
+        refetch();
+        setEmailPassword("");
+      },
+    });
+
+  const { loading: changingPassword, execute: executeChangePassword } =
+    useAsyncOperation({
+      operationFn: async () => {
+        if (!token) throw new Error("No authentication token");
+        if (!currentPassword || !newPassword || !confirmPassword) {
+          throw new Error("Please fill in all fields");
+        }
+        if (newPassword !== confirmPassword) {
+          throw new Error("New passwords do not match");
+        }
+
+        await changePassword(token, { currentPassword, newPassword });
+        return null;
+      },
+      onSuccess: () => {
+        Alert.alert("Success", "Password changed successfully");
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        setShowPasswordFields(false);
+      },
+    });
+
+  const { loading: deletingAccount, execute: executeDeleteAccount } =
+    useAsyncOperation({
+      operationFn: async () => {
+        if (!token) throw new Error("No authentication token");
+        if (!deletePassword) throw new Error("Please enter your password");
+
+        await deleteAccount(token, { password: deletePassword });
+        return null;
+      },
+      onSuccess: () => {
+        Alert.alert("Success", "Account deleted successfully");
+        logout();
+      },
+    });
 
   async function handleUpdateEmail() {
-    if (!token || !accountInfo) return;
-
-    if (!newEmail || !emailPassword) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
-
-    if (newEmail === accountInfo.email) {
-      Alert.alert('Info', 'Email is the same as current email');
-      return;
-    }
-
-    try {
-      setUpdatingEmail(true);
-      const data: UpdateEmailDto = {
-        email: newEmail.trim(),
-        password: emailPassword,
-      };
-      await updateEmail(token, data);
-      Alert.alert('Success', 'Email updated successfully', [
-        { text: 'OK', onPress: () => {
-          setEmailPassword('');
-          loadAccountInfo();
-        }},
-      ]);
-    } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to update email');
-    } finally {
-      setUpdatingEmail(false);
-    }
+    await executeUpdateEmail();
   }
 
   async function handleChangePassword() {
-    if (!token) return;
-
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
-
     if (newPassword.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters long');
+      Alert.alert("Error", "Password must be at least 6 characters long");
       return;
     }
-
-    if (newPassword !== confirmPassword) {
-      Alert.alert('Error', 'New passwords do not match');
-      return;
-    }
-
-    try {
-      setChangingPassword(true);
-      const data: ChangePasswordDto = {
-        currentPassword,
-        newPassword,
-      };
-      await changePassword(token, data);
-      Alert.alert('Success', 'Password changed successfully', [
-        { text: 'OK', onPress: () => {
-          setCurrentPassword('');
-          setNewPassword('');
-          setConfirmPassword('');
-          setShowPasswordFields(false);
-        }},
-      ]);
-    } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to change password');
-    } finally {
-      setChangingPassword(false);
-    }
+    await executeChangePassword();
   }
 
-  async function handleDeleteAccount() {
+  function handleDeleteAccount() {
     if (!token || !deletePassword) {
-      Alert.alert('Error', 'Please enter your password to confirm account deletion');
+      Alert.alert(
+        "Error",
+        "Please enter your password to confirm account deletion",
+      );
       return;
     }
 
     Alert.alert(
-      'Delete Account',
-      'Are you sure you want to delete your account? This action cannot be undone. All your data will be permanently deleted.',
+      "Delete Account",
+      "Are you sure you want to delete your account? This action cannot be undone. All your data will be permanently deleted.",
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setDeletingAccount(true);
-              const data: DeleteAccountDto = { password: deletePassword };
-              await deleteAccount(token, data);
-              Alert.alert('Account Deleted', 'Your account has been deleted successfully', [
-                { text: 'OK', onPress: logout },
-              ]);
-            } catch (err) {
-              Alert.alert('Error', err instanceof Error ? err.message : 'Failed to delete account');
-            } finally {
-              setDeletingAccount(false);
-            }
-          },
+          text: "Delete",
+          style: "destructive",
+          onPress: () => executeDeleteAccount(),
         },
       ],
     );
@@ -187,7 +172,7 @@ export function AccountSettingsScreen({
     return (
       <View style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
+          <ActivityIndicator size="large" color={theme.colors.blue} />
           <Text style={styles.loadingText}>Loading account info...</Text>
         </View>
       </View>
@@ -195,7 +180,7 @@ export function AccountSettingsScreen({
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <Header
         title="Account Settings"
         onBack={onBack}
@@ -208,17 +193,20 @@ export function AccountSettingsScreen({
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.content}>
-
           {/* Account Information */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Account Information</Text>
-            
+
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>Email</Text>
               <Text style={styles.infoValue}>{accountInfo?.email}</Text>
               {accountInfo?.emailVerified && (
                 <View style={styles.verifiedBadge}>
-                  <MaterialIcons name="verified" size={16} color="#10B981" />
+                  <MaterialIcons
+                    name="verified"
+                    size={16}
+                    color={theme.colors.success}
+                  />
                   <Text style={styles.verifiedText}>Verified</Text>
                 </View>
               )}
@@ -229,7 +217,7 @@ export function AccountSettingsScreen({
               <Text style={styles.infoValue}>
                 {accountInfo?.createdAt
                   ? new Date(accountInfo.createdAt).toLocaleDateString()
-                  : 'N/A'}
+                  : "N/A"}
               </Text>
             </View>
           </View>
@@ -237,7 +225,7 @@ export function AccountSettingsScreen({
           {/* Update Email */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Update Email</Text>
-            
+
             <View style={styles.inputGroup}>
               <Text style={styles.label}>New Email</Text>
               <TextInput
@@ -245,7 +233,7 @@ export function AccountSettingsScreen({
                 value={newEmail}
                 onChangeText={setNewEmail}
                 placeholder="Enter new email"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={theme.colors.textTertiary}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -259,20 +247,23 @@ export function AccountSettingsScreen({
                 value={emailPassword}
                 onChangeText={setEmailPassword}
                 placeholder="Enter your password to confirm"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={theme.colors.textTertiary}
                 secureTextEntry
                 autoCapitalize="none"
               />
             </View>
 
             <TouchableOpacity
-              style={[styles.saveButton, updatingEmail && styles.saveButtonDisabled]}
+              style={[
+                styles.saveButton,
+                updatingEmail && styles.saveButtonDisabled,
+              ]}
               onPress={handleUpdateEmail}
               disabled={updatingEmail}
               activeOpacity={0.7}
             >
               {updatingEmail ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={theme.colors.textInverse} />
               ) : (
                 <Text style={styles.saveButtonText}>Update Email</Text>
               )}
@@ -282,15 +273,21 @@ export function AccountSettingsScreen({
           {/* Change Password */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Change Password</Text>
-            
+
             {!showPasswordFields ? (
               <TouchableOpacity
                 style={styles.changePasswordButton}
                 onPress={() => setShowPasswordFields(true)}
                 activeOpacity={0.7}
               >
-                <MaterialIcons name="lock" size={20} color="#2563EB" />
-                <Text style={styles.changePasswordButtonText}>Change Password</Text>
+                <MaterialIcons
+                  name="lock"
+                  size={20}
+                  color={theme.colors.blue}
+                />
+                <Text style={styles.changePasswordButtonText}>
+                  Change Password
+                </Text>
               </TouchableOpacity>
             ) : (
               <>
@@ -301,7 +298,7 @@ export function AccountSettingsScreen({
                     value={currentPassword}
                     onChangeText={setCurrentPassword}
                     placeholder="Enter current password"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={theme.colors.textTertiary}
                     secureTextEntry
                     autoCapitalize="none"
                   />
@@ -314,7 +311,7 @@ export function AccountSettingsScreen({
                     value={newPassword}
                     onChangeText={setNewPassword}
                     placeholder="Enter new password (min 6 characters)"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={theme.colors.textTertiary}
                     secureTextEntry
                     autoCapitalize="none"
                   />
@@ -327,7 +324,7 @@ export function AccountSettingsScreen({
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
                     placeholder="Confirm new password"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={theme.colors.textTertiary}
                     secureTextEntry
                     autoCapitalize="none"
                   />
@@ -335,13 +332,17 @@ export function AccountSettingsScreen({
 
                 <View style={styles.buttonRow}>
                   <TouchableOpacity
-                    style={[styles.saveButton, styles.halfButton, changingPassword && styles.saveButtonDisabled]}
+                    style={[
+                      styles.saveButton,
+                      styles.halfButton,
+                      changingPassword && styles.saveButtonDisabled,
+                    ]}
                     onPress={handleChangePassword}
                     disabled={changingPassword}
                     activeOpacity={0.7}
                   >
                     {changingPassword ? (
-                      <ActivityIndicator color="#fff" />
+                      <ActivityIndicator color={theme.colors.textInverse} />
                     ) : (
                       <Text style={styles.saveButtonText}>Save</Text>
                     )}
@@ -351,9 +352,9 @@ export function AccountSettingsScreen({
                     style={[styles.cancelButton, styles.halfButton]}
                     onPress={() => {
                       setShowPasswordFields(false);
-                      setCurrentPassword('');
-                      setNewPassword('');
-                      setConfirmPassword('');
+                      setCurrentPassword("");
+                      setNewPassword("");
+                      setConfirmPassword("");
                     }}
                     activeOpacity={0.7}
                   >
@@ -367,22 +368,27 @@ export function AccountSettingsScreen({
           {/* Delete Account */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Danger Zone</Text>
-            
+
             {!showDeleteConfirm ? (
               <TouchableOpacity
                 style={styles.deleteButton}
                 onPress={() => setShowDeleteConfirm(true)}
                 activeOpacity={0.7}
               >
-                <MaterialIcons name="delete-outline" size={20} color="#EF4444" />
+                <MaterialIcons
+                  name="delete-outline"
+                  size={20}
+                  color={theme.colors.error}
+                />
                 <Text style={styles.deleteButtonText}>Delete Account</Text>
               </TouchableOpacity>
             ) : (
               <>
                 <Text style={styles.dangerText}>
-                  This action cannot be undone. All your data will be permanently deleted.
+                  This action cannot be undone. All your data will be
+                  permanently deleted.
                 </Text>
-                
+
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>Enter Password to Confirm</Text>
                   <TextInput
@@ -390,7 +396,7 @@ export function AccountSettingsScreen({
                     value={deletePassword}
                     onChangeText={setDeletePassword}
                     placeholder="Enter your password"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={theme.colors.textTertiary}
                     secureTextEntry
                     autoCapitalize="none"
                   />
@@ -398,13 +404,17 @@ export function AccountSettingsScreen({
 
                 <View style={styles.buttonRow}>
                   <TouchableOpacity
-                    style={[styles.deleteConfirmButton, styles.halfButton, deletingAccount && styles.saveButtonDisabled]}
+                    style={[
+                      styles.deleteConfirmButton,
+                      styles.halfButton,
+                      deletingAccount && styles.saveButtonDisabled,
+                    ]}
                     onPress={handleDeleteAccount}
                     disabled={deletingAccount}
                     activeOpacity={0.7}
                   >
                     {deletingAccount ? (
-                      <ActivityIndicator color="#fff" />
+                      <ActivityIndicator color={theme.colors.textInverse} />
                     ) : (
                       <Text style={styles.deleteConfirmButtonText}>Delete</Text>
                     )}
@@ -414,7 +424,7 @@ export function AccountSettingsScreen({
                     style={[styles.cancelButton, styles.halfButton]}
                     onPress={() => {
                       setShowDeleteConfirm(false);
-                      setDeletePassword('');
+                      setDeletePassword("");
                     }}
                     activeOpacity={0.7}
                   >
@@ -430,182 +440,182 @@ export function AccountSettingsScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollContent: {
-    paddingBottom: 24,
-  },
-  content: {
-    paddingHorizontal: 24,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#6B7280',
-  },
-  section: {
-    marginBottom: 32,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 16,
-  },
-  infoItem: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  infoLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#6B7280',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  infoValue: {
-    fontSize: 16,
-    color: '#111827',
-  },
-  verifiedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-    gap: 4,
-  },
-  verifiedText: {
-    fontSize: 12,
-    color: '#10B981',
-    fontWeight: '500',
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#111827',
-    backgroundColor: '#fff',
-  },
-  saveButton: {
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-  },
-  saveButtonDisabled: {
-    opacity: 0.6,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  cancelButton: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelButtonText: {
-    color: '#374151',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-  },
-  halfButton: {
-    flex: 1,
-  },
-  changePasswordButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: '#2563EB',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    backgroundColor: '#fff',
-  },
-  changePasswordButtonText: {
-    color: '#2563EB',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  deleteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: '#EF4444',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    backgroundColor: '#fff',
-  },
-  deleteButtonText: {
-    color: '#EF4444',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  dangerText: {
-    fontSize: 14,
-    color: '#EF4444',
-    marginBottom: 16,
-    lineHeight: 20,
-  },
-  deleteConfirmButton: {
-    backgroundColor: '#EF4444',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deleteConfirmButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-});
-
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    scrollContent: {
+      paddingBottom: theme.spacing.xl,
+    },
+    content: {
+      paddingHorizontal: theme.spacing.xl,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: theme.spacing.xl,
+    },
+    loadingText: {
+      marginTop: theme.spacing.base,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textSecondary,
+    },
+    section: {
+      marginBottom: theme.spacing["2xl"],
+    },
+    sectionTitle: {
+      fontSize: theme.typography.fontSize.lg,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+      marginBottom: theme.spacing.base,
+    },
+    infoItem: {
+      paddingVertical: theme.spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+    },
+    infoLabel: {
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.textSecondary,
+      marginBottom: 4,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    infoValue: {
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textPrimary,
+    },
+    verifiedBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginTop: 4,
+      gap: 4,
+    },
+    verifiedText: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.success,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    inputGroup: {
+      marginBottom: 16,
+    },
+    label: {
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textSecondary,
+      marginBottom: theme.spacing.sm,
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: theme.colors.borderDark,
+      borderRadius: theme.spacing.sm,
+      padding: theme.spacing.md,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textPrimary,
+      backgroundColor: theme.colors.background,
+    },
+    saveButton: {
+      backgroundColor: theme.colors.blue,
+      borderRadius: theme.spacing.sm,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.xl,
+      minHeight: 44,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: theme.spacing.sm,
+    },
+    saveButtonDisabled: {
+      opacity: 0.6,
+    },
+    saveButtonText: {
+      color: theme.colors.textInverse,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    cancelButton: {
+      backgroundColor: theme.colors.backgroundTertiary,
+      borderRadius: theme.spacing.sm,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.xl,
+      minHeight: 44,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    cancelButtonText: {
+      color: theme.colors.textSecondary,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    buttonRow: {
+      flexDirection: "row",
+      gap: theme.spacing.md,
+      marginTop: theme.spacing.sm,
+    },
+    halfButton: {
+      flex: 1,
+    },
+    changePasswordButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: theme.spacing.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.blue,
+      borderRadius: theme.spacing.sm,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.xl,
+      minHeight: 44,
+      backgroundColor: theme.colors.background,
+    },
+    changePasswordButtonText: {
+      color: theme.colors.blue,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    deleteButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: theme.spacing.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.error,
+      borderRadius: theme.spacing.sm,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.xl,
+      minHeight: 44,
+      backgroundColor: theme.colors.background,
+    },
+    deleteButtonText: {
+      color: theme.colors.error,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    dangerText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.error,
+      marginBottom: theme.spacing.base,
+      lineHeight: 20,
+    },
+    deleteConfirmButton: {
+      backgroundColor: theme.colors.error,
+      borderRadius: theme.spacing.sm,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.xl,
+      minHeight: 44,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    deleteConfirmButtonText: {
+      color: theme.colors.textInverse,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+  });

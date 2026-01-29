@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateGoalDto } from './dto/create-goal.dto';
 import { UpdateGoalDto } from './dto/update-goal.dto';
@@ -28,7 +33,9 @@ export class GoalService {
 
       // Validate context matches
       if (createGoalDto.context && account.context !== createGoalDto.context) {
-        throw new BadRequestException('Account context does not match goal context');
+        throw new BadRequestException(
+          'Account context does not match goal context',
+        );
       }
     }
 
@@ -39,7 +46,9 @@ export class GoalService {
         name: createGoalDto.name,
         targetAmount: createGoalDto.targetAmount,
         currentAmount: createGoalDto.currentAmount || 0,
-        targetDate: createGoalDto.targetDate ? new Date(createGoalDto.targetDate) : null,
+        targetDate: createGoalDto.targetDate
+          ? new Date(createGoalDto.targetDate)
+          : null,
         category: createGoalDto.category || 'savings',
         priority: createGoalDto.priority || 'medium',
         status: 'active',
@@ -56,7 +65,7 @@ export class GoalService {
    * Get goals for a user, optionally filtered by context
    */
   async getGoals(userId: string, context?: 'local' | 'home', status?: string) {
-    const where: any = { userId };
+    const where: Prisma.FinancialGoalWhereInput = { userId };
     if (context) {
       where.context = context;
     }
@@ -136,7 +145,11 @@ export class GoalService {
   /**
    * Update a goal
    */
-  async updateGoal(userId: string, goalId: string, updateGoalDto: UpdateGoalDto) {
+  async updateGoal(
+    userId: string,
+    goalId: string,
+    updateGoalDto: UpdateGoalDto,
+  ) {
     // Verify goal belongs to user
     const existingGoal = await this.prisma.financialGoal.findFirst({
       where: {
@@ -164,25 +177,37 @@ export class GoalService {
 
       // Validate context matches
       if (account.context !== existingGoal.context) {
-        throw new BadRequestException('Account context does not match goal context');
+        throw new BadRequestException(
+          'Account context does not match goal context',
+        );
       }
     }
 
     // Prepare update data
-    const updateData: any = {};
+    const updateData: Prisma.FinancialGoalUncheckedUpdateInput = {};
     if (updateGoalDto.name !== undefined) updateData.name = updateGoalDto.name;
-    if (updateGoalDto.targetAmount !== undefined) updateData.targetAmount = updateGoalDto.targetAmount;
-    if (updateGoalDto.currentAmount !== undefined) updateData.currentAmount = updateGoalDto.currentAmount;
+    if (updateGoalDto.targetAmount !== undefined)
+      updateData.targetAmount = updateGoalDto.targetAmount;
+    if (updateGoalDto.currentAmount !== undefined)
+      updateData.currentAmount = updateGoalDto.currentAmount;
     if (updateGoalDto.targetDate !== undefined) {
-      updateData.targetDate = updateGoalDto.targetDate ? new Date(updateGoalDto.targetDate) : null;
+      updateData.targetDate = updateGoalDto.targetDate
+        ? new Date(updateGoalDto.targetDate)
+        : null;
     }
-    if (updateGoalDto.category !== undefined) updateData.category = updateGoalDto.category;
-    if (updateGoalDto.priority !== undefined) updateData.priority = updateGoalDto.priority;
-    if (updateGoalDto.accountId !== undefined) updateData.accountId = updateGoalDto.accountId;
+    if (updateGoalDto.category !== undefined)
+      updateData.category = updateGoalDto.category;
+    if (updateGoalDto.priority !== undefined)
+      updateData.priority = updateGoalDto.priority;
+    if (updateGoalDto.accountId !== undefined)
+      updateData.accountId = updateGoalDto.accountId;
     if (updateGoalDto.status !== undefined) {
       updateData.status = updateGoalDto.status;
       // Set completedAt if status is completed
-      if (updateGoalDto.status === 'completed' && existingGoal.status !== 'completed') {
+      if (
+        updateGoalDto.status === 'completed' &&
+        existingGoal.status !== 'completed'
+      ) {
         updateData.completedAt = new Date();
       } else if (updateGoalDto.status !== 'completed') {
         updateData.completedAt = null;
@@ -248,7 +273,9 @@ export class GoalService {
     }
 
     if (goal.status !== 'active') {
-      throw new BadRequestException('Cannot add contributions to a non-active goal');
+      throw new BadRequestException(
+        'Cannot add contributions to a non-active goal',
+      );
     }
 
     // Validate transaction if provided
@@ -265,12 +292,15 @@ export class GoalService {
       }
 
       // Check if transaction is already linked to a contribution
-      const existingContribution = await this.prisma.goalContribution.findUnique({
-        where: { transactionId: addContributionDto.transactionId },
-      });
+      const existingContribution =
+        await this.prisma.goalContribution.findUnique({
+          where: { transactionId: addContributionDto.transactionId },
+        });
 
       if (existingContribution) {
-        throw new BadRequestException('Transaction is already linked to a contribution');
+        throw new BadRequestException(
+          'Transaction is already linked to a contribution',
+        );
       }
     }
 
@@ -279,7 +309,7 @@ export class GoalService {
       : new Date();
 
     // Create contribution
-    const contribution = await this.prisma.goalContribution.create({
+    await this.prisma.goalContribution.create({
       data: {
         id: randomUUID(),
         goalId,
@@ -292,7 +322,7 @@ export class GoalService {
 
     // Update goal's current amount
     const newCurrentAmount = goal.currentAmount + addContributionDto.amount;
-    const updateData: any = {
+    const updateData: Prisma.FinancialGoalUncheckedUpdateInput = {
       currentAmount: newCurrentAmount,
     };
 
@@ -321,7 +351,11 @@ export class GoalService {
   /**
    * Delete a contribution
    */
-  async deleteContribution(userId: string, goalId: string, contributionId: string) {
+  async deleteContribution(
+    userId: string,
+    goalId: string,
+    contributionId: string,
+  ) {
     // Verify goal belongs to user
     const goal = await this.prisma.financialGoal.findFirst({
       where: {
@@ -352,8 +386,11 @@ export class GoalService {
     });
 
     // Update goal's current amount
-    const newCurrentAmount = Math.max(0, goal.currentAmount - contribution.amount);
-    const updateData: any = {
+    const newCurrentAmount = Math.max(
+      0,
+      goal.currentAmount - contribution.amount,
+    );
+    const updateData: Prisma.FinancialGoalUncheckedUpdateInput = {
       currentAmount: newCurrentAmount,
     };
 
@@ -397,4 +434,3 @@ export class GoalService {
     return Math.min((currentAmount / targetAmount) * 100, 100);
   }
 }
-

@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBudgetDto } from './dto/create-budget.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
@@ -11,9 +16,12 @@ export class BudgetService {
   /**
    * Get period string for a given date based on period type
    */
-  private getPeriodString(date: Date, period: 'weekly' | 'monthly' | 'yearly'): string {
+  private getPeriodString(
+    date: Date,
+    period: 'weekly' | 'monthly' | 'yearly',
+  ): string {
     const year = date.getFullYear();
-    
+
     if (period === 'yearly') {
       return year.toString();
     } else if (period === 'monthly') {
@@ -30,7 +38,9 @@ export class BudgetService {
    * Get ISO week number for a date
    */
   private getISOWeek(date: Date): number {
-    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const d = new Date(
+      Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
+    );
     const dayNum = d.getUTCDay() || 7;
     d.setUTCDate(d.getUTCDate() + 4 - dayNum);
     const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
@@ -40,7 +50,10 @@ export class BudgetService {
   /**
    * Get start and end dates for a period
    */
-  private getPeriodDates(date: Date, period: 'weekly' | 'monthly' | 'yearly'): { start: Date; end: Date } {
+  private getPeriodDates(
+    date: Date,
+    period: 'weekly' | 'monthly' | 'yearly',
+  ): { start: Date; end: Date } {
     if (period === 'yearly') {
       return {
         start: new Date(date.getFullYear(), 0, 1),
@@ -49,7 +62,15 @@ export class BudgetService {
     } else if (period === 'monthly') {
       return {
         start: new Date(date.getFullYear(), date.getMonth(), 1),
-        end: new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999),
+        end: new Date(
+          date.getFullYear(),
+          date.getMonth() + 1,
+          0,
+          23,
+          59,
+          59,
+          999,
+        ),
       };
     } else {
       // Weekly: ISO week
@@ -87,7 +108,7 @@ export class BudgetService {
     }
 
     // Build query conditions
-    const where: any = {
+    const where: Prisma.FinanceTransactionWhereInput = {
       userId: budget.userId,
       context: budget.context,
       type: 'expense',
@@ -128,7 +149,11 @@ export class BudgetService {
     periodEnd: Date,
     budgetedAmount: number,
   ): Promise<void> {
-    const spent = await this.calculateSpentAmount(budgetId, periodStart, periodEnd);
+    const spent = await this.calculateSpentAmount(
+      budgetId,
+      periodStart,
+      periodEnd,
+    );
 
     const budget = await this.prisma.budget.findUnique({
       where: { id: budgetId },
@@ -142,7 +167,8 @@ export class BudgetService {
     }
 
     // Calculate status
-    const percentageUsed = budgetedAmount > 0 ? (spent / budgetedAmount) * 100 : 0;
+    const percentageUsed =
+      budgetedAmount > 0 ? (spent / budgetedAmount) * 100 : 0;
     let status = 'on_track';
     if (percentageUsed >= 100) {
       status = 'exceeded';
@@ -194,8 +220,13 @@ export class BudgetService {
       }
 
       // Validate context matches
-      if (createBudgetDto.context && account.context !== createBudgetDto.context) {
-        throw new BadRequestException('Account context does not match budget context');
+      if (
+        createBudgetDto.context &&
+        account.context !== createBudgetDto.context
+      ) {
+        throw new BadRequestException(
+          'Account context does not match budget context',
+        );
       }
     }
 
@@ -208,7 +239,9 @@ export class BudgetService {
         amount: createBudgetDto.amount,
         period: createBudgetDto.period || 'monthly',
         startDate: new Date(createBudgetDto.startDate),
-        endDate: createBudgetDto.endDate ? new Date(createBudgetDto.endDate) : null,
+        endDate: createBudgetDto.endDate
+          ? new Date(createBudgetDto.endDate)
+          : null,
         accountId: createBudgetDto.accountId,
         warningThreshold: createBudgetDto.warningThreshold || 80,
         context: createBudgetDto.context || 'local',
@@ -218,9 +251,21 @@ export class BudgetService {
 
     // Calculate initial tracking for current period
     const now = new Date();
-    const periodDates = this.getPeriodDates(now, budget.period as 'weekly' | 'monthly' | 'yearly');
-    const period = this.getPeriodString(now, budget.period as 'weekly' | 'monthly' | 'yearly');
-    await this.updateBudgetTracking(budget.id, period, periodDates.start, periodDates.end, budget.amount);
+    const periodDates = this.getPeriodDates(
+      now,
+      budget.period as 'weekly' | 'monthly' | 'yearly',
+    );
+    const period = this.getPeriodString(
+      now,
+      budget.period as 'weekly' | 'monthly' | 'yearly',
+    );
+    await this.updateBudgetTracking(
+      budget.id,
+      period,
+      periodDates.start,
+      periodDates.end,
+      budget.amount,
+    );
 
     return this.getBudgetById(userId, budget.id);
   }
@@ -229,7 +274,7 @@ export class BudgetService {
    * Get budgets for a user, optionally filtered by context
    */
   async getBudgets(userId: string, context?: 'local' | 'home') {
-    const where: any = { userId };
+    const where: Prisma.BudgetWhereInput = { userId };
     if (context) {
       where.context = context;
     }
@@ -256,9 +301,15 @@ export class BudgetService {
     const now = new Date();
     const budgetsWithTracking = await Promise.all(
       budgets.map(async (budget) => {
-        const periodDates = this.getPeriodDates(now, budget.period as 'weekly' | 'monthly' | 'yearly');
-        const period = this.getPeriodString(now, budget.period as 'weekly' | 'monthly' | 'yearly');
-        
+        const periodDates = this.getPeriodDates(
+          now,
+          budget.period as 'weekly' | 'monthly' | 'yearly',
+        );
+        const period = this.getPeriodString(
+          now,
+          budget.period as 'weekly' | 'monthly' | 'yearly',
+        );
+
         // Update current period tracking
         await this.updateBudgetTracking(
           budget.id,
@@ -327,9 +378,15 @@ export class BudgetService {
 
     // Update current period tracking
     const now = new Date();
-    const periodDates = this.getPeriodDates(now, budget.period as 'weekly' | 'monthly' | 'yearly');
-    const period = this.getPeriodString(now, budget.period as 'weekly' | 'monthly' | 'yearly');
-    
+    const periodDates = this.getPeriodDates(
+      now,
+      budget.period as 'weekly' | 'monthly' | 'yearly',
+    );
+    const period = this.getPeriodString(
+      now,
+      budget.period as 'weekly' | 'monthly' | 'yearly',
+    );
+
     await this.updateBudgetTracking(
       budget.id,
       period,
@@ -362,7 +419,11 @@ export class BudgetService {
   /**
    * Update a budget
    */
-  async updateBudget(userId: string, budgetId: string, updateBudgetDto: UpdateBudgetDto) {
+  async updateBudget(
+    userId: string,
+    budgetId: string,
+    updateBudgetDto: UpdateBudgetDto,
+  ) {
     // Verify budget belongs to user
     const existingBudget = await this.prisma.budget.findFirst({
       where: {
@@ -390,22 +451,33 @@ export class BudgetService {
 
       // Validate context matches
       if (account.context !== existingBudget.context) {
-        throw new BadRequestException('Account context does not match budget context');
+        throw new BadRequestException(
+          'Account context does not match budget context',
+        );
       }
     }
 
     // Prepare update data
-    const updateData: any = {};
-    if (updateBudgetDto.name !== undefined) updateData.name = updateBudgetDto.name;
-    if (updateBudgetDto.category !== undefined) updateData.category = updateBudgetDto.category;
-    if (updateBudgetDto.amount !== undefined) updateData.amount = updateBudgetDto.amount;
-    if (updateBudgetDto.period !== undefined) updateData.period = updateBudgetDto.period;
-    if (updateBudgetDto.startDate !== undefined) updateData.startDate = new Date(updateBudgetDto.startDate);
+    const updateData: Prisma.BudgetUncheckedUpdateInput = {};
+    if (updateBudgetDto.name !== undefined)
+      updateData.name = updateBudgetDto.name;
+    if (updateBudgetDto.category !== undefined)
+      updateData.category = updateBudgetDto.category;
+    if (updateBudgetDto.amount !== undefined)
+      updateData.amount = updateBudgetDto.amount;
+    if (updateBudgetDto.period !== undefined)
+      updateData.period = updateBudgetDto.period;
+    if (updateBudgetDto.startDate !== undefined)
+      updateData.startDate = new Date(updateBudgetDto.startDate);
     if (updateBudgetDto.endDate !== undefined) {
-      updateData.endDate = updateBudgetDto.endDate ? new Date(updateBudgetDto.endDate) : null;
+      updateData.endDate = updateBudgetDto.endDate
+        ? new Date(updateBudgetDto.endDate)
+        : null;
     }
-    if (updateBudgetDto.accountId !== undefined) updateData.accountId = updateBudgetDto.accountId;
-    if (updateBudgetDto.warningThreshold !== undefined) updateData.warningThreshold = updateBudgetDto.warningThreshold;
+    if (updateBudgetDto.accountId !== undefined)
+      updateData.accountId = updateBudgetDto.accountId;
+    if (updateBudgetDto.warningThreshold !== undefined)
+      updateData.warningThreshold = updateBudgetDto.warningThreshold;
 
     const updatedBudget = await this.prisma.budget.update({
       where: { id: budgetId },
@@ -413,13 +485,19 @@ export class BudgetService {
     });
 
     // Update current period tracking if amount or period changed
-    if (updateBudgetDto.amount !== undefined || updateBudgetDto.period !== undefined) {
+    if (
+      updateBudgetDto.amount !== undefined ||
+      updateBudgetDto.period !== undefined
+    ) {
       const now = new Date();
       const periodDates = this.getPeriodDates(
         now,
         updatedBudget.period as 'weekly' | 'monthly' | 'yearly',
       );
-      const period = this.getPeriodString(now, updatedBudget.period as 'weekly' | 'monthly' | 'yearly');
+      const period = this.getPeriodString(
+        now,
+        updatedBudget.period as 'weekly' | 'monthly' | 'yearly',
+      );
       await this.updateBudgetTracking(
         updatedBudget.id,
         period,
@@ -477,12 +555,26 @@ export class BudgetService {
       throw new NotFoundException('Budget not found');
     }
 
-    const targetPeriod = period || this.getPeriodString(new Date(), budget.period as 'weekly' | 'monthly' | 'yearly');
+    const targetPeriod =
+      period ||
+      this.getPeriodString(
+        new Date(),
+        budget.period as 'weekly' | 'monthly' | 'yearly',
+      );
     const now = new Date();
-    const periodDates = this.getPeriodDates(now, budget.period as 'weekly' | 'monthly' | 'yearly');
+    const periodDates = this.getPeriodDates(
+      now,
+      budget.period as 'weekly' | 'monthly' | 'yearly',
+    );
 
     // Update tracking for the requested period
-    await this.updateBudgetTracking(budget.id, targetPeriod, periodDates.start, periodDates.end, budget.amount);
+    await this.updateBudgetTracking(
+      budget.id,
+      targetPeriod,
+      periodDates.start,
+      periodDates.end,
+      budget.amount,
+    );
 
     const tracking = await this.prisma.budgetTracking.findUnique({
       where: {
@@ -531,7 +623,7 @@ export class BudgetService {
     // 1. Category-based: category matches AND (budget has no accountId OR accountId matches)
     // 2. Account-based: no category AND accountId matches
     // 3. Overall: no category AND no accountId
-    const whereConditions: any[] = [];
+    const whereConditions: Prisma.BudgetWhereInput[] = [];
 
     if (transaction.category) {
       // Category-based budgets that match this category
@@ -565,9 +657,17 @@ export class BudgetService {
         transaction.date,
         budget.period as 'weekly' | 'monthly' | 'yearly',
       );
-      const period = this.getPeriodString(transaction.date, budget.period as 'weekly' | 'monthly' | 'yearly');
-      await this.updateBudgetTracking(budget.id, period, periodDates.start, periodDates.end, budget.amount);
+      const period = this.getPeriodString(
+        transaction.date,
+        budget.period as 'weekly' | 'monthly' | 'yearly',
+      );
+      await this.updateBudgetTracking(
+        budget.id,
+        period,
+        periodDates.start,
+        periodDates.end,
+        budget.amount,
+      );
     }
   }
 }
-

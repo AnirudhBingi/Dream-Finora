@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { TrustScoreService } from '../trust-score/trust-score.service';
@@ -66,10 +70,12 @@ export class ProfileService {
       }
 
       // Ensure trust score exists
-      const trustScore = await this.trustScoreService.getOrCreateTrustScore(userId);
+      const trustScore =
+        await this.trustScoreService.getOrCreateTrustScore(userId);
 
       // Return user data without password
-      const { password, ...userData } = userWithTrustScore;
+      const { password: _password, ...userData } = userWithTrustScore;
+      void _password;
 
       return {
         id: null,
@@ -96,21 +102,28 @@ export class ProfileService {
 
     // Ensure trust score exists for existing profile and recalculate if needed
     if (!profile.User.TrustScore) {
-      profile.User.TrustScore = await this.trustScoreService.getOrCreateTrustScore(userId);
+      profile.User.TrustScore =
+        await this.trustScoreService.getOrCreateTrustScore(userId);
     } else {
       // Always recalculate to ensure score is up-to-date
-      const updatedTrustScore = await this.trustScoreService.getOrCreateTrustScore(userId);
+      const updatedTrustScore =
+        await this.trustScoreService.getOrCreateTrustScore(userId);
       profile.User.TrustScore = updatedTrustScore;
     }
 
     // Transform TrustScore to trustScore and remove password if present
-    const { password, TrustScore, ...userWithoutPasswordAndTrustScore } = profile.User;
-    return { 
-      ...profile, 
+    const {
+      password: _password,
+      TrustScore,
+      ...userWithoutPasswordAndTrustScore
+    } = profile.User;
+    void _password;
+    return {
+      ...profile,
       user: {
         ...userWithoutPasswordAndTrustScore,
         trustScore: TrustScore || null,
-      }
+      },
     };
   }
 
@@ -143,7 +156,8 @@ export class ProfileService {
 
       // Remove password from response
       if (updated.User && 'password' in updated.User) {
-        const { password, ...userWithoutPassword } = updated.User;
+        const { password: _password, ...userWithoutPassword } = updated.User;
+        void _password;
         return { ...updated, user: userWithoutPassword };
       }
 
@@ -174,7 +188,8 @@ export class ProfileService {
 
       // Remove password from response
       if (created.User && 'password' in created.User) {
-        const { password, ...userWithoutPassword } = created.User;
+        const { password: _password, ...userWithoutPassword } = created.User;
+        void _password;
         return { ...created, user: userWithoutPassword };
       }
 
@@ -209,7 +224,8 @@ export class ProfileService {
 
       // Remove password from response
       if (updated.User && 'password' in updated.User) {
-        const { password, ...userWithoutPassword } = updated.User;
+        const { password: _password, ...userWithoutPassword } = updated.User;
+        void _password;
         return { ...updated, user: userWithoutPassword };
       }
 
@@ -239,7 +255,8 @@ export class ProfileService {
 
       // Remove password from response
       if (created.User && 'password' in created.User) {
-        const { password, ...userWithoutPassword } = created.User;
+        const { password: _password, ...userWithoutPassword } = created.User;
+        void _password;
         return { ...created, user: userWithoutPassword };
       }
 
@@ -247,10 +264,15 @@ export class ProfileService {
     }
   }
 
-  async getUserProfile(viewerId: string, targetUserId: string): Promise<UserProfileResponseDto> {
+  async getUserProfile(
+    viewerId: string,
+    targetUserId: string,
+  ): Promise<UserProfileResponseDto> {
     // If viewer is target user, they should use getProfile instead
     if (viewerId === targetUserId) {
-      throw new BadRequestException('Use GET /profile to view your own profile');
+      throw new BadRequestException(
+        'Use GET /profile to view your own profile',
+      );
     }
 
     // Check if target user exists
@@ -276,7 +298,12 @@ export class ProfileService {
       },
     });
 
-    let friendStatus: 'none' | 'pending_incoming' | 'pending_outgoing' | 'accepted' | 'blocked' = 'none';
+    let friendStatus:
+      | 'none'
+      | 'pending_incoming'
+      | 'pending_outgoing'
+      | 'accepted'
+      | 'blocked' = 'none';
     if (friendship) {
       if (friendship.status === 'blocked') {
         friendStatus = 'blocked';
@@ -284,7 +311,10 @@ export class ProfileService {
         friendStatus = 'accepted';
       } else if (friendship.status === 'pending') {
         // Determine if incoming or outgoing
-        friendStatus = friendship.userId === viewerId ? 'pending_outgoing' : 'pending_incoming';
+        friendStatus =
+          friendship.userId === viewerId
+            ? 'pending_outgoing'
+            : 'pending_incoming';
       }
     }
 
@@ -303,21 +333,34 @@ export class ProfileService {
     };
 
     const isFriend = friendStatus === 'accepted';
-    const isBlocked = friendStatus === 'blocked';
-    const profileVisibility = (profile.profileVisibility || 'public') as 'public' | 'friends' | 'private';
-    const trustScoreVisibility = (profile.trustScoreVisibility || 'public') as 'public' | 'friends' | 'private';
+    const profileVisibility = (profile.profileVisibility || 'public') as
+      | 'public'
+      | 'friends'
+      | 'private';
+    const trustScoreVisibility = (profile.trustScoreVisibility || 'public') as
+      | 'public'
+      | 'friends'
+      | 'private';
 
     // Apply privacy rules for profile visibility
-    const canSeeProfile = profileVisibility === 'public' || (profileVisibility === 'friends' && isFriend);
+    const canSeeProfile =
+      profileVisibility === 'public' ||
+      (profileVisibility === 'friends' && isFriend);
     const canSeeEmail = canSeeProfile;
     const canSeeBio = canSeeProfile;
 
     // Apply privacy rules for trust score visibility
-    const canSeeTrustScore = trustScoreVisibility === 'public' || (trustScoreVisibility === 'friends' && isFriend);
-    const canSeeTrustScoreBreakdown = isFriend && trustScoreVisibility !== 'private';
+    const canSeeTrustScore =
+      trustScoreVisibility === 'public' ||
+      (trustScoreVisibility === 'friends' && isFriend);
+    const canSeeTrustScoreBreakdown =
+      isFriend && trustScoreVisibility !== 'private';
 
     // Calculate mutual friends count
-    const mutualFriendsCount = await this.calculateMutualFriendsCount(viewerId, targetUserId);
+    const mutualFriendsCount = await this.calculateMutualFriendsCount(
+      viewerId,
+      targetUserId,
+    );
 
     // Calculate listings count (all active listings are public)
     const listingsCount = await this.prisma.listing.count({
@@ -328,7 +371,10 @@ export class ProfileService {
     });
 
     // Calculate shared groups count
-    const sharedGroupsCount = await this.calculateSharedGroupsCount(viewerId, targetUserId);
+    const sharedGroupsCount = await this.calculateSharedGroupsCount(
+      viewerId,
+      targetUserId,
+    );
 
     // Get trust score if visible
     let trustScore: UserProfileResponseDto['trustScore'] = null;
@@ -339,14 +385,18 @@ export class ProfileService {
 
       if (canSeeTrustScoreBreakdown) {
         // Get trust score breakdown from trust score service
-        const breakdown = await this.trustScoreService.calculateTrustScoreBreakdown(targetUserId);
+        const breakdown =
+          await this.trustScoreService.calculateTrustScoreBreakdown(
+            targetUserId,
+          );
         if (breakdown) {
           trustScore.breakdown = {
             expenseScore: breakdown.expenseScore || 0,
             choreScore: breakdown.choreScore || 0,
             communityScore: breakdown.communityScore || 0,
-            financeScore: 0, // Not in current breakdown
-            listingScore: 0, // Not in current breakdown (part of community)
+            reliabilityScore: breakdown.reliabilityScore || 0,
+            responsivenessScore: breakdown.responsivenessScore || 0,
+            accountTrustScore: breakdown.accountTrustScore || 0,
           };
         }
       }
@@ -359,7 +409,9 @@ export class ProfileService {
       avatarUrl: profile.avatarUrl,
       bio: canSeeBio ? profile.bio : null,
       email: canSeeEmail ? targetUser.email : undefined,
-      mobileNumber: canSeeEmail ? targetUser.mobileNumber || undefined : undefined,
+      mobileNumber: canSeeEmail
+        ? targetUser.mobileNumber || undefined
+        : undefined,
       trustScore,
       friendStatus,
       mutualFriendsCount,
@@ -372,7 +424,10 @@ export class ProfileService {
     return response;
   }
 
-  private async calculateMutualFriendsCount(userId: string, targetUserId: string): Promise<number> {
+  private async calculateMutualFriendsCount(
+    userId: string,
+    targetUserId: string,
+  ): Promise<number> {
     // Get user's friends
     const userFriends = await this.prisma.friend.findMany({
       where: {
@@ -406,7 +461,10 @@ export class ProfileService {
     return mutualCount;
   }
 
-  private async calculateSharedGroupsCount(userId: string, targetUserId: string): Promise<number> {
+  private async calculateSharedGroupsCount(
+    userId: string,
+    targetUserId: string,
+  ): Promise<number> {
     // Get user's groups
     const userGroups = await this.prisma.groupMember.findMany({
       where: { userId },
@@ -422,10 +480,10 @@ export class ProfileService {
     });
 
     // Count shared groups
-    const sharedCount = targetGroups.filter((gm) => userGroupIds.has(gm.groupId)).length;
+    const sharedCount = targetGroups.filter((gm) =>
+      userGroupIds.has(gm.groupId),
+    ).length;
 
     return sharedCount;
   }
 }
-
-

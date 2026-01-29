@@ -16,7 +16,9 @@ export class EmailService {
       this.sendGridEnabled = true;
       this.logger.log('SendGrid email service enabled');
     } else {
-      this.logger.warn('SendGrid API key not found. Email sending will be logged to console only.');
+      this.logger.warn(
+        'SendGrid API key not found. Email sending will be logged to console only.',
+      );
     }
 
     // Initialize Twilio if credentials are provided
@@ -28,7 +30,9 @@ export class EmailService {
       this.twilioEnabled = true;
       this.logger.log('Twilio SMS service enabled');
     } else {
-      this.logger.warn('Twilio credentials not found. SMS sending will be logged to console only.');
+      this.logger.warn(
+        'Twilio credentials not found. SMS sending will be logged to console only.',
+      );
     }
   }
   /**
@@ -45,9 +49,9 @@ export class EmailService {
     // - AWS SES
     // - Mailgun
     // - Nodemailer with SMTP
-    
+
     const inviteLink = `${process.env.FRONTEND_URL || 'https://dreamfinora.com'}/register?invite=${invitationToken}`;
-    
+
     const subject = `${inviterName} invited you to join Dream Finora`;
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -80,7 +84,7 @@ export class EmailService {
       : null;
 
     const subject = `${inviterName} invited you to join "${groupName}" on Dream Finora`;
-    
+
     let html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <h2 style="color: #2563EB;">You've been invited to join a circle!</h2>
@@ -125,7 +129,7 @@ export class EmailService {
     const inviteLink = isGroupInvitation
       ? `${process.env.FRONTEND_URL || 'https://dreamfinora.com'}/invite/group/${invitationToken}`
       : `${process.env.FRONTEND_URL || 'https://dreamfinora.com'}/register?invite=${invitationToken}`;
-    
+
     const message = isGroupInvitation
       ? `${inviterName} invited you to join "${groupName}" on Dream Finora. Join: ${inviteLink}`
       : `${inviterName} invited you to join Dream Finora. Join: ${inviteLink}`;
@@ -136,9 +140,16 @@ export class EmailService {
   /**
    * Private method to actually send email
    */
-  private async sendEmail(to: string, subject: string, html: string): Promise<void> {
-    const fromEmail = process.env.SENDGRID_FROM_EMAIL || process.env.FROM_EMAIL || 'noreply@dreamfinora.com';
-    
+  private async sendEmail(
+    to: string,
+    subject: string,
+    html: string,
+  ): Promise<void> {
+    const fromEmail =
+      process.env.SENDGRID_FROM_EMAIL ||
+      process.env.FROM_EMAIL ||
+      'noreply@dreamfinora.com';
+
     if (this.sendGridEnabled) {
       try {
         const msg = {
@@ -147,7 +158,7 @@ export class EmailService {
           subject,
           html,
         };
-        
+
         await sgMail.send(msg);
         this.logger.log(`Email sent successfully to ${to}`);
       } catch (error) {
@@ -169,7 +180,9 @@ export class EmailService {
     this.logger.log('📧 EMAIL (SendGrid not configured - logging to console)');
     this.logger.log(`To: ${to}`);
     this.logger.log(`Subject: ${subject}`);
-    this.logger.log(`HTML: ${html.replace(/<[^>]*>/g, '').substring(0, 200)}...`);
+    this.logger.log(
+      `HTML: ${html.replace(/<[^>]*>/g, '').substring(0, 200)}...`,
+    );
     this.logger.log('='.repeat(60));
   }
 
@@ -178,19 +191,21 @@ export class EmailService {
    */
   private async sendSMS(to: string, message: string): Promise<void> {
     const fromNumber = process.env.TWILIO_PHONE_NUMBER;
-    
+
     if (this.twilioEnabled && fromNumber) {
       try {
         // Ensure phone number is in E.164 format (starts with +)
         const formattedTo = to.startsWith('+') ? to : `+${to}`;
-        
+
         const result = await this.twilioClient!.messages.create({
           body: message,
           from: fromNumber,
           to: formattedTo,
         });
-        
-        this.logger.log(`SMS sent successfully to ${formattedTo} (SID: ${result.sid})`);
+
+        this.logger.log(
+          `SMS sent successfully to ${formattedTo} (SID: ${result.sid})`,
+        );
       } catch (error) {
         this.logger.error(`Failed to send SMS to ${to}:`, error);
         // Fall through to console logging
@@ -213,4 +228,3 @@ export class EmailService {
     this.logger.log('='.repeat(60));
   }
 }
-

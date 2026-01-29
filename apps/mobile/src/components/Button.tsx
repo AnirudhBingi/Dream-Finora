@@ -1,16 +1,15 @@
-import React from 'react';
+import React from "react";
 import {
   TouchableOpacity,
   Text,
-  StyleSheet,
   ActivityIndicator,
   ViewStyle,
   TextStyle,
-  Platform,
-} from 'react-native';
+} from "react-native";
+import { useTheme } from "../theme";
 
-export type ButtonVariant = 'primary' | 'secondary' | 'text' | 'danger';
-export type ButtonSize = 'small' | 'medium' | 'large';
+export type ButtonVariant = "primary" | "secondary" | "text" | "danger";
+export type ButtonSize = "small" | "medium" | "large";
 
 interface ButtonProps {
   title: string;
@@ -27,80 +26,67 @@ interface ButtonProps {
 export function Button({
   title,
   onPress,
-  variant = 'primary',
-  size = 'medium',
+  variant = "primary",
+  size = "medium",
   disabled = false,
   loading = false,
   style,
   textStyle,
   fullWidth = true,
 }: ButtonProps) {
+  const { theme } = useTheme();
   const isDisabled = disabled || loading;
 
   const getButtonStyle = (): ViewStyle => {
     const baseStyle: ViewStyle = {
-      borderRadius: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexDirection: 'row',
+      borderRadius: theme.radii.button, // Use token
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "row",
     };
 
-    // Size
-    if (size === 'small') {
-      baseStyle.paddingVertical = 8;
-      baseStyle.paddingHorizontal = 16;
-      baseStyle.minHeight = 36;
-    } else if (size === 'medium') {
-      baseStyle.paddingVertical = 12;
-      baseStyle.paddingHorizontal = 24;
-      baseStyle.minHeight = 48;
+    // Size - Use size tokens
+    if (size === "small") {
+      baseStyle.paddingVertical = theme.spacing.sm;
+      baseStyle.paddingHorizontal = theme.spacing.base;
+      baseStyle.minHeight = theme.sizes.button.sm; // 36px token
+    } else if (size === "medium") {
+      baseStyle.paddingVertical = theme.spacing.md;
+      baseStyle.paddingHorizontal = theme.spacing.xl;
+      baseStyle.minHeight = theme.sizes.button.md; // 44px token
     } else {
-      baseStyle.paddingVertical = 14;
-      baseStyle.paddingHorizontal = 32;
-      baseStyle.minHeight = 52;
+      baseStyle.paddingVertical = theme.spacing.md;
+      baseStyle.paddingHorizontal = theme.spacing["2xl"];
+      baseStyle.minHeight = theme.sizes.button.lg; // 52px token
     }
 
     // Variant
-    if (variant === 'primary') {
-      baseStyle.backgroundColor = '#6366F1'; // Indigo-500
-      if (Platform.OS === 'ios') {
-        baseStyle.shadowColor = '#000';
-        baseStyle.shadowOffset = { width: 0, height: 2 };
-        baseStyle.shadowOpacity = 0.1;
-        baseStyle.shadowRadius = 4;
-      } else {
-        baseStyle.elevation = 3;
-      }
-    } else if (variant === 'secondary') {
-      baseStyle.backgroundColor = 'transparent';
+    if (variant === "primary") {
+      baseStyle.backgroundColor = theme.colors.primary;
+      Object.assign(baseStyle, theme.shadows.button);
+    } else if (variant === "secondary") {
+      baseStyle.backgroundColor = "transparent";
       baseStyle.borderWidth = 2;
-      baseStyle.borderColor = '#6366F1';
-    } else if (variant === 'danger') {
-      baseStyle.backgroundColor = '#EF4444'; // Red-500
-      if (Platform.OS === 'ios') {
-        baseStyle.shadowColor = '#000';
-        baseStyle.shadowOffset = { width: 0, height: 2 };
-        baseStyle.shadowOpacity = 0.1;
-        baseStyle.shadowRadius = 4;
-      } else {
-        baseStyle.elevation = 3;
-      }
+      baseStyle.borderColor = theme.colors.primary;
+    } else if (variant === "danger") {
+      baseStyle.backgroundColor = theme.colors.error;
+      Object.assign(baseStyle, theme.shadows.button);
     } else {
       // text variant
-      baseStyle.backgroundColor = 'transparent';
-      baseStyle.paddingVertical = 8;
-      baseStyle.paddingHorizontal = 12;
+      baseStyle.backgroundColor = "transparent";
+      baseStyle.paddingVertical = theme.spacing.sm;
+      baseStyle.paddingHorizontal = theme.spacing.md;
       baseStyle.minHeight = 44;
     }
 
     // Disabled state
-    if (isDisabled && variant !== 'text') {
+    if (isDisabled && variant !== "text") {
       baseStyle.opacity = 0.5;
     }
 
     // Full width
     if (fullWidth) {
-      baseStyle.width = '100%';
+      baseStyle.width = "100%";
     }
 
     return baseStyle;
@@ -108,19 +94,24 @@ export function Button({
 
   const getTextStyle = (): TextStyle => {
     const baseStyle: TextStyle = {
-      fontSize: size === 'small' ? 14 : size === 'medium' ? 16 : 18,
-      fontWeight: '600',
+      fontSize:
+        size === "small"
+          ? theme.typography.fontSize.sm
+          : size === "medium"
+            ? theme.typography.fontSize.base
+            : theme.typography.fontSize.lg,
+      fontWeight: theme.typography.fontWeight.semibold,
     };
 
-    if (variant === 'primary' || variant === 'danger') {
-      baseStyle.color = '#FFFFFF';
-    } else if (variant === 'secondary') {
-      baseStyle.color = '#6366F1';
+    if (variant === "primary" || variant === "danger") {
+      baseStyle.color = theme.colors.textInverse;
+    } else if (variant === "secondary") {
+      baseStyle.color = theme.colors.primary;
     } else {
       // text variant
-      baseStyle.color = '#6366F1';
-      baseStyle.fontSize = 14;
-      baseStyle.fontWeight = '500';
+      baseStyle.color = theme.colors.primary;
+      baseStyle.fontSize = theme.typography.fontSize.sm;
+      baseStyle.fontWeight = theme.typography.fontWeight.medium;
     }
 
     return baseStyle;
@@ -135,7 +126,11 @@ export function Button({
     >
       {loading ? (
         <ActivityIndicator
-          color={variant === 'primary' || variant === 'danger' ? '#FFFFFF' : '#6366F1'}
+          color={
+            variant === "primary" || variant === "danger"
+              ? theme.colors.textInverse
+              : theme.colors.primary
+          }
           size="small"
         />
       ) : (
@@ -144,4 +139,3 @@ export function Button({
     </TouchableOpacity>
   );
 }
-

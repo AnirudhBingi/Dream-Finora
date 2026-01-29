@@ -1,4 +1,10 @@
-import { IsNumber, IsOptional, IsDateString, IsString, Min } from 'class-validator';
+import {
+  IsNumber,
+  IsOptional,
+  IsDateString,
+  IsString,
+  Min,
+} from 'class-validator';
 
 export class AddContributionDto {
   @IsNumber()
@@ -17,4 +23,3 @@ export class AddContributionDto {
   @IsOptional()
   notes?: string;
 }
-

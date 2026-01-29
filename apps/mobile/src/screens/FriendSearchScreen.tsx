@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -10,20 +10,21 @@ import {
   Alert,
   Platform,
   Image,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
-import { useAuth } from '../auth/authContext';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useAuth } from "../auth/authContext";
 import {
   searchUsers,
   sendFriendRequest,
   inviteUserToApp,
   SearchUser,
-} from '../api/friendApi';
-import { Header } from '../components/Header';
-import { EmptyState } from '../components/EmptyState';
-import { getAvatarUrl } from '../utils/avatar';
-import { TrustScoreBadge } from '../components/TrustScoreDisplay';
+} from "../api/friendApi";
+import { Header } from "../components/Header";
+import { EmptyState } from "../components/EmptyState";
+import { getAvatarUrl } from "../utils/avatar";
+import { TrustScoreBadge } from "../components/TrustScoreDisplay";
+import { useTheme } from "../theme";
 
 interface FriendSearchScreenProps {
   onBack: () => void;
@@ -34,23 +35,25 @@ interface FriendSearchScreenProps {
   onNavigateToSettings?: () => void;
 }
 
-export function FriendSearchScreen({ 
-  onBack, 
-  onRequestSent, 
+export function FriendSearchScreen({
+  onBack,
+  onRequestSent,
   onViewProfile,
   onNavigateToProfile,
   onNavigateToNotifications,
   onNavigateToSettings,
 }: FriendSearchScreenProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { token } = useAuth();
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchUser[]>([]);
   const [searching, setSearching] = useState(false);
   const [sendingRequest, setSendingRequest] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
   const [showInviteForm, setShowInviteForm] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteMobile, setInviteMobile] = useState('');
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteMobile, setInviteMobile] = useState("");
   const searchInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -74,7 +77,10 @@ export function FriendSearchScreen({
       const results = await searchUsers(token, query);
       setSearchResults(results);
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to search users');
+      Alert.alert(
+        "Error",
+        err instanceof Error ? err.message : "Failed to search users",
+      );
       setSearchResults([]);
     } finally {
       setSearching(false);
@@ -87,9 +93,9 @@ export function FriendSearchScreen({
     try {
       setSendingRequest(userIdentifier);
       await sendFriendRequest(token, { friendEmailOrMobile: userIdentifier });
-      Alert.alert('Success', 'Friend request sent!', [
+      Alert.alert("Success", "Friend request sent!", [
         {
-          text: 'OK',
+          text: "OK",
           onPress: () => {
             if (onRequestSent) {
               onRequestSent();
@@ -99,19 +105,25 @@ export function FriendSearchScreen({
         },
       ]);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to send friend request';
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to send friend request";
       // If user not found, offer to invite them
-      if (errorMessage.includes('not found') || errorMessage.includes('User not found')) {
+      if (
+        errorMessage.includes("not found") ||
+        errorMessage.includes("User not found")
+      ) {
         Alert.alert(
-          'User Not Found',
-          'This person is not on Dream Finora yet. Would you like to invite them to join?',
+          "User Not Found",
+          "This person is not on Dream Finora yet. Would you like to invite them to join?",
           [
-            { text: 'Cancel', style: 'cancel' },
+            { text: "Cancel", style: "cancel" },
             {
-              text: 'Invite',
+              text: "Invite",
               onPress: () => {
                 // Pre-fill the invite form with the search query
-                const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userIdentifier);
+                const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+                  userIdentifier,
+                );
                 if (isEmail) {
                   setInviteEmail(userIdentifier);
                 } else {
@@ -120,10 +132,10 @@ export function FriendSearchScreen({
                 setShowInviteForm(true);
               },
             },
-          ]
+          ],
         );
       } else {
-        Alert.alert('Error', errorMessage);
+        Alert.alert("Error", errorMessage);
       }
     } finally {
       setSendingRequest(null);
@@ -137,12 +149,12 @@ export function FriendSearchScreen({
     const mobile = inviteMobile.trim();
 
     if (!email && !mobile) {
-      Alert.alert('Error', 'Please enter an email or mobile number');
+      Alert.alert("Error", "Please enter an email or mobile number");
       return;
     }
 
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      Alert.alert('Error', 'Please enter a valid email address');
+      Alert.alert("Error", "Please enter a valid email address");
       return;
     }
 
@@ -152,23 +164,29 @@ export function FriendSearchScreen({
         email: email || undefined,
         mobileNumber: mobile || undefined,
       });
-      
+
       Alert.alert(
-        'Invitation Sent!',
+        "Invitation Sent!",
         `We've sent an invitation to ${email || mobile}. They'll receive a link to join Dream Finora.`,
         [
-          { text: 'OK', onPress: () => {
-            setInviteEmail('');
-            setInviteMobile('');
-            setShowInviteForm(false);
-            if (onRequestSent) {
-              onRequestSent();
-            }
-          }},
-        ]
+          {
+            text: "OK",
+            onPress: () => {
+              setInviteEmail("");
+              setInviteMobile("");
+              setShowInviteForm(false);
+              if (onRequestSent) {
+                onRequestSent();
+              }
+            },
+          },
+        ],
       );
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to send invitation');
+      Alert.alert(
+        "Error",
+        err instanceof Error ? err.message : "Failed to send invitation",
+      );
     } finally {
       setInviting(false);
     }
@@ -180,24 +198,32 @@ export function FriendSearchScreen({
 
   function getFriendStatusBadge(status?: string) {
     switch (status) {
-      case 'accepted':
+      case "accepted":
         return (
           <View style={styles.statusBadge}>
-            <MaterialIcons name="check-circle" size={16} color="#10B981" />
+            <MaterialIcons
+              name="check-circle"
+              size={16}
+              color={theme.colors.success}
+            />
             <Text style={styles.statusText}>Friends</Text>
           </View>
         );
-      case 'pending':
+      case "pending":
         return (
           <View style={[styles.statusBadge, styles.pendingBadge]}>
-            <MaterialIcons name="schedule" size={16} color="#F59E0B" />
+            <MaterialIcons
+              name="schedule"
+              size={16}
+              color={theme.colors.warning}
+            />
             <Text style={[styles.statusText, styles.pendingText]}>Pending</Text>
           </View>
         );
-      case 'blocked':
+      case "blocked":
         return (
           <View style={[styles.statusBadge, styles.blockedBadge]}>
-            <MaterialIcons name="block" size={16} color="#EF4444" />
+            <MaterialIcons name="block" size={16} color={theme.colors.error} />
             <Text style={[styles.statusText, styles.blockedText]}>Blocked</Text>
           </View>
         );
@@ -207,7 +233,7 @@ export function FriendSearchScreen({
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <Header
         title="Add Friends"
         onBack={onBack}
@@ -218,12 +244,17 @@ export function FriendSearchScreen({
 
       <View style={styles.searchContainer}>
         <View style={styles.searchInputContainer}>
-          <MaterialIcons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
+          <MaterialIcons
+            name="search"
+            size={20}
+            color={theme.colors.textTertiary}
+            style={styles.searchIcon}
+          />
           <TextInput
             ref={searchInputRef}
             style={styles.searchInput}
             placeholder="Search by email or name..."
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={theme.colors.textTertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
             autoCapitalize="none"
@@ -235,26 +266,30 @@ export function FriendSearchScreen({
             <TouchableOpacity
               style={styles.clearButton}
               onPress={() => {
-                setSearchQuery('');
+                setSearchQuery("");
                 setSearchResults([]);
                 searchInputRef.current?.blur();
               }}
               activeOpacity={0.7}
             >
-              <MaterialIcons name="close" size={18} color="#6B7280" />
+              <MaterialIcons
+                name="close"
+                size={18}
+                color={theme.colors.textSecondary}
+              />
             </TouchableOpacity>
           )}
         </View>
         {searching && (
           <View style={styles.searchingIndicator}>
-            <ActivityIndicator size="small" color="#6366F1" />
+            <ActivityIndicator size="small" color={theme.colors.primary} />
             <Text style={styles.searchingText}>Searching...</Text>
           </View>
         )}
       </View>
 
-      <ScrollView 
-        style={styles.container} 
+      <ScrollView
+        style={styles.container}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
@@ -270,15 +305,20 @@ export function FriendSearchScreen({
             <Text style={styles.inviteFormSubtitle}>
               Send an invitation to someone who isn't on the app yet
             </Text>
-            
+
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Email</Text>
               <View style={styles.inputWrapper}>
-                <MaterialIcons name="email" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                <MaterialIcons
+                  name="email"
+                  size={20}
+                  color={theme.colors.textTertiary}
+                  style={styles.inputIcon}
+                />
                 <TextInput
                   style={styles.input}
                   placeholder="email@example.com"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={theme.colors.textTertiary}
                   value={inviteEmail}
                   onChangeText={setInviteEmail}
                   keyboardType="email-address"
@@ -293,11 +333,16 @@ export function FriendSearchScreen({
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Mobile Number</Text>
               <View style={styles.inputWrapper}>
-                <MaterialIcons name="phone" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                <MaterialIcons
+                  name="phone"
+                  size={20}
+                  color={theme.colors.textTertiary}
+                  style={styles.inputIcon}
+                />
                 <TextInput
                   style={styles.input}
                   placeholder="+1234567890"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={theme.colors.textTertiary}
                   value={inviteMobile}
                   onChangeText={setInviteMobile}
                   keyboardType="phone-pad"
@@ -312,19 +357,25 @@ export function FriendSearchScreen({
                 style={styles.cancelButton}
                 onPress={() => {
                   setShowInviteForm(false);
-                  setInviteEmail('');
-                  setInviteMobile('');
+                  setInviteEmail("");
+                  setInviteMobile("");
                 }}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.inviteButton, inviting && styles.inviteButtonDisabled]}
+                style={[
+                  styles.inviteButton,
+                  inviting && styles.inviteButtonDisabled,
+                ]}
                 onPress={handleInviteUser}
                 disabled={inviting}
               >
                 {inviting ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <ActivityIndicator
+                    size="small"
+                    color={theme.colors.textInverse}
+                  />
                 ) : (
                   <Text style={styles.inviteButtonText}>Send Invitation</Text>
                 )}
@@ -343,7 +394,8 @@ export function FriendSearchScreen({
           searchResults.map((user) => {
             const userIdentifier = user.email; // Use email as identifier (backend supports email or mobile)
             const isSending = sendingRequest === userIdentifier;
-            const canSendRequest = !user.friendStatus || user.friendStatus === 'none';
+            const canSendRequest =
+              !user.friendStatus || user.friendStatus === "none";
 
             return (
               <TouchableOpacity
@@ -358,7 +410,7 @@ export function FriendSearchScreen({
               >
                 <View style={styles.userInfo}>
                   {(() => {
-                    const avatarUrl = user.profile?.avatarUrl 
+                    const avatarUrl = user.profile?.avatarUrl
                       ? getAvatarUrl(user.profile.avatarUrl)
                       : null;
                     const displayName = getUserDisplayName(user);
@@ -384,7 +436,10 @@ export function FriendSearchScreen({
                       </Text>
                       {/* Show trust score if available (backend already handles visibility) */}
                       {user.trustScore && (
-                        <TrustScoreBadge score={user.trustScore.score} size="small" />
+                        <TrustScoreBadge
+                          score={user.trustScore.score}
+                          size="small"
+                        />
                       )}
                     </View>
                     {!user.profile?.displayName && user.email && (
@@ -412,10 +467,17 @@ export function FriendSearchScreen({
                       activeOpacity={0.8}
                     >
                       {isSending ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
+                        <ActivityIndicator
+                          size="small"
+                          color={theme.colors.textInverse}
+                        />
                       ) : (
                         <>
-                          <MaterialIcons name="person-add" size={18} color="#FFFFFF" />
+                          <MaterialIcons
+                            name="person-add"
+                            size={18}
+                            color={theme.colors.textInverse}
+                          />
                           <Text style={styles.addButtonText}>Add</Text>
                         </>
                       )}
@@ -431,333 +493,333 @@ export function FriendSearchScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  searchContainer: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  searchInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    borderWidth: 2,
-    borderColor: '#E5E7EB',
-    minHeight: 52,
-  },
-  searchIcon: {
-    marginRight: 12,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: '#111827',
-    paddingVertical: 14,
-    fontFamily: Platform.select({
-      ios: 'System',
-      android: 'Roboto',
-    }),
-  },
-  clearButton: {
-    padding: 4,
-    marginLeft: 8,
-  },
-  searchingIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 12,
-  },
-  searchingText: {
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  scrollContent: {
-    padding: 24,
-    paddingBottom: 32,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 48,
-    minHeight: 300,
-  },
-  emptyText: {
-    marginTop: 16,
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  emptySubtext: {
-    marginTop: 8,
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-  userCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: 12,
-    minWidth: 0,
-  },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#6366F1',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-    overflow: 'hidden',
-  },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-  },
-  avatarText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  userDetails: {
-    flex: 1,
-    minWidth: 0,
-  },
-  userNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
-  userName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    flex: 1,
-  },
-  userEmail: {
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '400',
-    marginTop: 2,
-  },
-  userMobile: {
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '400',
-  },
-  userActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#ECFDF5',
-    borderRadius: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#10B981',
-  },
-  pendingBadge: {
-    backgroundColor: '#FEF3C7',
-  },
-  pendingText: {
-    color: '#F59E0B',
-  },
-  blockedBadge: {
-    backgroundColor: '#FEE2E2',
-  },
-  blockedText: {
-    color: '#EF4444',
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#6366F1',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    minHeight: 40,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#6366F1',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  addButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  inviteForm: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 24,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  inviteFormTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 6,
-  },
-  inviteFormSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 24,
-    lineHeight: 20,
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    backgroundColor: '#F9FAFB',
-    minHeight: 52,
-  },
-  inputIcon: {
-    marginLeft: 16,
-    marginRight: 12,
-  },
-  input: {
-    flex: 1,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: '#111827',
-    fontFamily: Platform.select({
-      ios: 'System',
-      android: 'Roboto',
-    }),
-  },
-  orText: {
-    textAlign: 'center',
-    fontSize: 14,
-    color: '#9CA3AF',
-    marginVertical: 20,
-    fontWeight: '500',
-  },
-  inviteFormActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-  },
-  cancelButton: {
-    flex: 1,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
-  },
-  cancelButtonText: {
-    color: '#374151',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  inviteButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#6366F1',
-    borderRadius: 12,
-    paddingVertical: 16,
-    gap: 8,
-    minHeight: 48,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#6366F1',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  inviteButtonDisabled: {
-    opacity: 0.6,
-  },
-  inviteButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-});
-
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.backgroundSecondary,
+    },
+    searchContainer: {
+      backgroundColor: theme.colors.background,
+      paddingHorizontal: theme.spacing.xl,
+      paddingVertical: theme.spacing.base,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.borderLight,
+    },
+    searchInputContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: theme.colors.backgroundSecondary,
+      borderRadius: theme.spacing.md,
+      paddingHorizontal: theme.spacing.base,
+      borderWidth: 2,
+      borderColor: theme.colors.border,
+      minHeight: 52,
+    },
+    searchIcon: {
+      marginRight: theme.spacing.md,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textPrimary,
+      paddingVertical: 14,
+      fontFamily: Platform.select({
+        ios: "System",
+        android: "Roboto",
+      }),
+    },
+    clearButton: {
+      padding: 4,
+      marginLeft: 8,
+    },
+    searchingIndicator: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginTop: 12,
+    },
+    searchingText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.backgroundSecondary,
+    },
+    scrollContent: {
+      padding: theme.spacing.xl,
+      paddingBottom: theme.spacing["2xl"],
+    },
+    emptyContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 48,
+      minHeight: 300,
+    },
+    emptyText: {
+      marginTop: theme.spacing.base,
+      fontSize: theme.typography.fontSize.xl,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.gray700,
+    },
+    emptySubtext: {
+      marginTop: theme.spacing.sm,
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+      textAlign: "center",
+    },
+    userCard: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      backgroundColor: theme.colors.background,
+      borderRadius: theme.spacing.base,
+      padding: theme.spacing.base,
+      marginBottom: theme.spacing.md,
+      borderWidth: 1,
+      borderColor: theme.colors.borderLight,
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.black,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 8,
+        },
+        android: {
+          elevation: 2,
+        },
+      }),
+    },
+    userInfo: {
+      flexDirection: "row",
+      alignItems: "center",
+      flex: 1,
+      marginRight: 12,
+      minWidth: 0,
+    },
+    avatar: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      backgroundColor: theme.colors.primary,
+      justifyContent: "center",
+      alignItems: "center",
+      marginRight: theme.spacing.md,
+      overflow: "hidden",
+    },
+    avatarImage: {
+      width: "100%",
+      height: "100%",
+    },
+    avatarText: {
+      fontSize: theme.typography.fontSize.xl,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textInverse,
+    },
+    userDetails: {
+      flex: 1,
+      minWidth: 0,
+    },
+    userNameRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.sm,
+      marginBottom: 4,
+    },
+    userName: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+      flex: 1,
+    },
+    userEmail: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+      fontWeight: theme.typography.fontWeight.normal,
+      marginTop: 2,
+    },
+    userMobile: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+      fontWeight: theme.typography.fontWeight.normal,
+    },
+    userActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    statusBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: theme.colors.successBackground,
+      borderRadius: theme.spacing.md,
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+    },
+    statusText: {
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.success,
+    },
+    pendingBadge: {
+      backgroundColor: theme.colors.warningBackground,
+    },
+    pendingText: {
+      color: theme.colors.warning,
+    },
+    blockedBadge: {
+      backgroundColor: theme.colors.errorBackground,
+    },
+    blockedText: {
+      color: theme.colors.error,
+    },
+    addButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      backgroundColor: theme.colors.primary,
+      borderRadius: theme.spacing.md,
+      paddingVertical: 10,
+      paddingHorizontal: theme.spacing.base,
+      minHeight: 40,
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.primary,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.2,
+          shadowRadius: 4,
+        },
+        android: {
+          elevation: 2,
+        },
+      }),
+    },
+    addButtonText: {
+      color: theme.colors.textInverse,
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    inviteForm: {
+      backgroundColor: theme.colors.background,
+      borderRadius: theme.spacing.base,
+      padding: theme.spacing.xl,
+      marginTop: theme.spacing.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.borderLight,
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.black,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 8,
+        },
+        android: {
+          elevation: 2,
+        },
+      }),
+    },
+    inviteFormTitle: {
+      fontSize: theme.typography.fontSize.xl,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+      marginBottom: 6,
+    },
+    inviteFormSubtitle: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+      marginBottom: theme.spacing.xl,
+      lineHeight: 20,
+    },
+    inputGroup: {
+      marginBottom: 20,
+    },
+    inputLabel: {
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.gray700,
+      marginBottom: theme.spacing.sm,
+    },
+    inputWrapper: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderWidth: 2,
+      borderColor: theme.colors.border,
+      borderRadius: theme.spacing.md,
+      backgroundColor: theme.colors.backgroundSecondary,
+      minHeight: 52,
+    },
+    inputIcon: {
+      marginLeft: theme.spacing.base,
+      marginRight: theme.spacing.md,
+    },
+    input: {
+      flex: 1,
+      paddingVertical: 14,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textPrimary,
+      fontFamily: Platform.select({
+        ios: "System",
+        android: "Roboto",
+      }),
+    },
+    orText: {
+      textAlign: "center",
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textTertiary,
+      marginVertical: 20,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    inviteFormActions: {
+      flexDirection: "row",
+      gap: theme.spacing.md,
+      marginTop: theme.spacing.sm,
+    },
+    cancelButton: {
+      flex: 1,
+      backgroundColor: theme.colors.backgroundTertiary,
+      borderRadius: theme.spacing.md,
+      paddingVertical: theme.spacing.base,
+      alignItems: "center",
+      justifyContent: "center",
+      minHeight: 48,
+    },
+    cancelButtonText: {
+      color: theme.colors.gray700,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    inviteButton: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.colors.primary,
+      borderRadius: theme.spacing.md,
+      paddingVertical: theme.spacing.base,
+      gap: theme.spacing.sm,
+      minHeight: 48,
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.primary,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.2,
+          shadowRadius: 8,
+        },
+        android: {
+          elevation: 4,
+        },
+      }),
+    },
+    inviteButtonDisabled: {
+      opacity: 0.6,
+    },
+    inviteButtonText: {
+      color: theme.colors.textInverse,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+  });

@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from './getApiBaseUrl';
+import { api } from "./client";
 
 export interface ActivityItem {
   id: string;
@@ -28,45 +28,18 @@ export async function getActivityFeed(
   offset: number = 0,
   filter?: string,
 ): Promise<ActivityFeedResponse> {
-  const url = new URL(`${getApiBaseUrl()}/activity/feed`);
-  url.searchParams.append('limit', limit.toString());
-  url.searchParams.append('offset', offset.toString());
-  if (filter) {
-    url.searchParams.append('filter', filter);
-  }
+  const params = new URLSearchParams();
+  params.append("limit", limit.toString());
+  params.append("offset", offset.toString());
+  if (filter) params.append("filter", filter);
 
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch activity feed' }));
-    throw new Error(error.message || `Failed to fetch activity feed: ${response.status}`);
-  }
-
-  return response.json();
+  const endpoint = `/activity/feed?${params.toString()}`;
+  return api.get<ActivityFeedResponse>(endpoint, { token });
 }
 
 export async function getGroupHistory(
   token: string,
   groupId: string,
 ): Promise<ActivityItem[]> {
-  const response = await fetch(`${getApiBaseUrl()}/groups/${groupId}/history`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch group history' }));
-    throw new Error(error.message || `Failed to fetch group history: ${response.status}`);
-  }
-
-  return response.json();
+  return api.get<ActivityItem[]>(`/groups/${groupId}/history`, { token });
 }

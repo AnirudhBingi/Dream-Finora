@@ -1,4 +1,11 @@
-import { IsString, IsOptional, IsNumber, IsArray, IsIn, Min } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsArray,
+  IsIn,
+  Min,
+} from 'class-validator';
 
 export class UpdateRideDto {
   @IsOptional()
@@ -38,4 +45,3 @@ export class UpdateRideDto {
   @IsString()
   date?: string; // ISO date string
 }
-

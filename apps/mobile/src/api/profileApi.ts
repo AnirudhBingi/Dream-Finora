@@ -1,4 +1,4 @@
-import { api } from './client';
+import { api } from "./client";
 
 export interface TrustScore {
   id: string;
@@ -36,8 +36,8 @@ export interface Profile {
   choreReminders?: boolean;
   messageNotifications?: boolean;
   listingNotifications?: boolean;
-  profileVisibility?: 'public' | 'friends' | 'private';
-  trustScoreVisibility?: 'public' | 'friends' | 'private';
+  profileVisibility?: "public" | "friends" | "private";
+  trustScoreVisibility?: "public" | "friends" | "private";
   createdAt: string;
   user: {
     id: string;
@@ -63,15 +63,15 @@ export interface UpdateProfileDto {
   choreReminders?: boolean;
   messageNotifications?: boolean;
   listingNotifications?: boolean;
-  profileVisibility?: 'public' | 'friends' | 'private';
-  trustScoreVisibility?: 'public' | 'friends' | 'private';
+  profileVisibility?: "public" | "friends" | "private";
+  trustScoreVisibility?: "public" | "friends" | "private";
 }
 
 export async function getProfile(token: string): Promise<Profile> {
-  const data = await api.get<Profile>('/profile', { token });
+  const data = await api.get<Profile>("/profile", { token });
   // If API returns null, return a default profile structure
   if (!data) {
-    throw new Error('Profile data is null');
+    throw new Error("Profile data is null");
   }
   return data;
 }
@@ -80,7 +80,7 @@ export async function updateProfile(
   token: string,
   data: UpdateProfileDto,
 ): Promise<Profile> {
-  return api.put<Profile>('/profile', data, { token });
+  return api.put<Profile>("/profile", data, { token });
 }
 
 export async function uploadAvatar(
@@ -90,15 +90,15 @@ export async function uploadAvatar(
   type: string,
 ): Promise<Profile> {
   const formData = new FormData();
-  
+
   // @ts-ignore - FormData.append accepts File, but React Native uses different format
-  formData.append('file', {
+  formData.append("file", {
     uri,
     name: filename,
     type,
   } as any);
 
-  return api.post<Profile>('/profile/avatar', formData, { token });
+  return api.post<Profile>("/profile/avatar", formData, { token });
 }
 
 export interface UserProfile {
@@ -119,15 +119,22 @@ export interface UserProfile {
       accountTrustScore?: number;
     };
   } | null;
-  friendStatus: 'none' | 'pending_incoming' | 'pending_outgoing' | 'accepted' | 'blocked';
+  friendStatus:
+    | "none"
+    | "pending_incoming"
+    | "pending_outgoing"
+    | "accepted"
+    | "blocked";
   mutualFriendsCount: number;
   listingsCount: number;
   sharedGroupsCount: number;
-  profileVisibility: 'public' | 'friends' | 'private';
-  trustScoreVisibility: 'public' | 'friends' | 'private';
+  profileVisibility: "public" | "friends" | "private";
+  trustScoreVisibility: "public" | "friends" | "private";
 }
 
-export async function getUserProfile(token: string, userId: string): Promise<UserProfile> {
+export async function getUserProfile(
+  token: string,
+  userId: string,
+): Promise<UserProfile> {
   return api.get<UserProfile>(`/profile/${userId}`, { token });
 }
-

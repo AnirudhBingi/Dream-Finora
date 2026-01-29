@@ -1,17 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
-  Text,
+  Text as RNText,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   ActivityIndicator,
   RefreshControl,
   Image,
   Alert,
   Platform,
+  Animated,
+  Pressable,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../auth/authContext';
 import { getExpenses, getBalances, Expense, BalanceInfo } from '../api/expenseApi';
@@ -19,10 +21,12 @@ import { getApiBaseUrl } from '../api/getApiBaseUrl';
 import { Header } from '../components/Header';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
+import { Text } from '../components/Text';
+import { ScreenWrapper } from '../components/ScreenWrapper';
 import { SkeletonExpenseList } from '../components/SkeletonLoader';
 import { Icon } from '../components/Icon';
-import { useBottomNavPadding } from '../hooks/useBottomNavPadding';
 import { getAvatarUrl } from '../utils/avatar';
+import { useTheme } from '../theme';
 
 interface ExpenseListScreenProps {
   onCreateExpense: () => void;
@@ -51,6 +55,8 @@ export function ExpenseListScreen({
   onNavigateToNotifications,
   onNavigateToSettings,
 }: ExpenseListScreenProps) {
+  const { theme, resolvedMode } = useTheme();
+  const styles = React.useMemo(() => createStyles(theme, resolvedMode), [theme, resolvedMode]);
   const { token, user } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [balances, setBalances] = useState<BalanceInfo | null>(null);
@@ -61,7 +67,47 @@ export function ExpenseListScreen({
   const [loadingMore, setLoadingMore] = useState(false);
   const [offset, setOffset] = useState(0);
   const limit = 20;
-  const bottomPadding = useBottomNavPadding(true);
+
+  // Animation values for glassy card
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
+
+  // Start shimmer animation loop
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnim, {
+          toValue: 1,
+          duration: 3000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmerAnim, {
+          toValue: 0,
+          duration: 3000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
+
+  const handlePressIn = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Animated.spring(scaleAnim, {
+      toValue: 0.98,
+      useNativeDriver: true,
+      tension: 300,
+      friction: 10,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 300,
+      friction: 10,
+    }).start();
+  };
 
   useEffect(() => {
     loadData(true); // Initial load should show skeleton
@@ -158,23 +204,21 @@ export function ExpenseListScreen({
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <>
         <Header
           onNavigateToProfile={onNavigateToProfile}
           onNavigateToNotifications={onNavigateToNotifications}
           onNavigateToSettings={onNavigateToSettings}
         />
-        <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-          <View style={styles.content}>
-            <SkeletonExpenseList count={5} />
-          </View>
-        </ScrollView>
-      </SafeAreaView>
+        <ScreenWrapper>
+          <SkeletonExpenseList count={5} />
+        </ScreenWrapper>
+      </>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <>
       {/* Fixed Header with Primary Actions */}
       <Header
         onNavigateToProfile={onNavigateToProfile}
@@ -190,7 +234,7 @@ export function ExpenseListScreen({
                 accessibilityRole="button"
                 accessibilityLabel="View Analytics"
               >
-                <MaterialIcons name="analytics" size={24} color="#FFFFFF" />
+                <MaterialIcons name="analytics" size={24} color={theme.colors.white} />
               </TouchableOpacity>
             )}
             <TouchableOpacity
@@ -200,21 +244,20 @@ export function ExpenseListScreen({
               accessibilityRole="button"
               accessibilityLabel="Create new expense"
             >
-              <MaterialIcons name="add" size={24} color="#FFFFFF" />
+              <MaterialIcons name="add" size={24} color={theme.colors.white} />
             </TouchableOpacity>
           </>
         }
       />
 
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
+      <ScreenWrapper
+        scroll
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => loadData(true)}
-            tintColor="#6366F1"
-            colors={['#6366F1']}
+            onRefresh={async () => await loadData(true)}
+            tintColor={theme.colors.primary}
+            colors={[theme.colors.primary]}
           />
         }
         onScroll={(e) => {
@@ -228,24 +271,71 @@ export function ExpenseListScreen({
         }}
         scrollEventThrottle={400}
       >
-        <View style={styles.content}>
 
           {error && (
             <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{error}</Text>
-              <TouchableOpacity style={styles.retryButton} onPress={loadData}>
-                <Text style={styles.retryButtonText}>Retry</Text>
+              <RNText style={styles.errorText}>{error}</RNText>
+              <TouchableOpacity style={styles.retryButton} onPress={() => loadData(true)}>
+                <RNText style={styles.retryButtonText}>Retry</RNText>
               </TouchableOpacity>
             </View>
           )}
 
           {balances && (balances.totalOwed > 0 || balances.totalOwedToUser > 0) && (
             <View style={styles.balanceSection}>
-              <TouchableOpacity
-                style={styles.balanceFlowCard}
-                onPress={onViewBalances}
-                activeOpacity={0.9}
-              >
+              <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+                <Pressable
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    onViewBalances?.();
+                  }}
+                  onPressIn={handlePressIn}
+                  onPressOut={handlePressOut}
+                  style={styles.balanceFlowCard}
+                >
+                  {/* Enhanced glassy gradient overlay */}
+                  <LinearGradient
+                    colors={[
+                      'rgba(255, 255, 255, 0.15)',
+                      'rgba(255, 255, 255, 0.05)',
+                      'rgba(255, 255, 255, 0.01)',
+                    ]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.glassOverlay}
+                  />
+                  
+                  {/* Animated shimmer effect */}
+                  <Animated.View
+                    style={[
+                      styles.shimmerOverlay,
+                      {
+                        opacity: shimmerAnim.interpolate({
+                          inputRange: [0, 0.5, 1],
+                          outputRange: [0, 0.3, 0],
+                        }),
+                        transform: [
+                          {
+                            translateX: shimmerAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [-400, 400],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  >
+                    <LinearGradient
+                      colors={[
+                        'transparent',
+                        'rgba(255, 255, 255, 0.3)',
+                        'transparent',
+                      ]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.shimmerGradient}
+                    />
+                  </Animated.View>
                 {/* Top Section - Net Balance Indicator */}
                 {balances.netBalance !== 0 && (
                   <View style={styles.netBalanceBanner}>
@@ -253,15 +343,15 @@ export function ExpenseListScreen({
                       <Icon 
                         name={balances.netBalance > 0 ? "trending-up" : "trending-down"} 
                         size={16} 
-                        color={balances.netBalance > 0 ? "#10B981" : "#EF4444"} 
+                        color={balances.netBalance > 0 ? theme.colors.success : theme.colors.error} 
                       />
                     </View>
-                    <Text style={styles.netBalanceBannerText}>
+                    <RNText style={styles.netBalanceBannerText}>
                       {balances.netBalance > 0 ? 'You\'re ahead by' : 'You owe'}
-                    </Text>
-                    <Text style={[styles.netBalanceBannerAmount, balances.netBalance > 0 ? styles.netBalanceBannerAmountPositive : styles.netBalanceBannerAmountNegative]}>
-                      {formatCurrency(Math.abs(balances.netBalance), balances.currency || 'USD')}
-                    </Text>
+                    </RNText>
+                    <RNText style={[styles.netBalanceBannerAmount, balances.netBalance > 0 ? styles.netBalanceBannerAmountPositive : styles.netBalanceBannerAmountNegative]}>
+                      {formatCurrency(Math.abs(balances.netBalance), balances.primaryCurrency || 'USD')}
+                    </RNText>
                   </View>
                 )}
 
@@ -271,13 +361,13 @@ export function ExpenseListScreen({
                   <View style={[styles.balanceFlowSide, styles.balanceFlowSideLeft]}>
                     <View style={styles.balanceFlowHeader}>
                       <View style={styles.balanceFlowIconContainer}>
-                        <Icon name="arrow-up" size={16} color="#EF4444" />
+                        <Icon name="arrow-up" size={16} color={theme.colors.error} />
                       </View>
-                      <Text style={styles.balanceFlowLabel}>YOU OWE</Text>
+                      <RNText style={styles.balanceFlowLabel}>YOU OWE</RNText>
                     </View>
-                    <Text style={styles.balanceFlowAmountRed}>
-                      {formatCurrency(balances.totalOwed, balances.currency || 'USD')}
-                    </Text>
+                    <RNText style={styles.balanceFlowAmountRed}>
+                      {formatCurrency(balances.totalOwed, balances.primaryCurrency || 'USD')}
+                    </RNText>
                   </View>
 
                   {/* Center Divider with Floating Action */}
@@ -287,30 +377,31 @@ export function ExpenseListScreen({
                       onPress={onCreateExpense}
                       activeOpacity={0.8}
                     >
-                      <Icon name="add" size={20} color="#FFFFFF" />
+                      <Icon name="add" size={20} color={theme.colors.accentForeground} />
                     </TouchableOpacity>
                   </View>
 
                   {/* Right: You're Owed */}
                   <View style={[styles.balanceFlowSide, styles.balanceFlowSideRight]}>
                     <View style={styles.balanceFlowHeader}>
-                      <Text style={styles.balanceFlowLabel}>YOU'RE OWED</Text>
+                      <RNText style={styles.balanceFlowLabel}>YOU'RE OWED</RNText>
                       <View style={styles.balanceFlowIconContainer}>
                         <Icon name="arrow-down" size={16} color="#10B981" />
                       </View>
                     </View>
-                    <Text style={styles.balanceFlowAmountGreen}>
-                      {formatCurrency(balances.totalOwedToUser, balances.currency || 'USD')}
-                    </Text>
+                    <RNText style={styles.balanceFlowAmountGreen}>
+                      {formatCurrency(balances.totalOwedToUser, balances.primaryCurrency || 'USD')}
+                    </RNText>
                   </View>
                 </View>
-              </TouchableOpacity>
+                </Pressable>
+              </Animated.View>
             </View>
           )}
 
           {(onViewFriends || onViewGroups) && (
             <View style={styles.navigationSection}>
-              <Text style={styles.sectionTitle}>Quick Access</Text>
+              <Text variant="h4" style={styles.sectionTitle}>Quick Access</Text>
               <View style={styles.navigationCards}>
                 {onViewFriends && (
                   <TouchableOpacity
@@ -319,10 +410,10 @@ export function ExpenseListScreen({
                     activeOpacity={0.7}
                   >
                     <View style={styles.navCardIconContainer}>
-                      <Icon name="friends" size={20} color="#3B82F6" />
+                      <Icon name="friends" size={20} color={theme.colors.blueLight} />
                     </View>
-                    <Text style={styles.navCardText}>Friends</Text>
-                    <MaterialIcons name="chevron-right" size={20} color="#9CA3AF" />
+                    <RNText style={styles.navCardText}>Friends</RNText>
+                    <MaterialIcons name="chevron-right" size={20} color={theme.colors.iconDefault} />
                   </TouchableOpacity>
                 )}
                 {onViewGroups && (
@@ -332,10 +423,10 @@ export function ExpenseListScreen({
                     activeOpacity={0.7}
                   >
                     <View style={styles.navCardIconContainer}>
-                      <Icon name="groups" size={20} color="#6366F1" />
+                      <Icon name="groups" size={20} color={theme.colors.primary} />
                     </View>
-                    <Text style={styles.navCardText}>Circles</Text>
-                    <MaterialIcons name="chevron-right" size={20} color="#9CA3AF" />
+                    <RNText style={styles.navCardText}>Circles</RNText>
+                    <MaterialIcons name="chevron-right" size={20} color={theme.colors.iconDefault} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -344,7 +435,7 @@ export function ExpenseListScreen({
 
           <View style={styles.expensesSection}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Recent Billchops</Text>
+              <Text variant="h4" style={styles.sectionTitle}>Recent Billchops</Text>
               {onViewExpenseHistory && (
                 <TouchableOpacity
                   style={styles.sectionHeaderButton}
@@ -376,21 +467,21 @@ export function ExpenseListScreen({
                 >
                   <View style={styles.expenseHeader}>
                     <View style={styles.expenseHeaderLeft}>
-                      <Text style={styles.expenseDescription}>
+                      <RNText style={styles.expenseDescription}>
                         {expense.description}
-                      </Text>
-                      <Text style={styles.expenseAmount}>
+                      </RNText>
+                      <RNText style={styles.expenseAmount}>
                         {formatCurrency(expense.amount, expense.currency)}
-                      </Text>
+                      </RNText>
                     </View>
-                    <MaterialIcons name="chevron-right" size={24} color="#9CA3AF" />
+                    <MaterialIcons name="chevron-right" size={24} color={theme.colors.iconDefault} />
                   </View>
-                  <Text style={styles.expenseCreator}>
+                  <RNText style={styles.expenseCreator}>
                     Created by {expense?.createdByUser?.id === user?.id ? 'you' : getUserDisplayName(expense.createdByUser, user?.id)}
-                  </Text>
+                  </RNText>
                   {expense.receiptUrl && (
                     <View style={styles.receiptContainer}>
-                      <Text style={styles.receiptLabel}>📄 Receipt</Text>
+                      <RNText style={styles.receiptLabel}>📄 Receipt</RNText>
                       <Image
                         source={{
                           uri: expense.receiptUrl.startsWith('http')
@@ -405,7 +496,14 @@ export function ExpenseListScreen({
                   <View style={styles.splitsContainer}>
                     {(expense.splits || []).map((split) => {
                       const avatarUrl = getAvatarUrl(split?.user?.profile?.avatarUrl || null);
-                      const displayName = getUserDisplayNameForSplit(split?.user);
+                      const userForSplit = split?.user ? {
+                        id: split.user.id,
+                        email: split.user.email,
+                        profile: split.user.profile?.displayName ? {
+                          displayName: split.user.profile.displayName,
+                        } : undefined,
+                      } : undefined;
+                      const displayName = getUserDisplayNameForSplit(userForSplit);
                       const initials = displayName.charAt(0).toUpperCase();
                       return (
                         <View key={split?.id || ''} style={styles.splitRow}>
@@ -419,23 +517,23 @@ export function ExpenseListScreen({
                                 />
                               ) : (
                                 <View style={styles.splitAvatarPlaceholder}>
-                                  <Text style={styles.splitAvatarText}>{initials}</Text>
+                                  <RNText style={styles.splitAvatarText}>{initials}</RNText>
                                 </View>
                               )}
                             </View>
-                            <Text style={styles.splitUser}>
+                            <RNText style={styles.splitUser}>
                               {displayName}
-                            </Text>
+                            </RNText>
                           </View>
-                          <Text
+                          <RNText
                             style={[
                               styles.splitAmount,
-                              split?.isPaid && styles.splitPaid,
+                              ...(split?.isPaid ? [styles.splitPaid] : []),
                             ]}
                           >
                             {formatCurrency(split?.amount || 0, expense.currency)}
                             {split?.isPaid ? ' ✓' : ''}
-                          </Text>
+                          </RNText>
                         </View>
                       );
                     })}
@@ -450,38 +548,37 @@ export function ExpenseListScreen({
                   activeOpacity={0.7}
                 >
                   {loadingMore ? (
-                    <ActivityIndicator size="small" color="#2563EB" />
-                  ) : (
-                    <Text style={styles.loadMoreButtonText}>Load More</Text>
+                    <ActivityIndicator size="small" color={theme.colors.blue} />
+                    ) : (
+                    <RNText style={styles.loadMoreButtonText}>Load More</RNText>
                   )}
                 </TouchableOpacity>
               )}
             </>
           )}
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+      </ScreenWrapper>
+    </>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: ReturnType<typeof useTheme>['theme'], resolvedMode: ReturnType<typeof useTheme>["resolvedMode"]) => StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: theme.colors.background,
   },
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: theme.colors.background,
   },
   scrollContent: {
-    // paddingBottom will be set dynamically via useBottomNavPadding
+    // paddingBottom will be set dynamically by ScreenWrapper
   },
   content: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingHorizontal: theme.spacing.base,
+    paddingTop: theme.spacing.base,
   },
   headerActionButton: {
-    padding: 8,
+    padding: theme.spacing.sm,
     minWidth: 44,
     minHeight: 44,
     justifyContent: 'center',
@@ -490,7 +587,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
   headerPrimaryButton: {
-    padding: 8,
+    padding: theme.spacing.sm,
     minWidth: 44,
     minHeight: 44,
     justifyContent: 'center',
@@ -502,165 +599,192 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24, // lg: 24px
+    padding: theme.spacing.xl,
   },
   loadingText: {
-    marginTop: 16, // md: 16px
-    fontSize: 16, // Body: 16px
-    color: '#6B7280', // Gray-500
+    marginTop: theme.spacing.base,
+    fontSize: theme.typography.fontSize.base,
+    color: theme.colors.textSecondary,
   },
   errorContainer: {
-    padding: 16, // md: 16px
-    backgroundColor: '#FEF2F2', // Red-50
-    borderRadius: 8, // Button: 8px
-    marginBottom: 16, // md: 16px
+    padding: theme.spacing.base,
+    backgroundColor: theme.colors.errorBackground,
+    borderRadius: theme.radii.button,
+    marginBottom: theme.spacing.base,
   },
   errorText: {
-    fontSize: 14, // Body: 14px
-    color: '#EF4444', // Red-500
-    marginBottom: 8, // sm: 8px
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.error,
+    marginBottom: theme.spacing.sm,
   },
   retryButton: {
-    backgroundColor: '#EF4444', // Red-500
-    borderRadius: 8, // Button: 8px
-    paddingVertical: 12, // Button: 12px vertical
-    paddingHorizontal: 24, // Button: 24px horizontal
-    minHeight: 44, // Button: 44px touch target
+    backgroundColor: theme.colors.error,
+    borderRadius: theme.radii.button,
+    paddingVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.xl,
+    minHeight: 44,
     alignSelf: 'flex-start',
   },
   retryButtonText: {
-    color: '#fff',
-    fontSize: 16, // Button: 16px
-    fontWeight: '500', // Medium
+    color: theme.colors.accentForeground,
+    fontSize: theme.typography.fontSize.base,
+    fontWeight: theme.typography.fontWeight.medium,
   },
   balanceSection: {
-    padding: 16,
-    paddingBottom: 12,
+    padding: theme.spacing.base,
+    paddingBottom: theme.spacing.md,
   },
   balanceFlowCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    overflow: 'visible',
+    backgroundColor: theme.colors.background,
+    borderRadius: 24, // Larger radius for liquid feel
+    overflow: 'hidden', // Changed to hidden for gradient overlay
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
+        shadowColor: theme.colors.primary,
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.25,
+        shadowRadius: 20,
       },
       android: {
-        elevation: 3,
+        elevation: 12,
       },
     }),
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderWidth: 2,
+    borderColor: resolvedMode === 'light' 
+      ? 'rgba(0, 0, 0, 0.08)' 
+      : 'rgba(255, 255, 255, 0.15)',
+  },
+  glassOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1,
+  },
+  shimmerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: -100,
+    right: -100,
+    bottom: 0,
+    zIndex: 1,
+  },
+  shimmerGradient: {
+    flex: 1,
+    width: 200,
+    transform: [{ skewX: '-20deg' }],
   },
   netBalanceBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
-    paddingHorizontal: 16,
-    gap: 8,
-    backgroundColor: '#F9FAFB',
+    paddingHorizontal: theme.spacing.base,
+    gap: theme.spacing.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)', // More visible glassy overlay
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: 'rgba(255, 255, 255, 0.12)',
+    zIndex: 2, // Above gradient overlay
   },
   netBalanceIndicator: {
     width: 24,
     height: 24,
-    borderRadius: 12,
+    borderRadius: theme.radii.md,
     justifyContent: 'center',
     alignItems: 'center',
   },
   netBalanceIndicatorPositive: {
-    backgroundColor: '#D1FAE5',
+    backgroundColor: theme.colors.successBackground,
   },
   netBalanceIndicatorNegative: {
-    backgroundColor: '#FEE2E2',
+    backgroundColor: theme.colors.errorBackground,
   },
   netBalanceBannerText: {
     fontSize: 13,
-    color: '#6B7280',
-    fontWeight: '500',
+    color: theme.colors.textSecondary,
+    fontWeight: theme.typography.fontWeight.medium,
   },
   netBalanceBannerAmount: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: theme.typography.fontSize.base,
+    fontWeight: theme.typography.fontWeight.bold,
   },
   netBalanceBannerAmountPositive: {
-    color: '#10B981',
+    color: theme.colors.success,
   },
   netBalanceBannerAmountNegative: {
-    color: '#EF4444',
+    color: theme.colors.error,
   },
   balanceFlowContainer: {
     flexDirection: 'row',
     minHeight: 110,
     position: 'relative',
+    zIndex: 2, // Above gradient overlay
   },
   balanceFlowSide: {
     flex: 1,
-    padding: 16,
+    padding: theme.spacing.base,
     justifyContent: 'space-between',
   },
   balanceFlowSideLeft: {
-    borderRightWidth: 1,
-    borderRightColor: '#F3F4F6',
-    backgroundColor: '#FEF2F2',
+    borderRightWidth: 0.5,
+    borderRightColor: 'rgba(255, 255, 255, 0.08)', // Subtle divider
+    backgroundColor: 'transparent', // Transparent to show gradient
   },
   balanceFlowSideRight: {
-    backgroundColor: '#F0FDF4',
+    backgroundColor: 'transparent', // Transparent to show gradient
   },
   balanceFlowHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: theme.spacing.sm,
   },
   balanceFlowIconContainer: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)', // More glassy background
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
+        shadowColor: theme.colors.white,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
       },
       android: {
-        elevation: 1,
+        elevation: 3,
       },
     }),
   },
   balanceFlowLabel: {
     fontSize: 10,
-    color: '#6B7280',
-    fontWeight: '700',
+    color: theme.colors.textSecondary,
+    fontWeight: theme.typography.fontWeight.bold,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   balanceFlowAmountRed: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#EF4444',
+    fontSize: theme.typography.fontSize["2xl"],
+    fontWeight: theme.typography.fontWeight.bold,
+    color: theme.colors.error,
   },
   balanceFlowAmountGreen: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#10B981',
+    fontSize: theme.typography.fontSize["2xl"],
+    fontWeight: theme.typography.fontWeight.bold,
+    color: theme.colors.success,
   },
   balanceFlowDivider: {
     width: 1,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: theme.colors.border,
     position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: theme.spacing.sm,
     zIndex: 10,
   },
   balanceFlowConnector: {
@@ -668,43 +792,43 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#6366F1',
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
+    backgroundColor: theme.colors.primary,
+    borderWidth: 4,
+    borderColor: theme.colors.background,
     justifyContent: 'center',
     alignItems: 'center',
     left: -22.5,
     ...Platform.select({
       ios: {
-        shadowColor: '#6366F1',
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.4,
-        shadowRadius: 6,
+        shadowColor: theme.colors.primary,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.5,
+        shadowRadius: 12,
       },
       android: {
-        elevation: 6,
+        elevation: 12,
       },
     }),
   },
   navigationSection: {
-    marginBottom: 20,
+    marginBottom: theme.spacing.lg,
   },
   navigationCards: {
     flexDirection: 'row',
-    gap: 12,
+    gap: theme.spacing.md,
   },
   navCard: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.background,
     padding: 14,
-    borderRadius: 12,
+    borderRadius: theme.radii.md,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: theme.colors.border,
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
+        shadowColor: theme.colors.black,
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.05,
         shadowRadius: 2,
@@ -718,72 +842,72 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: theme.colors.backgroundSecondary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   navCardText: {
     flex: 1,
     fontSize: 15,
-    fontWeight: '600',
-    color: '#111827',
-    marginLeft: 12,
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: theme.colors.textPrimary,
+    marginLeft: theme.spacing.md,
     letterSpacing: -0.2,
   },
   expensesSection: {
-    marginTop: 4,
+    marginTop: theme.spacing.xs,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: theme.spacing.md,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
+    fontSize: theme.typography.fontSize.lg,
+    fontWeight: theme.typography.fontWeight.bold,
+    color: theme.colors.textPrimary,
     letterSpacing: -0.3,
   },
   sectionHeaderButton: {
-    padding: 4,
+    padding: theme.spacing.xs,
   },
   emptyContainer: {
     alignItems: 'center',
-    padding: 32, // xl: 32px
+    padding: theme.spacing["2xl"],
   },
   emptyText: {
-    fontSize: 20, // H3: 20px
-    fontWeight: '600', // Semi-bold
-    color: '#374151', // Gray-700
-    marginBottom: 8, // sm: 8px
+    fontSize: theme.typography.fontSize.xl,
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: theme.colors.textPrimary,
+    marginBottom: theme.spacing.sm,
   },
   emptySubtext: {
-    fontSize: 16, // Body: 16px
-    color: '#6B7280', // Gray-500
+    fontSize: theme.typography.fontSize.base,
+    color: theme.colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 24, // lg: 24px
+    marginBottom: theme.spacing.xl,
   },
   emptyButton: {
-    backgroundColor: '#2563EB', // Primary Blue
-    borderRadius: 8, // Button: 8px
-    paddingVertical: 12, // Button: 12px vertical
-    paddingHorizontal: 24, // Button: 24px horizontal
-    minHeight: 44, // Button: 44px touch target
+    backgroundColor: theme.colors.blue,
+    borderRadius: theme.radii.button,
+    paddingVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.xl,
+    minHeight: 44,
   },
   emptyButtonText: {
-    color: '#fff',
-    fontSize: 16, // Button: 16px
-    fontWeight: '500', // Medium
+    color: theme.colors.accentForeground,
+    fontSize: theme.typography.fontSize.base,
+    fontWeight: theme.typography.fontWeight.medium,
   },
   expenseCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    backgroundColor: theme.colors.background,
+    borderRadius: theme.radii.md,
+    padding: theme.spacing.base,
+    marginBottom: theme.spacing.md,
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
+        shadowColor: theme.colors.black,
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.08,
         shadowRadius: 4,
@@ -793,49 +917,49 @@ const styles = StyleSheet.create({
       },
     }),
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: theme.colors.border,
   },
   expenseHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 8, // sm: 8px
+    marginBottom: theme.spacing.sm,
   },
   expenseHeaderLeft: {
     flex: 1,
   },
   expenseDescription: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
+    fontSize: theme.typography.fontSize.base,
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: theme.colors.textPrimary,
     marginBottom: 6,
     letterSpacing: -0.2,
   },
   expenseAmount: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
+    fontSize: theme.typography.fontSize.lg,
+    fontWeight: theme.typography.fontWeight.bold,
+    color: theme.colors.textPrimary,
     letterSpacing: -0.3,
   },
   expenseCreator: {
     fontSize: 13,
-    color: '#6B7280',
-    marginBottom: 12,
-    marginTop: 4,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.md,
+    marginTop: theme.spacing.xs,
   },
   splitsContainer: {
-    marginTop: 8, // sm: 8px
+    marginTop: theme.spacing.sm,
   },
   splitRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 4, // xs: 4px
+    paddingVertical: theme.spacing.xs,
   },
   splitUserInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: theme.spacing.sm,
     flex: 1,
   },
   splitAvatar: {
@@ -843,9 +967,9 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 16,
     borderWidth: 2,
-    borderColor: '#6366F1',
+    borderColor: theme.colors.primary,
     overflow: 'hidden',
-    backgroundColor: '#EEF2FF',
+    backgroundColor: theme.colors.primaryBackground,
   },
   splitAvatarImage: {
     width: '100%',
@@ -854,59 +978,59 @@ const styles = StyleSheet.create({
   splitAvatarPlaceholder: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#6366F1',
+    backgroundColor: theme.colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   splitAvatarText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
+    color: theme.colors.accentForeground,
+    fontSize: theme.typography.fontSize.xs,
+    fontWeight: theme.typography.fontWeight.bold,
   },
   splitUser: {
-    fontSize: 14, // Body: 14px
-    color: '#374151', // Gray-700
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.textPrimary,
   },
   splitAmount: {
-    fontSize: 16, // Body: 16px
-    fontWeight: '500', // Medium
-    color: '#374151', // Gray-700
+    fontSize: theme.typography.fontSize.base,
+    fontWeight: theme.typography.fontWeight.medium,
+    color: theme.colors.textPrimary,
   },
   splitPaid: {
-    color: '#10B981', // Green-500 (Success)
+    color: theme.colors.success,
   },
   receiptContainer: {
-    marginTop: 12, // md: 12px
-    marginBottom: 12, // md: 12px
-    paddingTop: 12, // md: 12px
+    marginTop: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+    paddingTop: theme.spacing.md,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB', // Gray-200
+    borderTopColor: theme.colors.border,
   },
   receiptLabel: {
-    fontSize: 12, // Small: 12px
-    color: '#6B7280', // Gray-500
-    marginBottom: 8, // sm: 8px
-    fontWeight: '500', // Medium
+    fontSize: theme.typography.fontSize.xs,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.sm,
+    fontWeight: theme.typography.fontWeight.medium,
   },
   receiptThumbnail: {
     width: '100%',
     height: 150,
-    borderRadius: 8, // Button: 8px
+    borderRadius: theme.radii.button,
   },
   loadMoreButton: {
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    marginTop: 16,
+    backgroundColor: theme.colors.blue,
+    borderRadius: theme.radii.button,
+    paddingVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.xl,
+    marginTop: theme.spacing.base,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 44,
   },
   loadMoreButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '500',
+    color: theme.colors.accentForeground,
+    fontSize: theme.typography.fontSize.base,
+    fontWeight: theme.typography.fontWeight.medium,
   },
 });
 

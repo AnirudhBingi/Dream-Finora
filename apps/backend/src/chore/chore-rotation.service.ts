@@ -1,4 +1,11 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RecurringChoreService } from './recurring-chore.service';
 import { randomUUID } from 'crypto';
@@ -36,7 +43,7 @@ export class ChoreRotationService {
   ): Promise<void> {
     const chore = await this.prisma.chore.findUnique({
       where: { id: choreId },
-      include: { 
+      include: {
         ChoreRotation: true,
         ChoreAssignment: true, // Check if there are specific assignments
       },
@@ -62,14 +69,14 @@ export class ChoreRotationService {
       rotationUserIds = userIds;
     } else if (chore.ChoreAssignment && chore.ChoreAssignment.length > 0) {
       // Use users from multiple assignments if available
-      rotationUserIds = chore.ChoreAssignment.map(a => a.userId);
+      rotationUserIds = chore.ChoreAssignment.map((a) => a.userId);
     } else {
       // Fallback: Get all group members
       const groupMembers = await this.prisma.groupMember.findMany({
         where: { groupId },
         orderBy: { createdAt: 'asc' },
       });
-      rotationUserIds = groupMembers.map(m => m.userId);
+      rotationUserIds = groupMembers.map((m) => m.userId);
     }
 
     if (rotationUserIds.length === 0) {
@@ -80,10 +87,12 @@ export class ChoreRotationService {
     const groupMembers = await this.prisma.groupMember.findMany({
       where: { groupId },
     });
-    const groupUserIds = new Set(groupMembers.map(m => m.userId));
-    const invalidUsers = rotationUserIds.filter(id => !groupUserIds.has(id));
+    const groupUserIds = new Set(groupMembers.map((m) => m.userId));
+    const invalidUsers = rotationUserIds.filter((id) => !groupUserIds.has(id));
     if (invalidUsers.length > 0) {
-      throw new BadRequestException(`Users ${invalidUsers.join(', ')} are not group members`);
+      throw new BadRequestException(
+        `Users ${invalidUsers.join(', ')} are not group members`,
+      );
     }
 
     // Delete existing rotation entries
@@ -114,7 +123,9 @@ export class ChoreRotationService {
       },
     });
 
-    this.logger.log(`Initialized rotation for chore ${choreId} with ${rotationEntries.length} selected members`);
+    this.logger.log(
+      `Initialized rotation for chore ${choreId} with ${rotationEntries.length} selected members`,
+    );
   }
 
   /**
@@ -172,7 +183,7 @@ export class ChoreRotationService {
       if (!b.lastAssignedAt) return 1;
       return a.lastAssignedAt.getTime() - b.lastAssignedAt.getTime();
     });
-    
+
     return sorted[0].userId;
   }
 
@@ -206,7 +217,9 @@ export class ChoreRotationService {
       },
     });
 
-    this.logger.log(`Assigned chore ${choreId} to user ${nextUserId} via rotation`);
+    this.logger.log(
+      `Assigned chore ${choreId} to user ${nextUserId} via rotation`,
+    );
 
     return nextUserId;
   }
@@ -244,12 +257,17 @@ export class ChoreRotationService {
    * Get rotation schedule for a recurring chore
    * Shows who will be assigned to upcoming occurrences
    */
-  async getRotationSchedule(choreId: string, upcomingCount: number = 10): Promise<Array<{
-    occurrenceNumber: number;
-    assignedToUserId: string | null;
-    dueDate: Date | null;
-    isAssigned: boolean;
-  }>> {
+  async getRotationSchedule(
+    choreId: string,
+    upcomingCount: number = 10,
+  ): Promise<
+    Array<{
+      occurrenceNumber: number;
+      assignedToUserId: string | null;
+      dueDate: Date | null;
+      isAssigned: boolean;
+    }>
+  > {
     const chore = await this.prisma.chore.findUnique({
       where: { id: choreId },
       include: {
@@ -288,7 +306,7 @@ export class ChoreRotationService {
     // Calculate who should be assigned based on rotation
     // Find the last assigned user to determine next in rotation
     const lastAssignedRotations = rotationMembers
-      .filter(r => r.lastAssignedAt)
+      .filter((r) => r.lastAssignedAt)
       .sort((a, b) => {
         if (!a.lastAssignedAt || !b.lastAssignedAt) return 0;
         return b.lastAssignedAt.getTime() - a.lastAssignedAt.getTime();
@@ -297,7 +315,9 @@ export class ChoreRotationService {
     let nextRotationIndex = 0;
     if (lastAssignedRotations.length > 0) {
       const lastAssigned = lastAssignedRotations[0];
-      const lastIndex = rotationMembers.findIndex(r => r.userId === lastAssigned.userId);
+      const lastIndex = rotationMembers.findIndex(
+        (r) => r.userId === lastAssigned.userId,
+      );
       nextRotationIndex = (lastIndex + 1) % rotationMembers.length;
     }
 
@@ -315,12 +335,14 @@ export class ChoreRotationService {
     const needed = upcomingCount - schedule.length;
     if (needed > 0 && chore.recurrencePattern) {
       // Get the last due date to start calculating from
-      const lastScheduleItem = schedule.length > 0 ? schedule[schedule.length - 1] : null;
-      let currentDate = lastScheduleItem && lastScheduleItem.dueDate
-        ? new Date(lastScheduleItem.dueDate)
-        : chore.dueDate
-          ? new Date(chore.dueDate)
-          : new Date();
+      const lastScheduleItem =
+        schedule.length > 0 ? schedule[schedule.length - 1] : null;
+      let currentDate =
+        lastScheduleItem && lastScheduleItem.dueDate
+          ? new Date(lastScheduleItem.dueDate)
+          : chore.dueDate
+            ? new Date(chore.dueDate)
+            : new Date();
 
       // Parse recurrence config
       const recurrenceConfig = chore.recurrenceConfig as {
@@ -410,7 +432,11 @@ export class ChoreRotationService {
   /**
    * Skip user in rotation until a specific date
    */
-  async skipUser(choreId: string, userId: string, skipUntil: Date): Promise<void> {
+  async skipUser(
+    choreId: string,
+    userId: string,
+    skipUntil: Date,
+  ): Promise<void> {
     const rotation = await this.prisma.choreRotation.findUnique({
       where: {
         choreId_userId: {
@@ -436,7 +462,9 @@ export class ChoreRotationService {
       },
     });
 
-    this.logger.log(`Skipped user ${userId} in rotation for chore ${choreId} until ${skipUntil}`);
+    this.logger.log(
+      `Skipped user ${userId} in rotation for chore ${choreId} until ${skipUntil.toISOString()}`,
+    );
   }
 
   /**
@@ -453,7 +481,9 @@ export class ChoreRotationService {
       },
     });
 
-    this.logger.log(`Removed skip for user ${userId} in rotation for chore ${choreId}`);
+    this.logger.log(
+      `Removed skip for user ${userId} in rotation for chore ${choreId}`,
+    );
   }
 
   /**
@@ -509,15 +539,16 @@ export class ChoreRotationService {
       }),
     );
 
-    const avgWorkload = workloads.reduce((sum, w) => sum + w, 0) / workloads.length;
+    const avgWorkload =
+      workloads.reduce((sum, w) => sum + w, 0) / workloads.length;
     if (avgWorkload === 0) {
       return 100; // Perfect fairness if no assignments
     }
 
     // Calculate deviation from average for each member
     const deviations = workloads.map((w) => Math.abs(w - avgWorkload));
-    const maxDeviation = Math.max(...deviations);
-    const avgDeviation = deviations.reduce((sum, d) => sum + d, 0) / deviations.length;
+    const avgDeviation =
+      deviations.reduce((sum, d) => sum + d, 0) / deviations.length;
 
     // Fairness score: 100 - (normalized average deviation)
     // Lower deviation = higher fairness
@@ -527,4 +558,3 @@ export class ChoreRotationService {
     return fairnessScore;
   }
 }
-

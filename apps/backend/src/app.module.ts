@@ -13,6 +13,7 @@ import { FinanceModule } from './finance/finance.module';
 import { ChoreModule } from './chore/chore.module';
 import { RideModule } from './ride/ride.module';
 import { ListingModule } from './listing/listing.module';
+import { PostModule } from './post/post.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { ActivityModule } from './activity/activity.module';
@@ -41,6 +42,7 @@ import { ExportModule } from './export/export.module';
     ChoreModule,
     RideModule,
     ListingModule,
+    PostModule,
     MessagingModule,
     AnalyticsModule,
     ActivityModule,

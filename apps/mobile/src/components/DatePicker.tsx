@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -6,9 +6,10 @@ import {
   StyleSheet,
   Platform,
   Modal,
-} from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { MaterialIcons } from '@expo/vector-icons';
+} from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useTheme } from "../theme";
 
 interface DatePickerProps {
   value: string; // ISO date string (YYYY-MM-DD) or empty string
@@ -24,46 +25,48 @@ export function DatePicker({
   value,
   onChange,
   label,
-  placeholder = 'Select date',
+  placeholder = "Select date",
   minimumDate,
   maximumDate,
   disabled = false,
 }: DatePickerProps) {
+  const { theme, resolvedMode } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [showPicker, setShowPicker] = useState(false);
 
   // Convert ISO string to Date object
   const dateValue = value ? new Date(value) : new Date();
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
+    if (Platform.OS === "android") {
       setShowPicker(false);
     }
 
-    if (event.type === 'set' && selectedDate) {
+    if (event.type === "set" && selectedDate) {
       // Format as YYYY-MM-DD
       const year = selectedDate.getFullYear();
-      const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
-      const day = String(selectedDate.getDate()).padStart(2, '0');
+      const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
+      const day = String(selectedDate.getDate()).padStart(2, "0");
       const formattedDate = `${year}-${month}-${day}`;
       onChange(formattedDate);
-      
-      if (Platform.OS === 'ios') {
+
+      if (Platform.OS === "ios") {
         setShowPicker(false);
       }
-    } else if (event.type === 'dismissed') {
+    } else if (event.type === "dismissed") {
       setShowPicker(false);
     }
   };
 
   const formatDisplayDate = (dateString: string): string => {
-    if (!dateString) return '';
+    if (!dateString) return "";
     const date = new Date(dateString);
-    if (isNaN(date.getTime())) return '';
-    
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
+    if (isNaN(date.getTime())) return "";
+
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
     });
   };
 
@@ -73,7 +76,7 @@ export function DatePicker({
     }
   };
 
-  if (Platform.OS === 'ios') {
+  if (Platform.OS === "ios") {
     return (
       <View style={styles.container}>
         {label && <Text style={styles.label}>{label}</Text>}
@@ -86,7 +89,11 @@ export function DatePicker({
           <Text style={[styles.inputText, !value && styles.placeholderText]}>
             {value ? formatDisplayDate(value) : placeholder}
           </Text>
-          <MaterialIcons name="calendar-today" size={20} color="#6B7280" />
+          <MaterialIcons
+            name="calendar-today"
+            size={20}
+            color={theme.colors.textSecondary}
+          />
         </TouchableOpacity>
 
         <Modal
@@ -108,7 +115,7 @@ export function DatePicker({
                 <TouchableOpacity
                   onPress={() => {
                     const today = new Date();
-                    const formatted = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                    const formatted = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
                     onChange(formatted);
                     setShowPicker(false);
                   }}
@@ -124,7 +131,7 @@ export function DatePicker({
                 onChange={handleDateChange}
                 minimumDate={minimumDate}
                 maximumDate={maximumDate}
-                themeVariant="light"
+                themeVariant={resolvedMode}
               />
               <TouchableOpacity
                 style={styles.modalDoneButton}
@@ -152,7 +159,11 @@ export function DatePicker({
         <Text style={[styles.inputText, !value && styles.placeholderText]}>
           {value ? formatDisplayDate(value) : placeholder}
         </Text>
-        <MaterialIcons name="calendar-today" size={20} color="#6B7280" />
+        <MaterialIcons
+          name="calendar-today"
+          size={20}
+          color={theme.colors.textSecondary}
+        />
       </TouchableOpacity>
 
       {showPicker && (
@@ -169,90 +180,90 @@ export function DatePicker({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    gap: 8,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  input: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderWidth: 2,
-    borderColor: '#E5E7EB',
-    minHeight: 52,
-  },
-  inputDisabled: {
-    opacity: 0.6,
-    backgroundColor: '#F3F4F6',
-  },
-  inputText: {
-    fontSize: 16,
-    color: '#111827',
-    flex: 1,
-  },
-  placeholderText: {
-    color: '#9CA3AF',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingBottom: 32,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  modalButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    minWidth: 60,
-  },
-  modalCancelText: {
-    fontSize: 16,
-    color: '#6B7280',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  modalDoneText: {
-    fontSize: 16,
-    color: '#6366F1',
-    fontWeight: '500',
-  },
-  modalDoneButton: {
-    marginHorizontal: 20,
-    marginTop: 16,
-    backgroundColor: '#6366F1',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  modalDoneButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-});
-
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    container: {
+      gap: 8,
+    },
+    label: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.textSecondary,
+    },
+    input: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: theme.colors.background,
+      borderRadius: 12,
+      paddingVertical: 14,
+      paddingHorizontal: theme.spacing.base,
+      borderWidth: 2,
+      borderColor: theme.colors.border,
+      minHeight: 52,
+    },
+    inputDisabled: {
+      opacity: 0.6,
+      backgroundColor: theme.colors.backgroundTertiary,
+    },
+    inputText: {
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textPrimary,
+      flex: 1,
+    },
+    placeholderText: {
+      color: theme.colors.textTertiary,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: theme.colors.overlay,
+      justifyContent: "flex-end",
+    },
+    modalContent: {
+      backgroundColor: theme.colors.background,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      paddingBottom: 32,
+    },
+    modalHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: 20,
+      paddingVertical: theme.spacing.base,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+    },
+    modalButton: {
+      paddingVertical: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.xs,
+      minWidth: 60,
+    },
+    modalCancelText: {
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textSecondary,
+    },
+    modalTitle: {
+      fontSize: theme.typography.fontSize.lg,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+    },
+    modalDoneText: {
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.primary,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    modalDoneButton: {
+      marginHorizontal: 20,
+      marginTop: theme.spacing.base,
+      backgroundColor: theme.colors.primary,
+      borderRadius: 12,
+      paddingVertical: theme.spacing.base,
+      alignItems: "center",
+    },
+    modalDoneButtonText: {
+      color: theme.colors.textInverse,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+  });

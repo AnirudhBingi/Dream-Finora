@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from './getApiBaseUrl';
+import { api } from "./client";
 
 export interface SpendingByCategory {
   category: string;
@@ -24,72 +24,32 @@ export async function getSpendingByCategory(
   endDate?: string,
 ): Promise<SpendingByCategory[]> {
   const params = new URLSearchParams();
-  if (startDate) params.append('startDate', startDate);
-  if (endDate) params.append('endDate', endDate);
-
-  const url = `${getApiBaseUrl()}/analytics/spending-by-category${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch spending by category' }));
-    throw new Error(error.message || `Failed to fetch spending by category: ${response.status}`);
-  }
-
-  return response.json();
+  if (startDate) params.append("startDate", startDate);
+  if (endDate) params.append("endDate", endDate);
+  const endpoint = params.toString()
+    ? `/analytics/spending-by-category?${params.toString()}`
+    : "/analytics/spending-by-category";
+  return api.get<SpendingByCategory[]>(endpoint, { token });
 }
 
 export async function getMonthlyTrends(
   token: string,
   months?: number,
 ): Promise<MonthlyTrend[]> {
-  const params = new URLSearchParams();
-  if (months) params.append('months', months.toString());
-
-  const url = `${getApiBaseUrl()}/analytics/monthly-trends${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch monthly trends' }));
-    throw new Error(error.message || `Failed to fetch monthly trends: ${response.status}`);
-  }
-
-  return response.json();
+  const endpoint = months
+    ? `/analytics/monthly-trends?months=${months}`
+    : "/analytics/monthly-trends";
+  return api.get<MonthlyTrend[]>(endpoint, { token });
 }
 
 export async function getBalanceOverTime(
   token: string,
   days?: number,
 ): Promise<BalanceOverTime[]> {
-  const params = new URLSearchParams();
-  if (days) params.append('days', days.toString());
-
-  const url = `${getApiBaseUrl()}/analytics/balance-over-time${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch balance over time' }));
-    throw new Error(error.message || `Failed to fetch balance over time: ${response.status}`);
-  }
-
-  return response.json();
+  const endpoint = days
+    ? `/analytics/balance-over-time?days=${days}`
+    : "/analytics/balance-over-time";
+  return api.get<BalanceOverTime[]>(endpoint, { token });
 }
 
 // Expense Analytics (Billchop Analytics)
@@ -118,48 +78,22 @@ export async function getExpenseSpendingByCategory(
   endDate?: string,
 ): Promise<ExpenseSpendingByCategory[]> {
   const params = new URLSearchParams();
-  if (startDate) params.append('startDate', startDate);
-  if (endDate) params.append('endDate', endDate);
-
-  const url = `${getApiBaseUrl()}/analytics/expense-spending-by-category${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch expense spending by category' }));
-    throw new Error(error.message || `Failed to fetch expense spending by category: ${response.status}`);
-  }
-
-  return response.json();
+  if (startDate) params.append("startDate", startDate);
+  if (endDate) params.append("endDate", endDate);
+  const endpoint = params.toString()
+    ? `/analytics/expense-spending-by-category?${params.toString()}`
+    : "/analytics/expense-spending-by-category";
+  return api.get<ExpenseSpendingByCategory[]>(endpoint, { token });
 }
 
 export async function getExpenseMonthlyTrends(
   token: string,
   months?: number,
 ): Promise<ExpenseMonthlyTrend[]> {
-  const params = new URLSearchParams();
-  if (months) params.append('months', months.toString());
-
-  const url = `${getApiBaseUrl()}/analytics/expense-monthly-trends${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch expense monthly trends' }));
-    throw new Error(error.message || `Failed to fetch expense monthly trends: ${response.status}`);
-  }
-
-  return response.json();
+  const endpoint = months
+    ? `/analytics/expense-monthly-trends?months=${months}`
+    : "/analytics/expense-monthly-trends";
+  return api.get<ExpenseMonthlyTrend[]>(endpoint, { token });
 }
 
 export async function getTopSpendersInGroup(
@@ -167,24 +101,77 @@ export async function getTopSpendersInGroup(
   groupId: string,
   limit?: number,
 ): Promise<TopSpender[]> {
+  const endpoint = limit
+    ? `/analytics/top-spenders/${groupId}?limit=${limit}`
+    : `/analytics/top-spenders/${groupId}`;
+  return api.get<TopSpender[]>(endpoint, { token });
+}
+
+// Ride Analytics
+export interface RideAnalyticsSummary {
+  totalRides: number;
+  ridesAsDriver: number;
+  ridesAsPassenger: number;
+  totalSpent: number;
+}
+
+export interface RideMonthlyTrend {
+  month: string; // Format: "YYYY-MM"
+  amount: number;
+  rides: number;
+}
+
+export interface RideSpendingByType {
+  type: "giveRide" | "rideshare";
+  amount: number;
+  count: number;
+}
+
+export interface TopRoute {
+  route: string;
+  origin: string;
+  destination: string;
+  count: number;
+}
+
+export interface TopCompanion {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  rides: number;
+  totalSpent: number;
+}
+
+export interface RideSpendingByGroup {
+  groupId: string;
+  groupName: string;
+  amount: number;
+  rides: number;
+}
+
+export interface RideAnalytics {
+  summary: RideAnalyticsSummary;
+  monthlyTrends: RideMonthlyTrend[];
+  spendingByType: RideSpendingByType[];
+  topRoutes: TopRoute[];
+  topCompanions: TopCompanion[];
+  spendingByGroup: RideSpendingByGroup[];
+}
+
+export async function getRideAnalytics(
+  token: string,
+  months?: number,
+  startDate?: string,
+  endDate?: string,
+): Promise<RideAnalytics> {
   const params = new URLSearchParams();
-  if (limit) params.append('limit', limit.toString());
-
-  const url = `${getApiBaseUrl()}/analytics/top-spenders/${groupId}${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch top spenders' }));
-    throw new Error(error.message || `Failed to fetch top spenders: ${response.status}`);
-  }
-
-  return response.json();
+  if (months) params.append("months", months.toString());
+  if (startDate) params.append("startDate", startDate);
+  if (endDate) params.append("endDate", endDate);
+  const endpoint = params.toString()
+    ? `/analytics/rides?${params.toString()}`
+    : "/analytics/rides";
+  return api.get<RideAnalytics>(endpoint, { token });
 }
 
 // Enhanced Analytics (Context-based)
@@ -229,7 +216,7 @@ export interface LoanSummary {
 }
 
 export interface ContextAnalytics {
-  context: 'local' | 'home';
+  context: "local" | "home";
   spendingByCategory: SpendingByCategory[];
   monthlyTrends: MonthlyTrend[];
   balanceOverTime: BalanceOverTime[];
@@ -240,7 +227,7 @@ export interface ContextAnalytics {
 }
 
 export interface CombinedAnalytics {
-  context: 'combined';
+  context: "combined";
   local: ContextAnalytics;
   home: ContextAnalytics;
   combined: ContextAnalytics;
@@ -252,24 +239,12 @@ export async function getLocalAnalytics(
   days?: number,
 ): Promise<ContextAnalytics> {
   const params = new URLSearchParams();
-  if (months) params.append('months', months.toString());
-  if (days) params.append('days', days.toString());
-
-  const url = `${getApiBaseUrl()}/finance/analytics/local${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch local analytics' }));
-    throw new Error(error.message || `Failed to fetch local analytics: ${response.status}`);
-  }
-
-  return response.json();
+  if (months) params.append("months", months.toString());
+  if (days) params.append("days", days.toString());
+  const endpoint = params.toString()
+    ? `/finance/analytics/local?${params.toString()}`
+    : "/finance/analytics/local";
+  return api.get<ContextAnalytics>(endpoint, { token });
 }
 
 export async function getHomeAnalytics(
@@ -278,24 +253,12 @@ export async function getHomeAnalytics(
   days?: number,
 ): Promise<ContextAnalytics> {
   const params = new URLSearchParams();
-  if (months) params.append('months', months.toString());
-  if (days) params.append('days', days.toString());
-
-  const url = `${getApiBaseUrl()}/finance/analytics/home${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch home analytics' }));
-    throw new Error(error.message || `Failed to fetch home analytics: ${response.status}`);
-  }
-
-  return response.json();
+  if (months) params.append("months", months.toString());
+  if (days) params.append("days", days.toString());
+  const endpoint = params.toString()
+    ? `/finance/analytics/home?${params.toString()}`
+    : "/finance/analytics/home";
+  return api.get<ContextAnalytics>(endpoint, { token });
 }
 
 export async function getCombinedAnalytics(
@@ -305,24 +268,11 @@ export async function getCombinedAnalytics(
   primaryCurrency?: string,
 ): Promise<CombinedAnalytics> {
   const params = new URLSearchParams();
-  if (months) params.append('months', months.toString());
-  if (days) params.append('days', days.toString());
-  if (primaryCurrency) params.append('primaryCurrency', primaryCurrency);
-
-  const url = `${getApiBaseUrl()}/finance/analytics/combined${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch combined analytics' }));
-    throw new Error(error.message || `Failed to fetch combined analytics: ${response.status}`);
-  }
-
-  return response.json();
+  if (months) params.append("months", months.toString());
+  if (days) params.append("days", days.toString());
+  if (primaryCurrency) params.append("primaryCurrency", primaryCurrency);
+  const endpoint = params.toString()
+    ? `/finance/analytics/combined?${params.toString()}`
+    : "/finance/analytics/combined";
+  return api.get<CombinedAnalytics>(endpoint, { token });
 }
-

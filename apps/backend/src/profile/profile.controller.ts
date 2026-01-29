@@ -94,4 +94,3 @@ export class ProfileController {
     return this.profileService.updateAvatar(user.userId, avatarUrl);
   }
 }
-

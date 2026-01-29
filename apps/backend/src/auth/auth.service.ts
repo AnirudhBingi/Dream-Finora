@@ -36,7 +36,9 @@ export class AuthService {
       });
 
       if (existingUserByMobile) {
-        throw new ConflictException('User with this mobile number already exists');
+        throw new ConflictException(
+          'User with this mobile number already exists',
+        );
       }
     }
 
@@ -75,7 +77,7 @@ export class AuthService {
 
     // Determine if identifier is email or mobile number
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
-    
+
     // Find user by email or mobile number
     const user = isEmail
       ? await this.prisma.user.findUnique({
@@ -86,14 +88,18 @@ export class AuthService {
         });
 
     if (!user) {
-      throw new UnauthorizedException('Invalid email/mobile number or password');
+      throw new UnauthorizedException(
+        'Invalid email/mobile number or password',
+      );
     }
 
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid email/mobile number or password');
+      throw new UnauthorizedException(
+        'Invalid email/mobile number or password',
+      );
     }
 
     // Generate JWT token
@@ -110,4 +116,3 @@ export class AuthService {
     };
   }
 }
-

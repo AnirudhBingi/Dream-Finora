@@ -1,4 +1,11 @@
-import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, Min } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsEnum,
+  IsDateString,
+  Min,
+} from 'class-validator';
 
 export class UpdateGoalDto {
   @IsString()
@@ -35,4 +42,3 @@ export class UpdateGoalDto {
   @IsOptional()
   status?: 'active' | 'completed' | 'paused' | 'cancelled';
 }
-

@@ -45,7 +45,11 @@ export class MessagingController {
     if (!sendMessageDto.content) {
       throw new BadRequestException('Message content is required');
     }
-    return this.messagingService.sendMessage(user.userId, chatId, sendMessageDto.content);
+    return this.messagingService.sendMessage(
+      user.userId,
+      chatId,
+      sendMessageDto.content,
+    );
   }
 
   @Post('conversations/start')
@@ -70,7 +74,12 @@ export class MessagingController {
     @Param('messageId') messageId: string,
     @Body('content') content: string,
   ) {
-    return this.messagingService.editMessage(user.userId, chatId, messageId, content);
+    return this.messagingService.editMessage(
+      user.userId,
+      chatId,
+      messageId,
+      content,
+    );
   }
 
   @Delete('conversations/:chatId/messages/:messageId')
@@ -90,7 +99,11 @@ export class MessagingController {
     @Param('chatId') chatId: string,
     @Param('messageId') messageId: string,
   ) {
-    return this.messagingService.markMessageAsRead(user.userId, chatId, messageId);
+    return this.messagingService.markMessageAsRead(
+      user.userId,
+      chatId,
+      messageId,
+    );
   }
 
   @Post('conversations/group/:groupId')
@@ -102,4 +115,3 @@ export class MessagingController {
     return this.messagingService.createOrGetGroupChat(user.userId, groupId);
   }
 }
-

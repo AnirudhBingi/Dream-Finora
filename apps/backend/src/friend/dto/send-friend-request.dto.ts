@@ -6,4 +6,3 @@ export class SendFriendRequestDto {
   // Accept either email or mobile number
   friendEmailOrMobile: string;
 }
-

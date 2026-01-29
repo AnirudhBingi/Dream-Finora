@@ -132,5 +132,12 @@ export class FriendController {
   ) {
     return this.friendService.acceptInvitation(token, user.userId);
   }
-}
 
+  @Get(':friendId/stats')
+  async getFriendStats(
+    @CurrentUser() user: { userId: string },
+    @Param('friendId') friendId: string,
+  ) {
+    return this.friendService.getFriendStats(user.userId, friendId);
+  }
+}

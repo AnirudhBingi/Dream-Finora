@@ -11,4 +11,3 @@ import { EmailService } from './email.service';
   exports: [CategorizationService, CurrencyService, EmailService],
 })
 export class SharedModule {}
-

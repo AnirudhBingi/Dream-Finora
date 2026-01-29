@@ -1,6 +1,13 @@
-import { getApiBaseUrl } from './getApiBaseUrl';
+import { api } from "./client";
+import type { BalanceInfo } from "./types";
 
-export type GroupMemberRole = 'ADMIN' | 'MEMBER';
+export type GroupMemberRole = "ADMIN" | "MEMBER";
+export type GroupVisibility = "public" | "private";
+export type GroupJoinRequestStatus =
+  | "pending"
+  | "approved"
+  | "declined"
+  | "cancelled";
 
 export interface GroupMember {
   id: string;
@@ -25,6 +32,7 @@ export interface Group {
   icon?: string | null;
   avatarUrl?: string | null;
   allowMemberEditing?: boolean;
+  visibility?: GroupVisibility;
   createdBy: string;
   createdAt: string;
   members: GroupMember[];
@@ -42,6 +50,27 @@ export interface Group {
     rides?: number;
     messages?: number;
   };
+  isMember?: boolean;
+  joinRequestStatus?: GroupJoinRequestStatus | null;
+}
+
+export interface GroupRideStats {
+  totalRides: number;
+  totalSpent: number;
+  rideExpenses: Array<{
+    id: string;
+    rideId: string | null;
+    description: string;
+    amount: number;
+    currency: string;
+    date: string;
+  }>;
+}
+
+export interface GroupStats {
+  totalExpenses: number;
+  totalMembers: number;
+  rides: GroupRideStats;
 }
 
 export interface GroupWithExpenses extends Group {
@@ -51,6 +80,17 @@ export interface GroupWithExpenses extends Group {
     amount: number;
     currency: string;
     date: string;
+    category?: string | null;
+    receiptUrl?: string | null;
+    paidBy?: string | null;
+    rideId?: string | null; // Include rideId if expense was created from a ride
+    ride?: {
+      id: string;
+      origin: string;
+      destination: string;
+      type: "giveRide" | "rideshare";
+      date: string;
+    } | null; // Ride summary if expense was created from a ride
     splits: Array<{
       id: string;
       userId: string;
@@ -66,6 +106,7 @@ export interface GroupWithExpenses extends Group {
       };
     }>;
   }>;
+  stats?: GroupStats; // Ride statistics for the group
 }
 
 export interface CreateGroupDto {
@@ -74,62 +115,14 @@ export interface CreateGroupDto {
   memberIds?: string[];
   allowMemberEditing?: boolean;
   icon?: string;
-}
-
-export interface BalanceInfo {
-  totalOwed: number;
-  totalOwedToUser: number;
-  netBalance: number;
-  primaryCurrency?: string;
-  owedByUser: Array<{
-    user: {
-      id: string;
-      email: string;
-      profile?: {
-        displayName: string | null;
-        avatarUrl: string | null;
-      } | null;
-    };
-    amount: number;
-    originalAmount?: number;
-    originalCurrency?: string;
-    splits: any[];
-  }>;
-  owedToUser: Array<{
-    user: {
-      id: string;
-      email: string;
-      profile?: {
-        displayName: string | null;
-        avatarUrl: string | null;
-      } | null;
-    };
-    amount: number;
-    originalAmount?: number;
-    originalCurrency?: string;
-    splits: any[];
-  }>;
+  visibility?: GroupVisibility;
 }
 
 export async function createGroup(
   token: string,
   data: CreateGroupDto,
 ): Promise<Group> {
-  const response = await fetch(`${getApiBaseUrl()}/groups`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to create group' }));
-    throw new Error(error.message || `Failed to create group: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<Group>("/groups", data, { token });
 }
 
 export interface PaginatedGroupsResponse {
@@ -146,68 +139,65 @@ export async function getGroups(
   offset: number = 0,
 ): Promise<PaginatedGroupsResponse | Group[]> {
   const queryParams = new URLSearchParams();
-  queryParams.append('limit', limit.toString());
-  queryParams.append('offset', offset.toString());
+  queryParams.append("limit", limit.toString());
+  queryParams.append("offset", offset.toString());
 
-  const response = await fetch(`${getApiBaseUrl()}/groups?${queryParams.toString()}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch groups' }));
-    throw new Error(error.message || `Failed to fetch groups: ${response.status}`);
-  }
-
-  const data = await response.json();
+  const data = await api.get<PaginatedGroupsResponse | Group[]>(
+    `/groups?${queryParams.toString()}`,
+    { token },
+  );
   // Check if response has pagination structure
-  if (data.groups && Array.isArray(data.groups)) {
+  if (
+    data &&
+    typeof data === "object" &&
+    "groups" in data &&
+    Array.isArray((data as any).groups)
+  ) {
     return data as PaginatedGroupsResponse;
   }
   // Backward compatibility: return array if not paginated
   return data as Group[];
 }
 
-export async function getGroupById(token: string, groupId: string): Promise<GroupWithExpenses> {
-  const response = await fetch(`${getApiBaseUrl()}/groups/${groupId}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
+export async function getPublicGroups(
+  token: string,
+  params: {
+    memberId?: string;
+    limit?: number;
+    offset?: number;
+    query?: string;
+  } = {},
+): Promise<PaginatedGroupsResponse> {
+  const queryParams = new URLSearchParams();
+  if (params.memberId) queryParams.append("memberId", params.memberId);
+  if (params.limit !== undefined)
+    queryParams.append("limit", params.limit.toString());
+  if (params.offset !== undefined)
+    queryParams.append("offset", params.offset.toString());
+  if (params.query) queryParams.append("q", params.query);
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch group' }));
-    throw new Error(error.message || `Failed to fetch group: ${response.status}`);
-  }
-
-  return response.json();
+  return api.get<PaginatedGroupsResponse>(
+    `/groups/public?${queryParams.toString()}`,
+    { token },
+  );
 }
 
-export async function getGroupBalances(token: string, groupId: string, primaryCurrency?: string): Promise<BalanceInfo> {
-  const url = new URL(`${getApiBaseUrl()}/groups/${groupId}/balances`);
-  if (primaryCurrency) {
-    url.searchParams.append('primaryCurrency', primaryCurrency);
-  }
-  
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
+export async function getGroupById(
+  token: string,
+  groupId: string,
+): Promise<GroupWithExpenses> {
+  return api.get<GroupWithExpenses>(`/groups/${groupId}`, { token });
+}
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to fetch balances' }));
-    throw new Error(error.message || `Failed to fetch balances: ${response.status}`);
-  }
-
-  return response.json();
+export async function getGroupBalances(
+  token: string,
+  groupId: string,
+  primaryCurrency?: string,
+): Promise<BalanceInfo> {
+  const endpoint = primaryCurrency
+    ? `/groups/${groupId}/balances?primaryCurrency=${encodeURIComponent(primaryCurrency)}`
+    : `/groups/${groupId}/balances`;
+  return api.get<BalanceInfo>(endpoint, { token });
 }
 
 export async function addGroupMember(
@@ -215,21 +205,11 @@ export async function addGroupMember(
   groupId: string,
   userId: string,
 ): Promise<GroupMember> {
-  const response = await fetch(`${getApiBaseUrl()}/groups/${groupId}/members`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ userId }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to add member' }));
-    throw new Error(error.message || `Failed to add member: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<GroupMember>(
+    `/groups/${groupId}/members`,
+    { userId },
+    { token },
+  );
 }
 
 export async function removeGroupMember(
@@ -237,25 +217,16 @@ export async function removeGroupMember(
   groupId: string,
   memberId: string,
 ): Promise<{ success: boolean }> {
-  const response = await fetch(`${getApiBaseUrl()}/groups/${groupId}/members/${memberId}`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to remove member' }));
-    throw new Error(error.message || `Failed to remove member: ${response.status}`);
-  }
-
-  return response.json();
+  return api.delete<{ success: boolean }>(
+    `/groups/${groupId}/members/${memberId}`,
+    { token },
+  );
 }
 
 export interface UpdateGroupDto {
   name?: string;
   description?: string;
+  visibility?: GroupVisibility;
 }
 
 export async function uploadGroupAvatar(
@@ -266,29 +237,15 @@ export async function uploadGroupAvatar(
   type: string,
 ): Promise<Group> {
   const formData = new FormData();
-  
+
   // @ts-ignore - FormData.append accepts File, but React Native uses different format
-  formData.append('file', {
+  formData.append("file", {
     uri,
     name: filename,
     type,
   } as any);
 
-  const response = await fetch(`${getApiBaseUrl()}/groups/${groupId}/avatar`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      // Don't set Content-Type - let fetch set it with boundary
-    },
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to upload group avatar' }));
-    throw new Error(error.message || `Failed to upload group avatar: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<Group>(`/groups/${groupId}/avatar`, formData, { token });
 }
 
 export async function updateGroup(
@@ -296,41 +253,14 @@ export async function updateGroup(
   groupId: string,
   data: UpdateGroupDto,
 ): Promise<Group> {
-  const response = await fetch(`${getApiBaseUrl()}/groups/${groupId}`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to update group' }));
-    throw new Error(error.message || `Failed to update group: ${response.status}`);
-  }
-
-  return response.json();
+  return api.put<Group>(`/groups/${groupId}`, data, { token });
 }
 
 export async function deleteGroup(
   token: string,
   groupId: string,
 ): Promise<{ success: boolean }> {
-  const response = await fetch(`${getApiBaseUrl()}/groups/${groupId}`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to delete group' }));
-    throw new Error(error.message || `Failed to delete group: ${response.status}`);
-  }
-
-  return response.json();
+  return api.delete<{ success: boolean }>(`/groups/${groupId}`, { token });
 }
 
 export async function changeMemberRole(
@@ -339,21 +269,11 @@ export async function changeMemberRole(
   memberId: string,
   role: GroupMemberRole,
 ): Promise<GroupMember> {
-  const response = await fetch(`${getApiBaseUrl()}/groups/${groupId}/members/${memberId}/role`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ role }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to change member role' }));
-    throw new Error(error.message || `Failed to change member role: ${response.status}`);
-  }
-
-  return response.json();
+  return api.put<GroupMember>(
+    `/groups/${groupId}/members/${memberId}/role`,
+    { role },
+    { token },
+  );
 }
 
 export async function transferOwnership(
@@ -361,41 +281,20 @@ export async function transferOwnership(
   groupId: string,
   newOwnerId: string,
 ): Promise<{ success: boolean }> {
-  const response = await fetch(`${getApiBaseUrl()}/groups/${groupId}/transfer-ownership`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ newOwnerId }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to transfer ownership' }));
-    throw new Error(error.message || `Failed to transfer ownership: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<{ success: boolean }>(
+    `/groups/${groupId}/transfer-ownership`,
+    { newOwnerId },
+    { token },
+  );
 }
 
 export async function leaveGroup(
   token: string,
   groupId: string,
 ): Promise<{ success: boolean }> {
-  const response = await fetch(`${getApiBaseUrl()}/groups/${groupId}/leave`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  return api.post<{ success: boolean }>(`/groups/${groupId}/leave`, undefined, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to leave group' }));
-    throw new Error(error.message || `Failed to leave group: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export interface InviteMemberResponse {
@@ -412,21 +311,9 @@ export async function inviteGroupMember(
   groupId: string,
   data: { email?: string; mobileNumber?: string; userId?: string },
 ): Promise<InviteMemberResponse> {
-  const response = await fetch(`${getApiBaseUrl()}/groups/${groupId}/invite`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
+  return api.post<InviteMemberResponse>(`/groups/${groupId}/invite`, data, {
+    token,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to send invitation' }));
-    throw new Error(error.message || `Failed to send invitation: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export interface GroupInvitation {
@@ -453,60 +340,95 @@ export interface GroupInvitation {
   };
 }
 
-export async function getGroupInvitation(token: string): Promise<GroupInvitation> {
-  const response = await fetch(`${getApiBaseUrl()}/groups/invitations/${token}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+export interface GroupJoinRequest {
+  id: string;
+  groupId: string;
+  userId: string;
+  status: GroupJoinRequestStatus;
+  handledBy?: string | null;
+  handledAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user?: {
+    id: string;
+    email: string;
+    profile?: {
+      displayName: string | null;
+      avatarUrl: string | null;
+    } | null;
+  };
+}
+
+export async function requestJoinGroup(
+  token: string,
+  groupId: string,
+): Promise<GroupJoinRequest> {
+  return api.post<GroupJoinRequest>(
+    `/groups/${groupId}/join-requests`,
+    undefined,
+    { token },
+  );
+}
+
+export async function getGroupJoinRequests(
+  token: string,
+  groupId: string,
+): Promise<GroupJoinRequest[]> {
+  return api.get<GroupJoinRequest[]>(`/groups/${groupId}/join-requests`, {
+    token,
   });
+}
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to get invitation' }));
-    throw new Error(error.message || `Failed to get invitation: ${response.status}`);
-  }
+export async function approveGroupJoinRequest(
+  token: string,
+  groupId: string,
+  requestId: string,
+): Promise<GroupJoinRequest> {
+  return api.post<GroupJoinRequest>(
+    `/groups/${groupId}/join-requests/${requestId}/approve`,
+    undefined,
+    { token },
+  );
+}
 
-  return response.json();
+export async function declineGroupJoinRequest(
+  token: string,
+  groupId: string,
+  requestId: string,
+): Promise<GroupJoinRequest> {
+  return api.post<GroupJoinRequest>(
+    `/groups/${groupId}/join-requests/${requestId}/decline`,
+    undefined,
+    { token },
+  );
+}
+
+export async function getGroupInvitation(
+  token: string,
+): Promise<GroupInvitation> {
+  return api.get<GroupInvitation>(`/groups/invitations/${token}`, { token });
 }
 
 export async function acceptGroupInvitation(
   token: string,
   invitationToken: string,
 ): Promise<{ success: boolean; groupId: string; groupName: string }> {
-  const response = await fetch(`${getApiBaseUrl()}/groups/invitations/${invitationToken}/accept`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to accept invitation' }));
-    throw new Error(error.message || `Failed to accept invitation: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<{ success: boolean; groupId: string; groupName: string }>(
+    `/groups/invitations/${invitationToken}/accept`,
+    undefined,
+    { token },
+  );
 }
 
 export async function declineGroupInvitation(
   token: string,
   invitationToken: string,
 ): Promise<{ success: boolean }> {
-  const response = await fetch(`${getApiBaseUrl()}/groups/invitations/${invitationToken}/decline`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to decline invitation' }));
-    throw new Error(error.message || `Failed to decline invitation: ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<{ success: boolean }>(
+    `/groups/invitations/${invitationToken}/decline`,
+    undefined,
+    { token },
+  );
 }
 
+export type { BalanceInfo } from "./types";

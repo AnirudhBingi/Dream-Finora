@@ -1,5 +1,5 @@
-import React from 'react';
-import { Path, Circle, Rect, G } from 'react-native-svg';
+import React from "react";
+import { Path, Circle, Rect, G } from "react-native-svg";
 
 /**
  * Category icon component props
@@ -14,77 +14,77 @@ interface IconComponentProps {
  */
 export type CategoryIconName =
   // Food & Dining
-  | 'groceries'
-  | 'restaurants-dining'
-  | 'coffee-drinks'
-  | 'food-delivery'
-  
+  | "groceries"
+  | "restaurants-dining"
+  | "coffee-drinks"
+  | "food-delivery"
+
   // Transportation
-  | 'gas-fuel'
-  | 'public-transit'
-  | 'rideshare'
-  | 'parking-tolls'
-  | 'car-maintenance'
-  
+  | "gas-fuel"
+  | "public-transit"
+  | "rideshare"
+  | "parking-tolls"
+  | "car-maintenance"
+
   // Bills & Utilities
-  | 'gas-electric'
-  | 'internet-cable'
-  | 'phone-mobile'
-  | 'water-sewer'
-  | 'trash-recycling'
-  | 'home-security'
-  
+  | "gas-electric"
+  | "internet-cable"
+  | "phone-mobile"
+  | "water-sewer"
+  | "trash-recycling"
+  | "home-security"
+
   // Shopping
-  | 'clothing-accessories'
-  | 'electronics'
-  | 'home-garden'
-  | 'books-media'
-  | 'sports-outdoors'
-  | 'pet-supplies'
-  | 'general-shopping'
-  
+  | "clothing-accessories"
+  | "electronics"
+  | "home-garden"
+  | "books-media"
+  | "sports-outdoors"
+  | "pet-supplies"
+  | "general-shopping"
+
   // Entertainment
-  | 'movies-shows'
-  | 'concerts-events'
-  | 'streaming-services'
-  | 'sports-recreation'
-  | 'games-hobbies'
-  
+  | "movies-shows"
+  | "concerts-events"
+  | "streaming-services"
+  | "sports-recreation"
+  | "games-hobbies"
+
   // Health & Fitness
-  | 'pharmacy-medications'
-  | 'doctor-medical'
-  | 'gym-fitness'
-  | 'health-insurance'
-  | 'personal-care'
-  
+  | "pharmacy-medications"
+  | "doctor-medical"
+  | "gym-fitness"
+  | "health-insurance"
+  | "personal-care"
+
   // Education
-  | 'tuition'
-  | 'books-supplies'
-  | 'courses-training'
-  | 'software-tools'
-  
+  | "tuition"
+  | "books-supplies"
+  | "courses-training"
+  | "software-tools"
+
   // Travel
-  | 'flights'
-  | 'hotels'
-  | 'car-rentals'
-  | 'travel-insurance'
-  
+  | "flights"
+  | "hotels"
+  | "car-rentals"
+  | "travel-insurance"
+
   // Personal
-  | 'gifts-donations'
-  | 'pets'
-  | 'childcare'
-  | 'subscriptions'
-  
+  | "gifts-donations"
+  | "pets"
+  | "childcare"
+  | "subscriptions"
+
   // Business
-  | 'office-supplies'
-  | 'professional-services'
-  | 'marketing-advertising'
-  
+  | "office-supplies"
+  | "professional-services"
+  | "marketing-advertising"
+
   // Other
-  | 'bank-fees'
-  | 'cash-withdrawal'
-  | 'transfer'
-  | 'other';
+  | "bank-fees"
+  | "cash-withdrawal"
+  | "transfer"
+  | "other";
 
 /**
  * Maps category display names to icon component names
@@ -93,97 +93,97 @@ export type CategoryIconName =
 export function normalizeCategoryName(categoryName: string): CategoryIconName {
   const normalized = categoryName
     .toLowerCase()
-    .replace(/\s*&\s*/g, '-')
-    .replace(/\s+/g, '-')
+    .replace(/\s*&\s*/g, "-")
+    .replace(/\s+/g, "-")
     .trim();
-  
+
   // Map common variations
   const mappings: Record<string, CategoryIconName> = {
-    'groceries': 'groceries',
-    'restaurants-dining': 'restaurants-dining',
-    'restaurants': 'restaurants-dining',
-    'dining': 'restaurants-dining',
-    'coffee-drinks': 'coffee-drinks',
-    'coffee': 'coffee-drinks',
-    'food-delivery': 'food-delivery',
-    
-    'gas-fuel': 'gas-fuel',
-    'gas': 'gas-fuel',
-    'public-transit': 'public-transit',
-    'rideshare': 'rideshare',
-    'parking-tolls': 'parking-tolls',
-    'parking': 'parking-tolls',
-    'car-maintenance': 'car-maintenance',
-    
-    'gas-electric': 'gas-electric',
-    'utilities': 'gas-electric',
-    'internet-cable': 'internet-cable',
-    'internet': 'internet-cable',
-    'phone-mobile': 'phone-mobile',
-    'phone': 'phone-mobile',
-    'water-sewer': 'water-sewer',
-    'trash-recycling': 'trash-recycling',
-    'home-security': 'home-security',
-    
-    'clothing-accessories': 'clothing-accessories',
-    'clothing': 'clothing-accessories',
-    'electronics': 'electronics',
-    'home-garden': 'home-garden',
-    'home': 'home-garden',
-    'books-media': 'books-media',
-    'books': 'books-media',
-    'sports-outdoors': 'sports-outdoors',
-    'sports': 'sports-outdoors',
-    'pet-supplies': 'pet-supplies',
-    'general-shopping': 'general-shopping',
-    'shopping': 'general-shopping',
-    
-    'movies-shows': 'movies-shows',
-    'movies': 'movies-shows',
-    'concerts-events': 'concerts-events',
-    'streaming-services': 'streaming-services',
-    'streaming': 'streaming-services',
-    'sports-recreation': 'sports-recreation',
-    'games-hobbies': 'games-hobbies',
-    'games': 'games-hobbies',
-    
-    'pharmacy-medications': 'pharmacy-medications',
-    'pharmacy': 'pharmacy-medications',
-    'doctor-medical': 'doctor-medical',
-    'medical': 'doctor-medical',
-    'gym-fitness': 'gym-fitness',
-    'gym': 'gym-fitness',
-    'health-insurance': 'health-insurance',
-    'personal-care': 'personal-care',
-    
-    'tuition': 'tuition',
-    'books-supplies': 'books-supplies',
-    'courses-training': 'courses-training',
-    'software-tools': 'software-tools',
-    'software': 'software-tools',
-    
-    'flights': 'flights',
-    'hotels': 'hotels',
-    'car-rentals': 'car-rentals',
-    'travel-insurance': 'travel-insurance',
-    
-    'gifts-donations': 'gifts-donations',
-    'gifts': 'gifts-donations',
-    'pets': 'pets',
-    'childcare': 'childcare',
-    'subscriptions': 'subscriptions',
-    
-    'office-supplies': 'office-supplies',
-    'professional-services': 'professional-services',
-    'marketing-advertising': 'marketing-advertising',
-    
-    'bank-fees': 'bank-fees',
-    'cash-withdrawal': 'cash-withdrawal',
-    'transfer': 'transfer',
-    'other': 'other',
+    groceries: "groceries",
+    "restaurants-dining": "restaurants-dining",
+    restaurants: "restaurants-dining",
+    dining: "restaurants-dining",
+    "coffee-drinks": "coffee-drinks",
+    coffee: "coffee-drinks",
+    "food-delivery": "food-delivery",
+
+    "gas-fuel": "gas-fuel",
+    gas: "gas-fuel",
+    "public-transit": "public-transit",
+    rideshare: "rideshare",
+    "parking-tolls": "parking-tolls",
+    parking: "parking-tolls",
+    "car-maintenance": "car-maintenance",
+
+    "gas-electric": "gas-electric",
+    utilities: "gas-electric",
+    "internet-cable": "internet-cable",
+    internet: "internet-cable",
+    "phone-mobile": "phone-mobile",
+    phone: "phone-mobile",
+    "water-sewer": "water-sewer",
+    "trash-recycling": "trash-recycling",
+    "home-security": "home-security",
+
+    "clothing-accessories": "clothing-accessories",
+    clothing: "clothing-accessories",
+    electronics: "electronics",
+    "home-garden": "home-garden",
+    home: "home-garden",
+    "books-media": "books-media",
+    books: "books-media",
+    "sports-outdoors": "sports-outdoors",
+    sports: "sports-outdoors",
+    "pet-supplies": "pet-supplies",
+    "general-shopping": "general-shopping",
+    shopping: "general-shopping",
+
+    "movies-shows": "movies-shows",
+    movies: "movies-shows",
+    "concerts-events": "concerts-events",
+    "streaming-services": "streaming-services",
+    streaming: "streaming-services",
+    "sports-recreation": "sports-recreation",
+    "games-hobbies": "games-hobbies",
+    games: "games-hobbies",
+
+    "pharmacy-medications": "pharmacy-medications",
+    pharmacy: "pharmacy-medications",
+    "doctor-medical": "doctor-medical",
+    medical: "doctor-medical",
+    "gym-fitness": "gym-fitness",
+    gym: "gym-fitness",
+    "health-insurance": "health-insurance",
+    "personal-care": "personal-care",
+
+    tuition: "tuition",
+    "books-supplies": "books-supplies",
+    "courses-training": "courses-training",
+    "software-tools": "software-tools",
+    software: "software-tools",
+
+    flights: "flights",
+    hotels: "hotels",
+    "car-rentals": "car-rentals",
+    "travel-insurance": "travel-insurance",
+
+    "gifts-donations": "gifts-donations",
+    gifts: "gifts-donations",
+    pets: "pets",
+    childcare: "childcare",
+    subscriptions: "subscriptions",
+
+    "office-supplies": "office-supplies",
+    "professional-services": "professional-services",
+    "marketing-advertising": "marketing-advertising",
+
+    "bank-fees": "bank-fees",
+    "cash-withdrawal": "cash-withdrawal",
+    transfer: "transfer",
+    other: "other",
   };
-  
-  return mappings[normalized] || 'other';
+
+  return mappings[normalized] || "other";
 }
 
 // Icon Components - Simple, clean SVG icons using react-native-svg
@@ -255,16 +255,18 @@ export const PhoneMobileIcon = ({ color }: IconComponentProps) => (
 export const ElectronicsIcon = ({ color }: IconComponentProps) => (
   <G>
     <Rect x="4" y="6" width="16" height="12" rx="2" fill={color} />
-    <Path d="M9 10h6M9 14h4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" />
+    <Path
+      d="M9 10h6M9 14h4"
+      stroke="#fff"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    />
   </G>
 );
 
 export const HomeGardenIcon = ({ color }: IconComponentProps) => (
   <G>
-    <Path
-      d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"
-      fill={color}
-    />
+    <Path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" fill={color} />
   </G>
 );
 
@@ -289,7 +291,13 @@ export const MoviesShowsIcon = ({ color }: IconComponentProps) => (
 export const StreamingServicesIcon = ({ color }: IconComponentProps) => (
   <G>
     <Circle cx="12" cy="12" r="10" fill={color} />
-    <Path d="M8 12l4 4 4-4" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <Path
+      d="M8 12l4 4 4-4"
+      stroke="#fff"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
   </G>
 );
 
@@ -333,78 +341,80 @@ export const OtherIcon = ({ color }: IconComponentProps) => (
  * Map of category names to icon components
  * Add new icons here as they are created
  */
-export const categoryIconMap: Record<CategoryIconName, React.FC<IconComponentProps>> = {
+export const categoryIconMap: Record<
+  CategoryIconName,
+  React.FC<IconComponentProps>
+> = {
   // Food & Dining
-  'groceries': GroceriesIcon,
-  'restaurants-dining': RestaurantsDiningIcon,
-  'coffee-drinks': CoffeeDrinksIcon,
-  'food-delivery': CoffeeDrinksIcon, // Reuse for now
-  
-  // Transportation
-  'gas-fuel': GasFuelIcon,
-  'public-transit': GasFuelIcon, // Reuse for now
-  'rideshare': GasFuelIcon, // Reuse for now
-  'parking-tolls': GasFuelIcon, // Reuse for now
-  'car-maintenance': GasFuelIcon, // Reuse for now
-  
-  // Bills & Utilities
-  'gas-electric': GasFuelIcon, // Reuse for now
-  'internet-cable': InternetCableIcon,
-  'phone-mobile': PhoneMobileIcon,
-  'water-sewer': HomeGardenIcon, // Reuse for now
-  'trash-recycling': HomeGardenIcon, // Reuse for now
-  'home-security': HomeGardenIcon, // Reuse for now
-  
-  // Shopping
-  'clothing-accessories': RestaurantsDiningIcon, // Reuse for now
-  'electronics': ElectronicsIcon,
-  'home-garden': HomeGardenIcon,
-  'books-media': BooksMediaIcon,
-  'sports-outdoors': GymFitnessIcon, // Reuse for now
-  'pet-supplies': OtherIcon, // Reuse for now
-  'general-shopping': GroceriesIcon, // Reuse for now
-  
-  // Entertainment
-  'movies-shows': MoviesShowsIcon,
-  'concerts-events': MoviesShowsIcon, // Reuse for now
-  'streaming-services': StreamingServicesIcon,
-  'sports-recreation': GymFitnessIcon, // Reuse for now
-  'games-hobbies': ElectronicsIcon, // Reuse for now
-  
-  // Health & Fitness
-  'pharmacy-medications': PharmacyMedicationsIcon,
-  'doctor-medical': PharmacyMedicationsIcon, // Reuse for now
-  'gym-fitness': GymFitnessIcon,
-  'health-insurance': PharmacyMedicationsIcon, // Reuse for now
-  'personal-care': PharmacyMedicationsIcon, // Reuse for now
-  
-  // Education
-  'tuition': BooksMediaIcon, // Reuse for now
-  'books-supplies': BooksMediaIcon, // Reuse for now
-  'courses-training': BooksMediaIcon, // Reuse for now
-  'software-tools': ElectronicsIcon, // Reuse for now
-  
-  // Travel
-  'flights': FlightsIcon,
-  'hotels': HomeGardenIcon, // Reuse for now
-  'car-rentals': GasFuelIcon, // Reuse for now
-  'travel-insurance': OtherIcon, // Reuse for now
-  
-  // Personal
-  'gifts-donations': OtherIcon, // Reuse for now
-  'pets': OtherIcon, // Reuse for now
-  'childcare': OtherIcon, // Reuse for now
-  'subscriptions': StreamingServicesIcon, // Reuse for now
-  
-  // Business
-  'office-supplies': BooksMediaIcon, // Reuse for now
-  'professional-services': OtherIcon, // Reuse for now
-  'marketing-advertising': OtherIcon, // Reuse for now
-  
-  // Other
-  'bank-fees': OtherIcon,
-  'cash-withdrawal': OtherIcon,
-  'transfer': OtherIcon,
-  'other': OtherIcon,
-};
+  groceries: GroceriesIcon,
+  "restaurants-dining": RestaurantsDiningIcon,
+  "coffee-drinks": CoffeeDrinksIcon,
+  "food-delivery": CoffeeDrinksIcon, // Reuse for now
 
+  // Transportation
+  "gas-fuel": GasFuelIcon,
+  "public-transit": GasFuelIcon, // Reuse for now
+  rideshare: GasFuelIcon, // Reuse for now
+  "parking-tolls": GasFuelIcon, // Reuse for now
+  "car-maintenance": GasFuelIcon, // Reuse for now
+
+  // Bills & Utilities
+  "gas-electric": GasFuelIcon, // Reuse for now
+  "internet-cable": InternetCableIcon,
+  "phone-mobile": PhoneMobileIcon,
+  "water-sewer": HomeGardenIcon, // Reuse for now
+  "trash-recycling": HomeGardenIcon, // Reuse for now
+  "home-security": HomeGardenIcon, // Reuse for now
+
+  // Shopping
+  "clothing-accessories": RestaurantsDiningIcon, // Reuse for now
+  electronics: ElectronicsIcon,
+  "home-garden": HomeGardenIcon,
+  "books-media": BooksMediaIcon,
+  "sports-outdoors": GymFitnessIcon, // Reuse for now
+  "pet-supplies": OtherIcon, // Reuse for now
+  "general-shopping": GroceriesIcon, // Reuse for now
+
+  // Entertainment
+  "movies-shows": MoviesShowsIcon,
+  "concerts-events": MoviesShowsIcon, // Reuse for now
+  "streaming-services": StreamingServicesIcon,
+  "sports-recreation": GymFitnessIcon, // Reuse for now
+  "games-hobbies": ElectronicsIcon, // Reuse for now
+
+  // Health & Fitness
+  "pharmacy-medications": PharmacyMedicationsIcon,
+  "doctor-medical": PharmacyMedicationsIcon, // Reuse for now
+  "gym-fitness": GymFitnessIcon,
+  "health-insurance": PharmacyMedicationsIcon, // Reuse for now
+  "personal-care": PharmacyMedicationsIcon, // Reuse for now
+
+  // Education
+  tuition: BooksMediaIcon, // Reuse for now
+  "books-supplies": BooksMediaIcon, // Reuse for now
+  "courses-training": BooksMediaIcon, // Reuse for now
+  "software-tools": ElectronicsIcon, // Reuse for now
+
+  // Travel
+  flights: FlightsIcon,
+  hotels: HomeGardenIcon, // Reuse for now
+  "car-rentals": GasFuelIcon, // Reuse for now
+  "travel-insurance": OtherIcon, // Reuse for now
+
+  // Personal
+  "gifts-donations": OtherIcon, // Reuse for now
+  pets: OtherIcon, // Reuse for now
+  childcare: OtherIcon, // Reuse for now
+  subscriptions: StreamingServicesIcon, // Reuse for now
+
+  // Business
+  "office-supplies": BooksMediaIcon, // Reuse for now
+  "professional-services": OtherIcon, // Reuse for now
+  "marketing-advertising": OtherIcon, // Reuse for now
+
+  // Other
+  "bank-fees": OtherIcon,
+  "cash-withdrawal": OtherIcon,
+  transfer: OtherIcon,
+  other: OtherIcon,
+};

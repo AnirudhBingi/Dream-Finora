@@ -26,6 +26,11 @@
   "author": "Anirudh B",
   "license": "MIT",
   "dependencies": {
-    "expo-notifications": "^0.32.15"
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "overrides": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   }
 }

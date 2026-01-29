@@ -87,4 +87,3 @@ export class LoanController {
     return this.loanService.deletePayment(user.userId, id, paymentId);
   }
 }
-

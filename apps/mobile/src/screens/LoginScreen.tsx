@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -7,24 +7,30 @@ import {
   Platform,
   ScrollView,
   Alert,
-} from 'react-native';
-import { useAuth } from '../auth/authContext';
-import { Button } from '../components/Button';
-import { InputField } from '../components/InputField';
-import { PasswordInput } from '../components/PasswordInput';
-import { SocialSignInButton } from '../components/SocialSignInButton';
+} from "react-native";
+import { useAuth } from "../auth/authContext";
+import { Button } from "../components/Button";
+import { InputField } from "../components/InputField";
+import { PasswordInput } from "../components/PasswordInput";
+import { SocialSignInButton } from "../components/SocialSignInButton";
+import { useAsyncOperation } from "../hooks/useAsyncOperation";
+import { useTheme } from "../theme";
 
 interface LoginScreenProps {
   onSwitchToRegister: () => void;
   onForgotPassword?: () => void;
 }
 
-export function LoginScreen({ onSwitchToRegister, onForgotPassword }: LoginScreenProps) {
-  const [identifier, setIdentifier] = useState('');
-  const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [identifierError, setIdentifierError] = useState('');
-  const [passwordError, setPasswordError] = useState('');
+export function LoginScreen({
+  onSwitchToRegister,
+  onForgotPassword,
+}: LoginScreenProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
+  const [identifierError, setIdentifierError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
   const { login } = useAuth();
 
   const validateEmail = (email: string): boolean => {
@@ -39,72 +45,72 @@ export function LoginScreen({ onSwitchToRegister, onForgotPassword }: LoginScree
 
   const handleIdentifierChange = (text: string) => {
     setIdentifier(text);
-    setIdentifierError('');
+    setIdentifierError("");
   };
 
   const handlePasswordChange = (text: string) => {
     setPassword(text);
-    setPasswordError('');
+    setPasswordError("");
   };
 
-  async function handleLogin() {
-    // Reset errors
-    setIdentifierError('');
-    setPasswordError('');
+  const { execute: handleLogin, loading: isLoading } = useAsyncOperation({
+    operationFn: async () => {
+      // Reset errors
+      setIdentifierError("");
+      setPasswordError("");
 
-    // Validation
-    if (!identifier.trim()) {
-      setIdentifierError('Please enter your email or mobile number');
-      return;
-    }
+      // Validation
+      if (!identifier.trim()) {
+        setIdentifierError("Please enter your email or mobile number");
+        throw new Error("Please enter your email or mobile number");
+      }
 
-    if (!validateEmail(identifier.trim()) && !validateMobile(identifier.trim())) {
-      setIdentifierError('Please enter a valid email or mobile number');
-      return;
-    }
+      if (
+        !validateEmail(identifier.trim()) &&
+        !validateMobile(identifier.trim())
+      ) {
+        setIdentifierError("Please enter a valid email or mobile number");
+        throw new Error("Please enter a valid email or mobile number");
+      }
 
-    if (!password.trim()) {
-      setPasswordError('Please enter your password');
-      return;
-    }
+      if (!password.trim()) {
+        setPasswordError("Please enter your password");
+        throw new Error("Please enter your password");
+      }
 
-    if (password.length < 6) {
-      setPasswordError('Password must be at least 6 characters');
-      return;
-    }
+      if (password.length < 6) {
+        setPasswordError("Password must be at least 6 characters");
+        throw new Error("Password must be at least 6 characters");
+      }
 
-    setIsLoading(true);
-    try {
       await login(identifier.trim(), password);
       // Navigation will happen automatically via auth state change
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Invalid email/mobile number or password';
+    },
+    onError: (errorMessage) => {
       setPasswordError(errorMessage);
-    } finally {
-      setIsLoading(false);
-    }
-  }
+    },
+  });
 
   function handleGoogleSignIn() {
     Alert.alert(
-      'Coming Soon',
-      'Google sign-in will be available soon! Please use email and password for now.',
-      [{ text: 'OK' }]
+      "Coming Soon",
+      "Google sign-in will be available soon! Please use email and password for now.",
+      [{ text: "OK" }],
     );
   }
 
   function handleAppleSignIn() {
     Alert.alert(
-      'Coming Soon',
-      'Apple sign-in will be available soon! Please use email and password for now.',
-      [{ text: 'OK' }]
+      "Coming Soon",
+      "Apple sign-in will be available soon! Please use email and password for now.",
+      [{ text: "OK" }],
     );
   }
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -130,7 +136,7 @@ export function LoginScreen({ onSwitchToRegister, onForgotPassword }: LoginScree
               onPress={handleGoogleSignIn}
               disabled={isLoading}
             />
-            {Platform.OS === 'ios' && (
+            {Platform.OS === "ios" && (
               <SocialSignInButton
                 provider="apple"
                 onPress={handleAppleSignIn}
@@ -192,8 +198,11 @@ export function LoginScreen({ onSwitchToRegister, onForgotPassword }: LoginScree
 
             <View style={styles.switchContainer}>
               <Text style={styles.switchText}>
-                Don't have an account?{' '}
-                <Text style={styles.switchTextBold} onPress={onSwitchToRegister}>
+                Don't have an account?{" "}
+                <Text
+                  style={styles.switchTextBold}
+                  onPress={onSwitchToRegister}
+                >
                   Register
                 </Text>
               </Text>
@@ -205,95 +214,96 @@ export function LoginScreen({ onSwitchToRegister, onForgotPassword }: LoginScree
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 48,
-    paddingBottom: 32,
-  },
-  logoContainer: {
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  logoPlaceholder: {
-    width: 80,
-    height: 80,
-    borderRadius: 20,
-    backgroundColor: '#6366F1',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoText: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#6366F1', // Indigo
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 18,
-    fontWeight: '500',
-    color: '#374151',
-    textAlign: 'center',
-    marginBottom: 32,
-  },
-  socialContainer: {
-    gap: 12,
-    marginBottom: 24,
-  },
-  appleButton: {
-    marginTop: 0,
-  },
-  dividerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#E5E7EB',
-  },
-  dividerText: {
-    marginHorizontal: 16,
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  form: {
-    width: '100%',
-  },
-  forgotPasswordButton: {
-    alignSelf: 'flex-end',
-    marginTop: -8,
-    marginBottom: 8,
-  },
-  loginButton: {
-    marginTop: 8,
-  },
-  switchContainer: {
-    marginTop: 24,
-    alignItems: 'center',
-  },
-  switchText: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  switchTextBold: {
-    color: '#6366F1',
-    fontWeight: '600',
-  },
-});
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.backgroundSecondary,
+    },
+    scrollContent: {
+      flexGrow: 1,
+    },
+    content: {
+      flex: 1,
+      justifyContent: "center",
+      paddingHorizontal: theme.spacing.xl,
+      paddingTop: theme.spacing["4xl"],
+      paddingBottom: theme.spacing["2xl"],
+    },
+    logoContainer: {
+      alignItems: "center",
+      marginBottom: theme.spacing.base,
+    },
+    logoPlaceholder: {
+      width: 80,
+      height: 80,
+      borderRadius: 20,
+      backgroundColor: theme.colors.primary,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    logoText: {
+      fontSize: theme.typography.fontSize["4xl"],
+      fontWeight: theme.typography.fontWeight.bold,
+      color: theme.colors.textInverse,
+    },
+    title: {
+      fontSize: theme.typography.fontSize["4xl"],
+      fontWeight: theme.typography.fontWeight.bold,
+      color: theme.colors.primary,
+      textAlign: "center",
+      marginBottom: theme.spacing.sm,
+    },
+    subtitle: {
+      fontSize: theme.typography.fontSize.lg,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.gray700,
+      textAlign: "center",
+      marginBottom: theme.spacing["2xl"],
+    },
+    socialContainer: {
+      gap: theme.spacing.md,
+      marginBottom: theme.spacing.xl,
+    },
+    appleButton: {
+      marginTop: 0,
+    },
+    dividerContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: theme.spacing.xl,
+    },
+    dividerLine: {
+      flex: 1,
+      height: 1,
+      backgroundColor: theme.colors.border,
+    },
+    dividerText: {
+      marginHorizontal: theme.spacing.base,
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+    },
+    form: {
+      width: "100%",
+    },
+    forgotPasswordButton: {
+      alignSelf: "flex-end",
+      marginTop: -theme.spacing.sm,
+      marginBottom: theme.spacing.sm,
+    },
+    loginButton: {
+      marginTop: theme.spacing.sm,
+    },
+    switchContainer: {
+      marginTop: theme.spacing.xl,
+      alignItems: "center",
+    },
+    switchText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+    },
+    switchTextBold: {
+      color: theme.colors.primary,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+  });

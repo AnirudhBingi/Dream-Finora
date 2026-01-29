@@ -1,6 +1,6 @@
-import React, { useMemo, useRef, useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { ScreenContainer } from './ScreenContainer';
+import React, { useMemo, useRef, useEffect } from "react";
+import { View, StyleSheet } from "react-native";
+import { ScreenContainer } from "./ScreenContainer";
 
 interface ScreenEntry {
   name: string;
@@ -18,7 +18,7 @@ interface RootScreenRendererProps {
 /**
  * Root-level screen renderer that automatically handles smooth transitions
  * for ALL screens. Prevents flickering by keeping screens mounted during transitions.
- * 
+ *
  * This is the core component that makes transitions work across the entire app.
  * It renders all visited screens simultaneously, with only the active one visible.
  */
@@ -52,7 +52,7 @@ export function RootScreenRenderer({
   }, [screens, currentScreen]);
 
   // Determine if bottom navigation should be shown
-  const currentScreenConfig = screens.find(s => s.name === currentScreen);
+  const currentScreenConfig = screens.find((s) => s.name === currentScreen);
   const showBottomNav = currentScreenConfig?.requiresBottomNav ?? false;
 
   return (
@@ -67,9 +67,7 @@ export function RootScreenRenderer({
         </ScreenContainer>
       ))}
       {showBottomNav && (
-        <View style={styles.bottomNavContainer}>
-          {bottomNavigation}
-        </View>
+        <View style={styles.bottomNavContainer}>{bottomNavigation}</View>
       )}
     </View>
   );
@@ -80,11 +78,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   bottomNavContainer: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
     zIndex: 10, // Ensure it's above screens but below modals
   },
 });
-

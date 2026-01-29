@@ -1,4 +1,14 @@
-import { IsString, IsOptional, IsInt, IsDateString, Min, IsArray, IsIn, IsBoolean, IsObject } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsInt,
+  IsDateString,
+  Min,
+  IsArray,
+  IsIn,
+  IsBoolean,
+  IsObject,
+} from 'class-validator';
 
 export class UpdateChoreDto {
   @IsOptional()
@@ -84,4 +94,3 @@ export class UpdateChoreDto {
   @IsIn(['round-robin'])
   rotationType?: 'round-robin';
 }
-

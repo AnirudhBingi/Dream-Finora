@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -8,26 +8,29 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth } from '../auth/authContext';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useAuth } from "../auth/authContext";
 import {
   createTransaction,
   getCategories,
   suggestCategory,
   Categories,
   CreateTransactionDto,
-} from '../api/financeApi';
-import { getProfile, Profile } from '../api/profileApi';
-import { MaterialIcons } from '@expo/vector-icons';
-import { DatePicker } from '../components/DatePicker';
-import { Icon } from '../components/Icon';
-import { normalizeCategoryName } from '../utils/categoryIcons';
-import { Header } from '../components/Header';
+} from "../api/financeApi";
+import { getProfile, Profile } from "../api/profileApi";
+import { MaterialIcons } from "@expo/vector-icons";
+import { DatePicker } from "../components/DatePicker";
+import { Icon } from "../components/Icon";
+import { normalizeCategoryName } from "../utils/categoryIcons";
+import { Header } from "../components/Header";
+import { useDataFetch } from "../hooks/useDataFetch";
+import { useAsyncOperation } from "../hooks/useAsyncOperation";
+import { useTheme } from "../theme";
 
 interface AddTransactionScreenProps {
-  context?: 'local' | 'home'; // Optional: pre-select context
-  initialType?: 'income' | 'expense'; // Optional: pre-select type
+  context?: "local" | "home"; // Optional: pre-select context
+  initialType?: "income" | "expense"; // Optional: pre-select type
   onBack: () => void;
   onSuccess: () => void;
   onNavigateToProfile?: () => void;
@@ -44,110 +47,111 @@ export function AddTransactionScreen({
   onNavigateToNotifications,
   onNavigateToSettings,
 }: AddTransactionScreenProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { token } = useAuth();
-  const [categories, setCategories] = useState<Categories | null>(null);
-  const [type, setType] = useState<'income' | 'expense'>(initialType || 'expense');
-  const [context, setContext] = useState<'local' | 'home'>(initialContext || 'local');
-  const [amount, setAmount] = useState('');
-  const [source, setSource] = useState(''); // For income
-  const [selectedCategory, setSelectedCategory] = useState(''); // For expense
-  const [description, setDescription] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]); // Default to today
-  const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [type, setType] = useState<"income" | "expense">(
+    initialType || "expense",
+  );
+  const [context, setContext] = useState<"local" | "home">(
+    initialContext || "local",
+  );
+  const [amount, setAmount] = useState("");
+  const [source, setSource] = useState(""); // For income
+  const [selectedCategory, setSelectedCategory] = useState(""); // For expense
+  const [description, setDescription] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]); // Default to today
   const [isAutoDetected, setIsAutoDetected] = useState(false);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const categorySuggestTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const categorySuggestTimeoutRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const categoryScrollViewRef = useRef<ScrollView>(null);
   const categoryChipRefs = useRef<Record<string, any>>({});
 
+  // Fetch categories
+  const { data: categories, loading } = useDataFetch<Categories | null>({
+    fetchFn: async () => {
+      if (!token) throw new Error("Not authenticated");
+      return getCategories(token);
+    },
+    immediate: true,
+    deps: [token],
+  });
+
+  // Fetch profile (for currency)
+  const { data: profile } = useDataFetch<Profile | null>({
+    fetchFn: async () => {
+      if (!token) return null;
+      try {
+        return await getProfile(token);
+      } catch (err) {
+        // Silently fail - currency will default to USD
+        console.error("Failed to load profile:", err);
+        return null;
+      }
+    },
+    immediate: true,
+    deps: [token],
+  });
+
   // Income sources (common options)
-  const incomeSources = ['Salary', 'Freelance', 'Investment', 'Gift', 'Other Income'];
+  const incomeSources = [
+    "Salary",
+    "Freelance",
+    "Investment",
+    "Gift",
+    "Other Income",
+  ];
 
   // Get currency symbol based on context
   function getCurrencySymbol(): string {
-    if (!profile) return '$';
-    const currency = context === 'local' 
-      ? (profile.primaryCurrency || 'USD')
-      : (profile.homeCountryCurrency || 'USD');
-    
+    if (!profile) return "$";
+    const currency =
+      context === "local"
+        ? profile.primaryCurrency || "USD"
+        : profile.homeCountryCurrency || "USD";
+
     // Common currency symbols
     const currencySymbols: Record<string, string> = {
-      'USD': '$',
-      'EUR': '€',
-      'GBP': '£',
-      'INR': '₹',
-      'JPY': '¥',
-      'CNY': '¥',
-      'AUD': 'A$',
-      'CAD': 'C$',
-      'CHF': 'CHF',
-      'SGD': 'S$',
+      USD: "$",
+      EUR: "€",
+      GBP: "£",
+      INR: "₹",
+      JPY: "¥",
+      CNY: "¥",
+      AUD: "A$",
+      CAD: "C$",
+      CHF: "CHF",
+      SGD: "S$",
     };
-    
+
     return currencySymbols[currency] || currency;
   }
 
   useEffect(() => {
-    loadData();
-    loadProfile();
-  }, [token]);
-
-  async function loadProfile() {
-    if (!token) return;
-    try {
-      const profileData = await getProfile(token);
-      setProfile(profileData || null);
-    } catch (err) {
-      // Silently fail - currency will default to USD
-      console.error('Failed to load profile:', err);
-      setProfile(null);
-    }
-  }
-
-  useEffect(() => {
     // Clear category when switching type
-    setSelectedCategory('');
-    setSource('');
+    setSelectedCategory("");
+    setSource("");
   }, [type]);
 
-  async function loadData() {
-    if (!token) return;
+  const { execute: handleSave, loading: saving } = useAsyncOperation({
+    operationFn: async () => {
+      if (!token) throw new Error("Not authenticated");
 
-    try {
-      setLoading(true);
-      const categoriesData = await getCategories(token);
-      setCategories(categoriesData);
-    } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to load categories');
-    } finally {
-      setLoading(false);
-    }
-  }
+      const amountNum = parseFloat(amount);
+      if (isNaN(amountNum) || amountNum <= 0) {
+        throw new Error("Please enter a valid amount");
+      }
 
-  async function handleSave() {
-    if (!token) return;
+      if (type === "income" && !source.trim()) {
+        throw new Error("Please enter a source of income");
+      }
 
-    const amountNum = parseFloat(amount);
-    if (isNaN(amountNum) || amountNum <= 0) {
-      Alert.alert('Error', 'Please enter a valid amount');
-      return;
-    }
-
-    if (type === 'income' && !source.trim()) {
-      Alert.alert('Error', 'Please enter a source of income');
-      return;
-    }
-
-    // For expense, category is optional (auto-populated from description)
-    // But we can still require it if user wants to be explicit
-    if (type === 'expense' && !selectedCategory && !description.trim()) {
-      Alert.alert('Error', 'Please enter a description or select a category');
-      return;
-    }
-
-    try {
-      setSaving(true);
+      // For expense, category is optional (auto-populated from description)
+      // But we can still require it if user wants to be explicit
+      if (type === "expense" && !selectedCategory && !description.trim()) {
+        throw new Error("Please enter a description or select a category");
+      }
 
       const transactionData: CreateTransactionDto = {
         type,
@@ -158,7 +162,7 @@ export function AddTransactionScreen({
       };
 
       // Add type-specific fields
-      if (type === 'income') {
+      if (type === "income") {
         transactionData.source = source.trim();
       } else {
         // For expense, include category if selected (backend will auto-populate if not provided)
@@ -167,21 +171,21 @@ export function AddTransactionScreen({
         }
       }
 
-      await createTransaction(token, transactionData);
-
-      Alert.alert('Success', 'Transaction added successfully!', [
-        { text: 'OK', onPress: onSuccess },
+      return createTransaction(token, transactionData);
+    },
+    onSuccess: () => {
+      Alert.alert("Success", "Transaction added successfully!", [
+        { text: "OK", onPress: onSuccess },
       ]);
-    } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to add transaction');
-    } finally {
-      setSaving(false);
-    }
-  }
+    },
+    onError: (errorMessage) => {
+      Alert.alert("Error", errorMessage);
+    },
+  });
 
   // Auto-suggest category for expenses when description changes
   useEffect(() => {
-    if (type === 'expense' && description.trim() && token) {
+    if (type === "expense" && description.trim() && token) {
       // Clear previous timeout
       if (categorySuggestTimeoutRef.current) {
         clearTimeout(categorySuggestTimeoutRef.current);
@@ -189,18 +193,20 @@ export function AddTransactionScreen({
       // Set new timeout to debounce API calls
       categorySuggestTimeoutRef.current = setTimeout(async () => {
         try {
-          const result = await suggestCategory(token, description, 'expense');
+          const result = await suggestCategory(token, description, "expense");
           if (result.category) {
             setSelectedCategory(result.category);
             setIsAutoDetected(true);
             // Scroll to the selected category after a short delay to ensure it's rendered
             setTimeout(() => {
-              scrollToCategory(result.category);
+              if (result.category) {
+                scrollToCategory(result.category);
+              }
             }, 100);
           }
         } catch (err) {
           // Silently fail - user can still manually select category
-          console.error('Failed to suggest category:', err);
+          console.error("Failed to suggest category:", err);
         }
       }, 500); // Wait 500ms after user stops typing
     }
@@ -215,25 +221,34 @@ export function AddTransactionScreen({
   // Scroll to selected category
   function scrollToCategory(category: string) {
     if (!categoryScrollViewRef.current || !availableCategories.length) return;
-    
+
     const categoryIndex = availableCategories.indexOf(category);
     if (categoryIndex === -1) return;
 
     // Use requestAnimationFrame to ensure the view is rendered
     requestAnimationFrame(() => {
       if (!categoryScrollViewRef.current) return;
-      
+
       // Try to measure the chip if ref exists
       const chipRef = categoryChipRefs.current[category];
       if (chipRef && chipRef.measure) {
-        chipRef.measure((x, y, width, height, pageX, pageY) => {
-          if (categoryScrollViewRef.current) {
-            categoryScrollViewRef.current.scrollTo({
-              x: Math.max(0, pageX - 40), // Offset to show some context
-              animated: true,
-            });
-          }
-        });
+        chipRef.measure(
+          (
+            x: number,
+            y: number,
+            width: number,
+            height: number,
+            pageX: number,
+            pageY: number,
+          ) => {
+            if (categoryScrollViewRef.current) {
+              categoryScrollViewRef.current.scrollTo({
+                x: Math.max(0, pageX - 40), // Offset to show some context
+                animated: true,
+              });
+            }
+          },
+        );
       } else {
         // Fallback: Calculate approximate position (each chip is ~140px wide + 8px gap)
         const chipWidth = 140;
@@ -257,9 +272,9 @@ export function AddTransactionScreen({
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
+          <ActivityIndicator size="large" color={theme.colors.blue} />
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
       </SafeAreaView>
@@ -267,7 +282,7 @@ export function AddTransactionScreen({
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <Header
         title="New Transaction"
         onBack={onBack}
@@ -275,26 +290,28 @@ export function AddTransactionScreen({
         onNavigateToNotifications={onNavigateToNotifications}
         onNavigateToSettings={onNavigateToSettings}
       />
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+      >
         <View style={styles.content}>
-
           <View style={styles.form}>
             {/* Type Selector */}
             <View style={styles.typeSelector}>
               <TouchableOpacity
                 style={[
                   styles.typeButton,
-                  type === 'income' && styles.typeButtonActive,
+                  type === "income" && styles.typeButtonActive,
                 ]}
                 onPress={() => {
-                  setType('income');
-                  setSelectedCategory('');
+                  setType("income");
+                  setSelectedCategory("");
                 }}
               >
                 <Text
                   style={[
                     styles.typeButtonText,
-                    type === 'income' && styles.typeButtonTextActive,
+                    type === "income" && styles.typeButtonTextActive,
                   ]}
                 >
                   Income
@@ -303,17 +320,17 @@ export function AddTransactionScreen({
               <TouchableOpacity
                 style={[
                   styles.typeButton,
-                  type === 'expense' && styles.typeButtonActive,
+                  type === "expense" && styles.typeButtonActive,
                 ]}
                 onPress={() => {
-                  setType('expense');
-                  setSource('');
+                  setType("expense");
+                  setSource("");
                 }}
               >
                 <Text
                   style={[
                     styles.typeButtonText,
-                    type === 'expense' && styles.typeButtonTextActive,
+                    type === "expense" && styles.typeButtonTextActive,
                   ]}
                 >
                   Expense
@@ -328,19 +345,23 @@ export function AddTransactionScreen({
                 <TouchableOpacity
                   style={[
                     styles.contextButton,
-                    context === 'local' && styles.contextButtonActive,
+                    context === "local" && styles.contextButtonActive,
                   ]}
-                  onPress={() => setContext('local')}
+                  onPress={() => setContext("local")}
                 >
                   <MaterialIcons
                     name="location-on"
                     size={20}
-                    color={context === 'local' ? '#fff' : '#6B7280'}
+                    color={
+                      context === "local"
+                        ? theme.colors.white
+                        : theme.colors.textSecondary
+                    }
                   />
                   <Text
                     style={[
                       styles.contextButtonText,
-                      context === 'local' && styles.contextButtonTextActive,
+                      context === "local" && styles.contextButtonTextActive,
                     ]}
                   >
                     Local
@@ -349,19 +370,23 @@ export function AddTransactionScreen({
                 <TouchableOpacity
                   style={[
                     styles.contextButton,
-                    context === 'home' && styles.contextButtonActive,
+                    context === "home" && styles.contextButtonActive,
                   ]}
-                  onPress={() => setContext('home')}
+                  onPress={() => setContext("home")}
                 >
                   <MaterialIcons
                     name="home"
                     size={20}
-                    color={context === 'home' ? '#fff' : '#6B7280'}
+                    color={
+                      context === "home"
+                        ? theme.colors.white
+                        : theme.colors.textSecondary
+                    }
                   />
                   <Text
                     style={[
                       styles.contextButtonText,
-                      context === 'home' && styles.contextButtonTextActive,
+                      context === "home" && styles.contextButtonTextActive,
                     ]}
                   >
                     Home Country
@@ -386,7 +411,7 @@ export function AddTransactionScreen({
             </View>
 
             {/* Income: Source */}
-            {type === 'income' && (
+            {type === "income" && (
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Source of Income *</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -403,7 +428,8 @@ export function AddTransactionScreen({
                         <Text
                           style={[
                             styles.sourceButtonText,
-                            source === sourceOption && styles.sourceButtonTextActive,
+                            source === sourceOption &&
+                              styles.sourceButtonTextActive,
                           ]}
                         >
                           {sourceOption}
@@ -424,23 +450,25 @@ export function AddTransactionScreen({
             )}
 
             {/* Expense: Category (auto-populated from description) */}
-            {type === 'expense' && (
+            {type === "expense" && (
               <View style={styles.inputGroup}>
                 <View style={styles.categoryLabelRow}>
-                  <Text style={styles.label}>
-                    Category
-                  </Text>
+                  <Text style={styles.label}>Category</Text>
                   {isAutoDetected && selectedCategory && (
                     <View style={styles.autoDetectedBadge}>
-                      <MaterialIcons name="auto-awesome" size={14} color="#10B981" />
+                      <MaterialIcons
+                        name="auto-awesome"
+                        size={14}
+                        color={theme.colors.success}
+                      />
                       <Text style={styles.autoDetectedText}>Auto-detected</Text>
                     </View>
                   )}
                 </View>
                 {availableCategories && availableCategories.length > 0 ? (
-                  <ScrollView 
+                  <ScrollView
                     ref={categoryScrollViewRef}
-                    horizontal 
+                    horizontal
                     showsHorizontalScrollIndicator={false}
                     style={styles.categoryScrollView}
                   >
@@ -453,27 +481,40 @@ export function AddTransactionScreen({
                           }}
                           style={[
                             styles.categoryButton,
-                            selectedCategory === category && styles.categoryButtonActive,
-                            isAutoDetected && selectedCategory === category && styles.categoryButtonAutoDetected,
+                            selectedCategory === category &&
+                              styles.categoryButtonActive,
+                            isAutoDetected &&
+                              selectedCategory === category &&
+                              styles.categoryButtonAutoDetected,
                           ]}
                           onPress={() => handleCategorySelect(category)}
                         >
                           <Icon
                             name={normalizeCategoryName(category)}
                             size="sm"
-                            color={selectedCategory === category ? '#fff' : '#6B7280'}
+                            color={
+                              selectedCategory === category
+                                ? theme.colors.white
+                                : theme.colors.textSecondary
+                            }
                             style={styles.categoryIcon}
                           />
                           <Text
                             style={[
                               styles.categoryButtonText,
-                              selectedCategory === category && styles.categoryButtonTextActive,
+                              selectedCategory === category &&
+                                styles.categoryButtonTextActive,
                             ]}
                           >
                             {category}
                           </Text>
                           {isAutoDetected && selectedCategory === category && (
-                            <MaterialIcons name="check-circle" size={16} color="#fff" style={styles.checkIcon} />
+                            <MaterialIcons
+                              name="check-circle"
+                              size={16}
+                              color={theme.colors.white}
+                              style={styles.checkIcon}
+                            />
                           )}
                         </TouchableOpacity>
                       ))}
@@ -488,11 +529,15 @@ export function AddTransactionScreen({
             {/* Description */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>
-                Description{type === 'expense' ? ' (Auto-categorizes)' : ''}
+                Description{type === "expense" ? " (Auto-categorizes)" : ""}
               </Text>
               <TextInput
                 style={[styles.input, styles.textArea]}
-                placeholder={type === 'income' ? 'Add a note...' : 'e.g., Groceries at Walmart'}
+                placeholder={
+                  type === "income"
+                    ? "Add a note..."
+                    : "e.g., Groceries at Walmart"
+                }
                 value={description}
                 onChangeText={setDescription}
                 multiline
@@ -514,11 +559,11 @@ export function AddTransactionScreen({
 
             <TouchableOpacity
               style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-              onPress={handleSave}
+              onPress={() => handleSave()}
               disabled={saving}
             >
               {saving ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={theme.colors.white} />
               ) : (
                 <Text style={styles.saveButtonText}>Add Transaction</Text>
               )}
@@ -534,270 +579,271 @@ export function AddTransactionScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollContent: {
-    paddingBottom: 24,
-  },
-  content: {
-    paddingHorizontal: 24,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#6B7280',
-  },
-  form: {
-    marginTop: 8,
-  },
-  typeSelector: {
-    flexDirection: 'row',
-    marginBottom: 24,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 8,
-    padding: 4,
-  },
-  typeButton: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 6,
-    alignItems: 'center',
-  },
-  typeButtonActive: {
-    backgroundColor: '#2563EB',
-  },
-  typeButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#6B7280',
-  },
-  typeButtonTextActive: {
-    color: '#fff',
-  },
-  inputGroup: {
-    marginBottom: 24,
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#374151',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  contextSelector: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  contextButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#fff',
-    gap: 8,
-  },
-  contextButtonActive: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  contextButtonText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  contextButtonTextActive: {
-    color: '#fff',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    padding: 12,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: '#111827',
-  },
-  textArea: {
-    minHeight: 100,
-    paddingTop: 12,
-  },
-  marginTop: {
-    marginTop: 8,
-  },
-  amountContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-  },
-  currencySymbol: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#374151',
-    marginRight: 8,
-  },
-  amountInput: {
-    flex: 1,
-    padding: 12,
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  sourceSelector: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
-  },
-  sourceButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#fff',
-  },
-  sourceButtonActive: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  sourceButtonText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  sourceButtonTextActive: {
-    color: '#fff',
-  },
-  categoryLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  autoDetectedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#D1FAE5',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  autoDetectedText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#10B981',
-  },
-  categoryScrollView: {
-    marginHorizontal: -24,
-    paddingHorizontal: 24,
-  },
-  categorySelector: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  categoryButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#F3F4F6',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  categoryButtonActive: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  categoryButtonAutoDetected: {
-    backgroundColor: '#10B981',
-    borderColor: '#10B981',
-    shadowColor: '#10B981',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  categoryIcon: {
-    marginRight: 0,
-  },
-  categoryButtonText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  categoryButtonTextActive: {
-    color: '#fff',
-  },
-  checkIcon: {
-    marginLeft: 2,
-  },
-  helperText: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 4,
-    fontStyle: 'italic',
-  },
-  errorText: {
-    fontSize: 14,
-    color: '#EF4444',
-    fontStyle: 'italic',
-  },
-  saveButton: {
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  saveButtonDisabled: {
-    opacity: 0.5,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  cancelButton: {
-    backgroundColor: 'transparent',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#2563EB',
-  },
-  cancelButtonText: {
-    color: '#2563EB',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-});
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    scrollContent: {
+      paddingBottom: 24,
+    },
+    content: {
+      paddingHorizontal: 24,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 24,
+    },
+    loadingText: {
+      marginTop: theme.spacing.base,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textSecondary,
+    },
+    form: {
+      marginTop: theme.spacing.sm,
+    },
+    typeSelector: {
+      flexDirection: "row",
+      marginBottom: theme.spacing.xl,
+      backgroundColor: theme.colors.backgroundTertiary,
+      borderRadius: theme.spacing.sm,
+      padding: 4,
+    },
+    typeButton: {
+      flex: 1,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.xl,
+      borderRadius: 6,
+      alignItems: "center",
+    },
+    typeButtonActive: {
+      backgroundColor: theme.colors.blue,
+    },
+    typeButtonText: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.textSecondary,
+    },
+    typeButtonTextActive: {
+      color: theme.colors.white,
+    },
+    inputGroup: {
+      marginBottom: theme.spacing.xl,
+    },
+    label: {
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.gray700,
+      marginBottom: theme.spacing.sm,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    contextSelector: {
+      flexDirection: "row",
+      gap: 12,
+    },
+    contextButton: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.base,
+      borderRadius: theme.spacing.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.borderDark,
+      backgroundColor: theme.colors.background,
+      gap: theme.spacing.sm,
+    },
+    contextButtonActive: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    contextButtonText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.gray700,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    contextButtonTextActive: {
+      color: theme.colors.white,
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: theme.colors.borderDark,
+      borderRadius: theme.spacing.sm,
+      padding: theme.spacing.md,
+      paddingHorizontal: theme.spacing.base,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textPrimary,
+    },
+    textArea: {
+      minHeight: 100,
+      paddingTop: theme.spacing.md,
+    },
+    marginTop: {
+      marginTop: theme.spacing.sm,
+    },
+    amountContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: theme.colors.borderDark,
+      borderRadius: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.base,
+    },
+    currencySymbol: {
+      fontSize: theme.typography.fontSize.xl,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.gray700,
+      marginRight: theme.spacing.sm,
+    },
+    amountInput: {
+      flex: 1,
+      padding: theme.spacing.md,
+      fontSize: theme.typography.fontSize.xl,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+    },
+    sourceSelector: {
+      flexDirection: "row",
+      gap: 8,
+      marginBottom: 8,
+    },
+    sourceButton: {
+      paddingVertical: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.base,
+      borderRadius: theme.spacing.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.borderDark,
+      backgroundColor: theme.colors.background,
+    },
+    sourceButtonActive: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    sourceButtonText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.gray700,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    sourceButtonTextActive: {
+      color: theme.colors.white,
+    },
+    categoryLabelRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 8,
+    },
+    autoDetectedBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: theme.colors.successBackground,
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: 4,
+      borderRadius: theme.spacing.md,
+    },
+    autoDetectedText: {
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.success,
+    },
+    categoryScrollView: {
+      marginHorizontal: -24,
+      paddingHorizontal: 24,
+    },
+    categorySelector: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    categoryButton: {
+      paddingVertical: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.base,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: theme.colors.borderDark,
+      backgroundColor: theme.colors.backgroundTertiary,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    categoryButtonActive: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    categoryButtonAutoDetected: {
+      backgroundColor: theme.colors.success,
+      borderColor: theme.colors.success,
+      shadowColor: theme.colors.success,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    categoryIcon: {
+      marginRight: 0,
+    },
+    categoryButtonText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.gray700,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    categoryButtonTextActive: {
+      color: theme.colors.white,
+    },
+    checkIcon: {
+      marginLeft: 2,
+    },
+    helperText: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.textSecondary,
+      marginTop: 4,
+      fontStyle: "italic",
+    },
+    errorText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.error,
+      fontStyle: "italic",
+    },
+    saveButton: {
+      backgroundColor: theme.colors.blue,
+      borderRadius: theme.spacing.sm,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.xl,
+      minHeight: 44,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: theme.spacing.md,
+    },
+    saveButtonDisabled: {
+      opacity: 0.5,
+    },
+    saveButtonText: {
+      color: theme.colors.white,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    cancelButton: {
+      backgroundColor: "transparent",
+      borderRadius: theme.spacing.sm,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.xl,
+      minHeight: 44,
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: theme.colors.blue,
+    },
+    cancelButtonText: {
+      color: theme.colors.blue,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+  });

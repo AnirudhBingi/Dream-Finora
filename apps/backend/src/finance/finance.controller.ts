@@ -82,7 +82,10 @@ export class FinanceController {
     @CurrentUser() user: { userId: string },
     @Body() createTransactionDto: CreateTransactionDto,
   ) {
-    return this.financeService.createTransaction(user.userId, createTransactionDto);
+    return this.financeService.createTransaction(
+      user.userId,
+      createTransactionDto,
+    );
   }
 
   @Get('transactions')
@@ -113,7 +116,11 @@ export class FinanceController {
     @Param('id') id: string,
     @Body() updateTransactionDto: UpdateTransactionDto,
   ) {
-    return this.financeService.updateTransaction(user.userId, id, updateTransactionDto);
+    return this.financeService.updateTransaction(
+      user.userId,
+      id,
+      updateTransactionDto,
+    );
   }
 
   @Delete('transactions/:id')
@@ -150,19 +157,22 @@ export class FinanceController {
   }
 
   @Get('categories')
-  async getCategories() {
+  getCategories() {
     return this.financeService.getCategories();
   }
 
   @Get('suggest-category')
-  async suggestCategory(
+  suggestCategory(
     @Query('description') description: string,
     @Query('type') type: 'income' | 'expense',
   ) {
     if (!description || !type) {
       return { category: null };
     }
-    const match = this.categorizationService.categorizeFinance(description, type);
+    const match = this.categorizationService.categorizeFinance(
+      description,
+      type,
+    );
     return { category: match?.category || null };
   }
 
@@ -178,7 +188,12 @@ export class FinanceController {
   ) {
     const monthsCount = months ? parseInt(months, 10) : 6;
     const daysCount = days ? parseInt(days, 10) : 30;
-    return this.analyticsService.getContextAnalytics(user.userId, 'local', monthsCount, daysCount);
+    return this.analyticsService.getContextAnalytics(
+      user.userId,
+      'local',
+      monthsCount,
+      daysCount,
+    );
   }
 
   /**
@@ -193,7 +208,12 @@ export class FinanceController {
   ) {
     const monthsCount = months ? parseInt(months, 10) : 6;
     const daysCount = days ? parseInt(days, 10) : 30;
-    return this.analyticsService.getContextAnalytics(user.userId, 'home', monthsCount, daysCount);
+    return this.analyticsService.getContextAnalytics(
+      user.userId,
+      'home',
+      monthsCount,
+      daysCount,
+    );
   }
 
   /**
@@ -261,7 +281,7 @@ export class FinanceController {
   ) {
     const limitNum = limit ? parseInt(limit, 10) : 50;
     const offsetNum = offset ? parseInt(offset, 10) : 0;
-    
+
     return this.financeService.getFinanceHistory(
       user.userId,
       context,
@@ -271,4 +291,3 @@ export class FinanceController {
     );
   }
 }
-

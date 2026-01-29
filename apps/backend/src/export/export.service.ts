@@ -74,9 +74,12 @@ export class ExportService {
 
     // CSV Rows
     const rows = expenses.map((expense) => {
-      const userSplit = expense.ExpenseSplit.find((split) => split.userId === userId);
+      const userSplit = expense.ExpenseSplit.find(
+        (split) => split.userId === userId,
+      );
       const createdByName =
-        expense.User_Expense_createdByToUser.UserProfile?.displayName || expense.User_Expense_createdByToUser.email;
+        expense.User_Expense_createdByToUser.UserProfile?.displayName ||
+        expense.User_Expense_createdByToUser.email;
 
       return [
         expense.createdAt.toISOString().split('T')[0],
@@ -93,7 +96,10 @@ export class ExportService {
     });
 
     // Combine header and rows
-    const csvContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+    const csvContent = [
+      headers.join(','),
+      ...rows.map((row) => row.join(',')),
+    ].join('\n');
 
     return csvContent;
   }
@@ -147,7 +153,10 @@ export class ExportService {
     });
 
     // Combine header and rows
-    const csvContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+    const csvContent = [
+      headers.join(','),
+      ...rows.map((row) => row.join(',')),
+    ].join('\n');
 
     return csvContent;
   }
@@ -155,7 +164,7 @@ export class ExportService {
   /**
    * Export all user data as JSON
    */
-  async exportAllDataJSON(userId: string): Promise<any> {
+  async exportAllDataJSON(userId: string): Promise<Record<string, unknown>> {
     const [
       expenses,
       transactions,
@@ -333,4 +342,3 @@ export class ExportService {
     return field;
   }
 }
-

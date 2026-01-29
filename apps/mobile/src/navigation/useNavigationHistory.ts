@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 
 export type ScreenName = string;
 
@@ -13,7 +13,7 @@ interface NavigationEntry {
  */
 export function useNavigationHistory() {
   const [history, setHistory] = useState<NavigationEntry[]>([
-    { screen: 'home', params: {} },
+    { screen: "home", params: {} },
   ]);
 
   const push = (screen: ScreenName, params?: Record<string, any>) => {
@@ -52,4 +52,3 @@ export function useNavigationHistory() {
     // Use history[history.length - 1]?.screen if you need the current screen from history
   };
 }
-

@@ -43,12 +43,14 @@ export class RecurringChoreService {
           // Find next matching day of week
           const currentDay = nextDate.getDay();
           const sortedDays = [...config.daysOfWeek].sort((a, b) => a - b);
-          const nextDay = sortedDays.find(day => day > currentDay) || sortedDays[0];
-          
-          const daysUntilNext = nextDay > currentDay 
-            ? nextDay - currentDay 
-            : 7 - currentDay + nextDay;
-          
+          const nextDay =
+            sortedDays.find((day) => day > currentDay) || sortedDays[0];
+
+          const daysUntilNext =
+            nextDay > currentDay
+              ? nextDay - currentDay
+              : 7 - currentDay + nextDay;
+
           nextDate.setDate(nextDate.getDate() + daysUntilNext);
         } else {
           nextDate.setDate(nextDate.getDate() + 7 * (config?.interval || 1));
@@ -59,22 +61,30 @@ export class RecurringChoreService {
         if (config?.dayOfMonth) {
           // Specific day of month (e.g., 15th of every month)
           nextDate.setMonth(nextDate.getMonth() + (config?.interval || 1));
-          const lastDayOfMonth = new Date(nextDate.getFullYear(), nextDate.getMonth() + 1, 0).getDate();
+          const lastDayOfMonth = new Date(
+            nextDate.getFullYear(),
+            nextDate.getMonth() + 1,
+            0,
+          ).getDate();
           nextDate.setDate(Math.min(config.dayOfMonth, lastDayOfMonth));
         } else if (config?.weekOfMonth && config?.dayOfWeek !== undefined) {
           // Specific week and day (e.g., first Monday of every month)
           nextDate.setMonth(nextDate.getMonth() + (config?.interval || 1));
           nextDate.setDate(1); // Start from first day of month
-          
+
           // Find the target day of week
           while (nextDate.getDay() !== config.dayOfWeek) {
             nextDate.setDate(nextDate.getDate() + 1);
           }
-          
+
           // Move to the correct week
           if (config.weekOfMonth === -1) {
             // Last occurrence of the month
-            const lastDay = new Date(nextDate.getFullYear(), nextDate.getMonth() + 1, 0);
+            const lastDay = new Date(
+              nextDate.getFullYear(),
+              nextDate.getMonth() + 1,
+              0,
+            );
             const lastDayOfWeek = lastDay.getDay();
             const daysToSubtract = (lastDayOfWeek - config.dayOfWeek + 7) % 7;
             nextDate.setDate(lastDay.getDate() - daysToSubtract);
@@ -113,7 +123,11 @@ export class RecurringChoreService {
         },
       });
 
-      if (!parentChore || !parentChore.isRecurring || !parentChore.recurrencePattern) {
+      if (
+        !parentChore ||
+        !parentChore.isRecurring ||
+        !parentChore.recurrencePattern
+      ) {
         return null;
       }
 
@@ -130,7 +144,10 @@ export class RecurringChoreService {
         }
       }
 
-      if (parentChore.recurrenceCount && parentChore.occurrencesGenerated >= parentChore.recurrenceCount) {
+      if (
+        parentChore.recurrenceCount &&
+        parentChore.occurrencesGenerated >= parentChore.recurrenceCount
+      ) {
         // Stop recurring
         await this.prisma.chore.update({
           where: { id: parentChoreId },
@@ -140,13 +157,18 @@ export class RecurringChoreService {
       }
 
       // Calculate next occurrence date
-      const lastOccurrenceDate = parentChore.nextOccurrenceDate 
+      const lastOccurrenceDate = parentChore.nextOccurrenceDate
         ? new Date(parentChore.nextOccurrenceDate)
         : new Date();
-      
-      const recurrenceConfig = parentChore.recurrenceConfig as RecurrenceConfig | null;
+
+      const recurrenceConfig =
+        parentChore.recurrenceConfig as RecurrenceConfig | null;
       const nextDate = this.calculateNextOccurrence(
-        parentChore.recurrencePattern as 'daily' | 'weekly' | 'monthly' | 'custom',
+        parentChore.recurrencePattern as
+          | 'daily'
+          | 'weekly'
+          | 'monthly'
+          | 'custom',
         recurrenceConfig,
         lastOccurrenceDate,
         parentChore.dueDate ? new Date(parentChore.dueDate) : null,
@@ -159,10 +181,10 @@ export class RecurringChoreService {
       // IMPORTANT: Due date is set based on recurrence pattern
       // For recurring chores, due date should match when the next occurrence should be completed
       // For rotation: assignment happens AFTER creation, but due date is already set
-      
+
       // Create the occurrence with proper due date
       const occurrenceId = randomUUID();
-      const occurrence = await this.prisma.chore.create({
+      await this.prisma.chore.create({
         data: {
           id: occurrenceId,
           groupId: parentChore.groupId,
@@ -193,11 +215,15 @@ export class RecurringChoreService {
       //   Points: Full points per person (each does it individually)
       // - If multiple assignment (no rotation): All members assigned to same occurrence
       //   Points: Divided among all members (they do it together)
-      
+
       // Copy assignments if multiple assignment type AND rotation is NOT enabled
-      if (parentChore.assignmentType === 'multiple' && parentChore.ChoreAssignment.length > 0 && !parentChore.rotationEnabled) {
+      if (
+        parentChore.assignmentType === 'multiple' &&
+        parentChore.ChoreAssignment.length > 0 &&
+        !parentChore.rotationEnabled
+      ) {
         await Promise.all(
-          parentChore.ChoreAssignment.map(assignment =>
+          parentChore.ChoreAssignment.map((assignment) =>
             this.prisma.choreAssignment.create({
               data: {
                 id: randomUUID(),
@@ -207,48 +233,64 @@ export class RecurringChoreService {
             }),
           ),
         );
-      } else if (parentChore.assignmentType === 'single' || parentChore.rotationEnabled) {
+      } else if (
+        parentChore.assignmentType === 'single' ||
+        parentChore.rotationEnabled
+      ) {
         // SYNC: Rotation + Recurring + Due Date
         // Step 1: Initialize rotation if enabled (must be done BEFORE assignment)
         // Note: When rotation is enabled, assignmentType should be 'single' even if multiple members selected
-        if (parentChore.rotationEnabled && this.choreRotationService && parentChore.groupId) {
+        if (
+          parentChore.rotationEnabled &&
+          this.choreRotationService &&
+          parentChore.groupId
+        ) {
           try {
             // Get rotation members from parent chore to maintain same rotation order
             const parentRotation = await this.prisma.choreRotation.findMany({
               where: { choreId: parentChoreId },
               orderBy: { rotationOrder: 'asc' },
             });
-            
+
             // Extract user IDs from parent rotation (these are the selected members)
-            const rotationUserIds = parentRotation.length > 0 
-              ? parentRotation.map(r => r.userId)
-              : undefined; // Fallback to all group members if parent rotation not found
-            
+            const rotationUserIds =
+              parentRotation.length > 0
+                ? parentRotation.map((r) => r.userId)
+                : undefined; // Fallback to all group members if parent rotation not found
+
             // Initialize rotation for the occurrence with same members as parent
             await this.choreRotationService.initializeRotation(
               occurrenceId,
               parentChore.groupId,
               rotationUserIds, // Use same rotation members as parent
             );
-            
+
             // Step 2: Assign to next user in rotation
-            const nextUserId = await this.choreRotationService.assignToNextUser(occurrenceId);
+            const nextUserId =
+              await this.choreRotationService.assignToNextUser(occurrenceId);
             if (nextUserId) {
               // Update status to assigned after rotation assignment
               await this.prisma.chore.update({
                 where: { id: occurrenceId },
-                data: { 
-                  assignedTo: nextUserId, 
+                data: {
+                  assignedTo: nextUserId,
                   status: 'assigned',
                   // Due date is already set correctly from recurrence calculation above
                 },
               });
-              this.logger.log(`Assigned occurrence ${occurrenceId} to user ${nextUserId} via rotation (due: ${nextDate.toISOString()})`);
+              this.logger.log(
+                `Assigned occurrence ${occurrenceId} to user ${nextUserId} via rotation (due: ${nextDate.toISOString()})`,
+              );
             } else {
-              this.logger.warn(`No user available in rotation for occurrence ${occurrenceId}, leaving unassigned`);
+              this.logger.warn(
+                `No user available in rotation for occurrence ${occurrenceId}, leaving unassigned`,
+              );
             }
           } catch (error) {
-            this.logger.error(`Failed to assign via rotation for occurrence ${occurrenceId}:`, error);
+            this.logger.error(
+              `Failed to assign via rotation for occurrence ${occurrenceId}:`,
+              error,
+            );
             // Fallback: Leave as pending if rotation fails (can be grabbed manually)
           }
         } else if (parentChore.assignedTo) {
@@ -272,10 +314,15 @@ export class RecurringChoreService {
         },
       });
 
-      this.logger.log(`Generated occurrence ${occurrenceId} for recurring chore ${parentChoreId}`);
+      this.logger.log(
+        `Generated occurrence ${occurrenceId} for recurring chore ${parentChoreId}`,
+      );
       return occurrenceId;
     } catch (error) {
-      this.logger.error(`Failed to generate occurrence for chore ${parentChoreId}:`, error);
+      this.logger.error(
+        `Failed to generate occurrence for chore ${parentChoreId}:`,
+        error,
+      );
       return null;
     }
   }
@@ -287,7 +334,7 @@ export class RecurringChoreService {
   async processRecurringChores(): Promise<void> {
     try {
       const now = new Date();
-      
+
       // Find all recurring chores that need a new occurrence
       const recurringChores = await this.prisma.chore.findMany({
         where: {
@@ -320,4 +367,3 @@ export class RecurringChoreService {
     }
   }
 }
-

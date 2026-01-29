@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,83 +9,106 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { pickMultipleImages } from '../utils/imagePicker';
-import { useAuth } from '../auth/authContext';
-import { createListing, CreateListingDto, ListingType, uploadListingImages, suggestCategory, getItemCategories, RoommateMetadata, AccommodationMetadata, ItemMetadata, EventMetadata, RideMetadata } from '../api/listingApi';
-import { DatePicker } from '../components/DatePicker';
-import { Icon } from '../components/Icon';
-import { normalizeCategoryName } from '../utils/categoryIcons';
-import { MaterialIcons } from '@expo/vector-icons';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { pickMultipleImages } from "../utils/imagePicker";
+import { useAuth } from "../auth/authContext";
+import {
+  createListing,
+  CreateListingDto,
+  ListingType,
+  uploadListingImages,
+  suggestCategory,
+  getItemCategories,
+  AccommodationMetadata,
+  ItemMetadata,
+  EventMetadata,
+  RideMetadata,
+} from "../api/listingApi";
+import { DatePicker } from "../components/DatePicker";
+import { Icon } from "../components/Icon";
+import { normalizeCategoryName } from "../utils/categoryIcons";
+import { MaterialIcons } from "@expo/vector-icons";
+import { Header } from "../components/Header";
+import { useTheme } from "../theme";
 
 interface CreateSpaceVScreenProps {
   onBack: () => void;
   onSuccess: () => void;
+  groupId?: string;
+  onNavigateToProfile?: () => void;
+  onNavigateToNotifications?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
-export function CreateSpaceVScreen({ 
-  onBack, 
+export function CreateSpaceVScreen({
+  onBack,
   onSuccess,
+  groupId,
   onNavigateToProfile,
   onNavigateToNotifications,
   onNavigateToSettings,
 }: CreateSpaceVScreenProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { token } = useAuth();
   const [type, setType] = useState<ListingType>(ListingType.ROOMMATE);
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [location, setLocation] = useState('');
-  const [price, setPrice] = useState('');
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [location, setLocation] = useState("");
+  const [price, setPrice] = useState("");
   const [saving, setSaving] = useState(false);
   const [imageUris, setImageUris] = useState<string[]>([]);
   const [itemCategories, setItemCategories] = useState<string[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [isAutoDetected, setIsAutoDetected] = useState(false);
-  const categorySuggestTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const categorySuggestTimeoutRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const categoryScrollViewRef = useRef<ScrollView>(null);
   const categoryChipRefs = useRef<Record<string, any>>({});
 
   // Type-specific state
   // Roommate
   const [lookingFor, setLookingFor] = useState<boolean>(true);
-  const [budget, setBudget] = useState('');
-  const [moveInDate, setMoveInDate] = useState('');
-  const [duration, setDuration] = useState<string>('long-term');
+  const [budget, setBudget] = useState("");
+  const [moveInDate, setMoveInDate] = useState("");
+  const [duration, setDuration] = useState<string>("long-term");
   const [smoking, setSmoking] = useState<boolean | undefined>(undefined);
   const [pets, setPets] = useState<boolean | undefined>(undefined);
-  const [gender, setGender] = useState('');
-  const [ageRange, setAgeRange] = useState('');
+  const [gender, setGender] = useState("");
+  const [ageRange, setAgeRange] = useState("");
 
   // Accommodation
-  const [bedrooms, setBedrooms] = useState('');
-  const [bathrooms, setBathrooms] = useState('');
-  const [availableFrom, setAvailableFrom] = useState('');
-  const [leaseDuration, setLeaseDuration] = useState('');
-  const [utilitiesIncluded, setUtilitiesIncluded] = useState<boolean | undefined>(undefined);
+  const [bedrooms, setBedrooms] = useState("");
+  const [bathrooms, setBathrooms] = useState("");
+  const [availableFrom, setAvailableFrom] = useState("");
+  const [leaseDuration, setLeaseDuration] = useState("");
+  const [utilitiesIncluded, setUtilitiesIncluded] = useState<
+    boolean | undefined
+  >(undefined);
   const [furnished, setFurnished] = useState<boolean | undefined>(undefined);
 
   // Item
-  const [condition, setCondition] = useState<string>('used');
-  const [category, setCategory] = useState('');
-  const [brand, setBrand] = useState('');
+  const [condition, setCondition] = useState<string>("used");
+  const [category, setCategory] = useState("");
+  const [brand, setBrand] = useState("");
 
   // Event
-  const [eventDate, setEventDate] = useState('');
-  const [eventTime, setEventTime] = useState('');
-  const [maxAttendees, setMaxAttendees] = useState('');
-  const [eventType, setEventType] = useState('');
+  const [eventDate, setEventDate] = useState("");
+  const [eventTime, setEventTime] = useState("");
+  const [maxAttendees, setMaxAttendees] = useState("");
+  const [eventType, setEventType] = useState("");
   const [isPublic, setIsPublic] = useState<boolean>(true);
 
   // Ride
-  const [origin, setOrigin] = useState('');
-  const [destination, setDestination] = useState('');
-  const [rideDate, setRideDate] = useState('');
-  const [rideTime, setRideTime] = useState('');
-  const [availableSeats, setAvailableSeats] = useState('');
-  const [vehicleType, setVehicleType] = useState('');
-  const [pricePerPerson, setPricePerPerson] = useState('');
-
+  const [origin, setOrigin] = useState("");
+  const [destination, setDestination] = useState("");
+  const [rideDate, setRideDate] = useState("");
+  const [rideTime, setRideTime] = useState("");
+  const [availableSeats, setAvailableSeats] = useState("");
+  const [vehicleType, setVehicleType] = useState("");
+  const [pricePerPerson, setPricePerPerson] = useState("");
   // Load item categories on mount (only for ITEM type)
   useEffect(() => {
     if (type === ListingType.ITEM) {
@@ -116,7 +139,7 @@ export function CreateSpaceVScreen({
           }, 100);
         }
       } catch (err) {
-        console.error('Failed to suggest category:', err);
+        console.error("Failed to suggest category:", err);
       }
     }, 500);
 
@@ -135,7 +158,7 @@ export function CreateSpaceVScreen({
       const categories = await getItemCategories(token);
       setItemCategories(categories);
     } catch (err) {
-      console.error('Failed to load item categories:', err);
+      console.error("Failed to load item categories:", err);
     } finally {
       setCategoriesLoading(false);
     }
@@ -144,7 +167,7 @@ export function CreateSpaceVScreen({
   // Scroll to selected category
   function scrollToCategory(cat: string) {
     if (!categoryScrollViewRef.current || !itemCategories.length) return;
-    
+
     const categoryIndex = itemCategories.indexOf(cat);
     if (categoryIndex === -1) return;
 
@@ -170,69 +193,69 @@ export function CreateSpaceVScreen({
     if (!token) return;
 
     if (!title.trim()) {
-      Alert.alert('Error', 'Please enter a title');
+      Alert.alert("Error", "Please enter a title");
       return;
     }
 
     if (!description.trim()) {
-      Alert.alert('Error', 'Please enter a description');
+      Alert.alert("Error", "Please enter a description");
       return;
     }
 
     const priceNum = price ? parseFloat(price) : undefined;
     if (price && (isNaN(priceNum!) || priceNum! < 0)) {
-      Alert.alert('Error', 'Please enter a valid price');
+      Alert.alert("Error", "Please enter a valid price");
       return;
     }
 
     // Type-specific validation
     if (type === ListingType.RIDE) {
       if (!origin.trim()) {
-        Alert.alert('Error', 'Please enter origin');
+        Alert.alert("Error", "Please enter origin");
         return;
       }
       if (!destination.trim()) {
-        Alert.alert('Error', 'Please enter destination');
+        Alert.alert("Error", "Please enter destination");
         return;
       }
       if (!rideDate.trim()) {
-        Alert.alert('Error', 'Please enter ride date');
+        Alert.alert("Error", "Please enter ride date");
         return;
       }
     }
 
     if (type === ListingType.EVENT) {
       if (!eventDate.trim()) {
-        Alert.alert('Error', 'Please enter event date');
+        Alert.alert("Error", "Please enter event date");
         return;
       }
       if (!location.trim()) {
-        Alert.alert('Error', 'Please enter event location');
+        Alert.alert("Error", "Please enter event location");
         return;
       }
     }
 
     if (type === ListingType.ACCOMMODATION) {
       if (!location.trim()) {
-        Alert.alert('Error', 'Please enter location');
+        Alert.alert("Error", "Please enter location");
         return;
       }
       if (!priceNum) {
-        Alert.alert('Error', 'Please enter rent price');
+        Alert.alert("Error", "Please enter rent price");
         return;
       }
     }
 
     if (type === ListingType.ITEM) {
       if (!priceNum) {
-        Alert.alert('Error', 'Please enter item price');
+        Alert.alert("Error", "Please enter item price");
         return;
       }
     }
 
     if (type === ListingType.ROOMMATE) {
       if (!location.trim()) {
-        Alert.alert('Error', 'Please enter location');
+        Alert.alert("Error", "Please enter location");
         return;
       }
     }
@@ -261,7 +284,8 @@ export function CreateSpaceVScreen({
           bathrooms: bathrooms ? parseFloat(bathrooms) : undefined,
           availableFrom: availableFrom || undefined,
           leaseDuration: leaseDuration || undefined,
-          utilitiesIncluded: utilitiesIncluded !== undefined ? utilitiesIncluded : undefined,
+          utilitiesIncluded:
+            utilitiesIncluded !== undefined ? utilitiesIncluded : undefined,
           furnished: furnished !== undefined ? furnished : undefined,
         };
       } else if (type === ListingType.ITEM) {
@@ -286,7 +310,9 @@ export function CreateSpaceVScreen({
           rideTime: rideTime || undefined,
           availableSeats: availableSeats ? parseInt(availableSeats) : undefined,
           vehicleType: vehicleType || undefined,
-          pricePerPerson: pricePerPerson ? parseFloat(pricePerPerson) : undefined,
+          pricePerPerson: pricePerPerson
+            ? parseFloat(pricePerPerson)
+            : undefined,
         };
       }
 
@@ -296,8 +322,9 @@ export function CreateSpaceVScreen({
         description: description.trim(),
         location: location.trim() || undefined,
         price: priceNum,
-        currency: 'USD',
+        currency: "USD",
         metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+        groupId,
       };
 
       const listing = await createListing(token, listingData);
@@ -307,16 +334,22 @@ export function CreateSpaceVScreen({
         try {
           await uploadListingImages(token, listing.id, imageUris);
         } catch (err) {
-          console.error('Failed to upload images:', err);
-          Alert.alert('Warning', 'SpaceV listing created but image upload failed');
+          console.error("Failed to upload images:", err);
+          Alert.alert(
+            "Warning",
+            "SpaceV listing created but image upload failed",
+          );
         }
       }
 
-      Alert.alert('Success', 'SpaceV listing created successfully!', [
-        { text: 'OK', onPress: onSuccess },
+      Alert.alert("Success", "SpaceV listing created successfully!", [
+        { text: "OK", onPress: onSuccess },
       ]);
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to create SpaceV listing');
+      Alert.alert(
+        "Error",
+        err instanceof Error ? err.message : "Failed to create SpaceV listing",
+      );
     } finally {
       setSaving(false);
     }
@@ -329,7 +362,7 @@ export function CreateSpaceVScreen({
         setImageUris([...imageUris, ...newUris]);
       }
     } catch (err) {
-      Alert.alert('Error', 'Failed to pick images');
+      Alert.alert("Error", "Failed to pick images");
     }
   }
 
@@ -337,15 +370,24 @@ export function CreateSpaceVScreen({
     setImageUris(imageUris.filter((_, i) => i !== index));
   }
 
-  function getListingTypeLabel(listingType: ListingType): string {
-    const labels: Record<ListingType, string> = {
-      [ListingType.ROOMMATE]: 'Roommate',
-      [ListingType.ACCOMMODATION]: 'Accommodation',
-      [ListingType.ITEM]: 'Item',
-      [ListingType.EVENT]: 'Event',
-      [ListingType.RIDE]: 'Ride',
+  function getListingTypeMeta(listingType: ListingType): {
+    label: string;
+    icon: keyof typeof MaterialIcons.glyphMap;
+  } {
+    const labels: Record<
+      ListingType,
+      { label: string; icon: keyof typeof MaterialIcons.glyphMap }
+    > = {
+      [ListingType.ROOMMATE]: { label: "Roommate", icon: "groups" },
+      [ListingType.ACCOMMODATION]: {
+        label: "Accommodation",
+        icon: "apartment",
+      },
+      [ListingType.ITEM]: { label: "Item", icon: "sell" },
+      [ListingType.EVENT]: { label: "Event", icon: "event" },
+      [ListingType.RIDE]: { label: "Ride", icon: "directions-car" },
     };
-    return labels[listingType] || listingType;
+    return labels[listingType] || { label: listingType, icon: "category" };
   }
 
   function renderTypeSpecificFields() {
@@ -356,18 +398,34 @@ export function CreateSpaceVScreen({
             <Text style={styles.label}>Looking For / Offering</Text>
             <View style={styles.toggleContainer}>
               <TouchableOpacity
-                style={[styles.toggleButton, lookingFor && styles.toggleButtonSelected]}
+                style={[
+                  styles.toggleButton,
+                  lookingFor && styles.toggleButtonSelected,
+                ]}
                 onPress={() => setLookingFor(true)}
               >
-                <Text style={[styles.toggleText, lookingFor && styles.toggleTextSelected]}>
+                <Text
+                  style={[
+                    styles.toggleText,
+                    lookingFor && styles.toggleTextSelected,
+                  ]}
+                >
                   Looking For
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.toggleButton, !lookingFor && styles.toggleButtonSelected]}
+                style={[
+                  styles.toggleButton,
+                  !lookingFor && styles.toggleButtonSelected,
+                ]}
                 onPress={() => setLookingFor(false)}
               >
-                <Text style={[styles.toggleText, !lookingFor && styles.toggleTextSelected]}>
+                <Text
+                  style={[
+                    styles.toggleText,
+                    !lookingFor && styles.toggleTextSelected,
+                  ]}
+                >
                   Offering
                 </Text>
               </TouchableOpacity>
@@ -413,18 +471,34 @@ export function CreateSpaceVScreen({
             <Text style={styles.label}>Duration</Text>
             <View style={styles.toggleContainer}>
               <TouchableOpacity
-                style={[styles.toggleButton, duration === 'short-term' && styles.toggleButtonSelected]}
-                onPress={() => setDuration('short-term')}
+                style={[
+                  styles.toggleButton,
+                  duration === "short-term" && styles.toggleButtonSelected,
+                ]}
+                onPress={() => setDuration("short-term")}
               >
-                <Text style={[styles.toggleText, duration === 'short-term' && styles.toggleTextSelected]}>
+                <Text
+                  style={[
+                    styles.toggleText,
+                    duration === "short-term" && styles.toggleTextSelected,
+                  ]}
+                >
                   Short-term
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.toggleButton, duration === 'long-term' && styles.toggleButtonSelected]}
-                onPress={() => setDuration('long-term')}
+                style={[
+                  styles.toggleButton,
+                  duration === "long-term" && styles.toggleButtonSelected,
+                ]}
+                onPress={() => setDuration("long-term")}
               >
-                <Text style={[styles.toggleText, duration === 'long-term' && styles.toggleTextSelected]}>
+                <Text
+                  style={[
+                    styles.toggleText,
+                    duration === "long-term" && styles.toggleTextSelected,
+                  ]}
+                >
                   Long-term
                 </Text>
               </TouchableOpacity>
@@ -438,7 +512,12 @@ export function CreateSpaceVScreen({
                 style={styles.checkboxRow}
                 onPress={() => setSmoking(smoking === true ? undefined : true)}
               >
-                <View style={[styles.checkbox, smoking === true && styles.checkboxChecked]}>
+                <View
+                  style={[
+                    styles.checkbox,
+                    smoking === true && styles.checkboxChecked,
+                  ]}
+                >
                   {smoking === true && <Text style={styles.checkmark}>✓</Text>}
                 </View>
                 <Text style={styles.checkboxLabel}>Smoking OK</Text>
@@ -447,7 +526,12 @@ export function CreateSpaceVScreen({
                 style={styles.checkboxRow}
                 onPress={() => setPets(pets === true ? undefined : true)}
               >
-                <View style={[styles.checkbox, pets === true && styles.checkboxChecked]}>
+                <View
+                  style={[
+                    styles.checkbox,
+                    pets === true && styles.checkboxChecked,
+                  ]}
+                >
                   {pets === true && <Text style={styles.checkmark}>✓</Text>}
                 </View>
                 <Text style={styles.checkboxLabel}>Pets OK</Text>
@@ -547,8 +631,15 @@ export function CreateSpaceVScreen({
                 style={styles.checkboxRow}
                 onPress={() => setUtilitiesIncluded(utilitiesIncluded !== true)}
               >
-                <View style={[styles.checkbox, utilitiesIncluded === true && styles.checkboxChecked]}>
-                  {utilitiesIncluded === true && <Text style={styles.checkmark}>✓</Text>}
+                <View
+                  style={[
+                    styles.checkbox,
+                    utilitiesIncluded === true && styles.checkboxChecked,
+                  ]}
+                >
+                  {utilitiesIncluded === true && (
+                    <Text style={styles.checkmark}>✓</Text>
+                  )}
                 </View>
                 <Text style={styles.checkboxLabel}>Utilities Included</Text>
               </TouchableOpacity>
@@ -556,8 +647,15 @@ export function CreateSpaceVScreen({
                 style={styles.checkboxRow}
                 onPress={() => setFurnished(furnished !== true)}
               >
-                <View style={[styles.checkbox, furnished === true && styles.checkboxChecked]}>
-                  {furnished === true && <Text style={styles.checkmark}>✓</Text>}
+                <View
+                  style={[
+                    styles.checkbox,
+                    furnished === true && styles.checkboxChecked,
+                  ]}
+                >
+                  {furnished === true && (
+                    <Text style={styles.checkmark}>✓</Text>
+                  )}
                 </View>
                 <Text style={styles.checkboxLabel}>Furnished</Text>
               </TouchableOpacity>
@@ -592,14 +690,20 @@ export function CreateSpaceVScreen({
               style={styles.conditionScroll}
               contentContainerStyle={styles.conditionContainer}
             >
-              {['new', 'like-new', 'used', 'fair', 'poor'].map((cond) => (
+              {["new", "like-new", "used", "fair", "poor"].map((cond) => (
                 <TouchableOpacity
                   key={cond}
-                  style={[styles.conditionChip, condition === cond && styles.conditionChipSelected]}
+                  style={[
+                    styles.conditionChip,
+                    condition === cond && styles.conditionChipSelected,
+                  ]}
                   onPress={() => setCondition(cond)}
                 >
                   <Text
-                    style={[styles.conditionChipText, condition === cond && styles.conditionChipTextSelected]}
+                    style={[
+                      styles.conditionChipText,
+                      condition === cond && styles.conditionChipTextSelected,
+                    ]}
                   >
                     {cond.charAt(0).toUpperCase() + cond.slice(1)}
                   </Text>
@@ -613,13 +717,17 @@ export function CreateSpaceVScreen({
               <Text style={styles.label}>Category</Text>
               {isAutoDetected && category && (
                 <View style={styles.autoDetectedBadge}>
-                  <MaterialIcons name="auto-awesome" size={14} color="#10B981" />
+                  <MaterialIcons
+                    name="auto-awesome"
+                    size={14}
+                    color={theme.colors.success}
+                  />
                   <Text style={styles.autoDetectedText}>Auto-detected</Text>
                 </View>
               )}
             </View>
             {categoriesLoading ? (
-              <ActivityIndicator size="small" color="#2563EB" />
+              <ActivityIndicator size="small" color={theme.colors.blue} />
             ) : (
               <ScrollView
                 ref={categoryScrollViewRef}
@@ -637,7 +745,9 @@ export function CreateSpaceVScreen({
                     style={[
                       styles.categoryChip,
                       category === cat && styles.categoryChipSelected,
-                      isAutoDetected && category === cat && styles.categoryChipAutoDetected,
+                      isAutoDetected &&
+                        category === cat &&
+                        styles.categoryChipAutoDetected,
                     ]}
                     onPress={() => handleCategorySelect(cat)}
                     activeOpacity={0.7}
@@ -645,7 +755,11 @@ export function CreateSpaceVScreen({
                     <Icon
                       name={normalizeCategoryName(cat)}
                       size="sm"
-                      color={category === cat ? '#fff' : '#6B7280'}
+                      color={
+                        category === cat
+                          ? theme.colors.textInverse
+                          : theme.colors.textSecondary
+                      }
                       style={styles.categoryIcon}
                     />
                     <Text
@@ -657,7 +771,12 @@ export function CreateSpaceVScreen({
                       {cat}
                     </Text>
                     {isAutoDetected && category === cat && (
-                      <MaterialIcons name="check-circle" size={16} color="#fff" style={styles.checkIcon} />
+                      <MaterialIcons
+                        name="check-circle"
+                        size={16}
+                        color={theme.colors.textInverse}
+                        style={styles.checkIcon}
+                      />
                     )}
                   </TouchableOpacity>
                 ))}
@@ -762,18 +881,34 @@ export function CreateSpaceVScreen({
             <Text style={styles.label}>Visibility</Text>
             <View style={styles.toggleContainer}>
               <TouchableOpacity
-                style={[styles.toggleButton, isPublic && styles.toggleButtonSelected]}
+                style={[
+                  styles.toggleButton,
+                  isPublic && styles.toggleButtonSelected,
+                ]}
                 onPress={() => setIsPublic(true)}
               >
-                <Text style={[styles.toggleText, isPublic && styles.toggleTextSelected]}>
+                <Text
+                  style={[
+                    styles.toggleText,
+                    isPublic && styles.toggleTextSelected,
+                  ]}
+                >
                   Public
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.toggleButton, !isPublic && styles.toggleButtonSelected]}
+                style={[
+                  styles.toggleButton,
+                  !isPublic && styles.toggleButtonSelected,
+                ]}
                 onPress={() => setIsPublic(false)}
               >
-                <Text style={[styles.toggleText, !isPublic && styles.toggleTextSelected]}>
+                <Text
+                  style={[
+                    styles.toggleText,
+                    !isPublic && styles.toggleTextSelected,
+                  ]}
+                >
                   Private
                 </Text>
               </TouchableOpacity>
@@ -870,7 +1005,7 @@ export function CreateSpaceVScreen({
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <Header
         title="List Item"
         onBack={onBack}
@@ -878,12 +1013,24 @@ export function CreateSpaceVScreen({
         onNavigateToNotifications={onNavigateToNotifications}
         onNavigateToSettings={onNavigateToSettings}
       />
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+      >
         <View style={styles.content}>
-
           <View style={styles.form}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Type</Text>
+            <View style={styles.heroSection}>
+              <MaterialIcons
+                name="local-mall"
+                size={28}
+                color={theme.colors.blue}
+              />
+              <Text style={styles.heroTitle}>Create a Listing</Text>
+              <Text style={styles.heroSubtitle}>
+                Post a listing in minutes with guided, Finora‑first fields.
+              </Text>
+            </View>
+            <SectionCard title="Choose a path" icon="category">
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -899,57 +1046,70 @@ export function CreateSpaceVScreen({
                     ]}
                     onPress={() => setType(listingType)}
                   >
+                    <MaterialIcons
+                      name={getListingTypeMeta(listingType).icon}
+                      size={16}
+                      color={
+                        type === listingType
+                          ? theme.colors.textInverse
+                          : theme.colors.gray700
+                      }
+                      style={styles.typeChipIcon}
+                    />
                     <Text
                       style={[
                         styles.typeChipText,
                         type === listingType && styles.typeChipTextSelected,
                       ]}
                     >
-                      {getListingTypeLabel(listingType)}
+                      {getListingTypeMeta(listingType).label}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
-            </View>
+            </SectionCard>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Title *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder={
-                  type === ListingType.ROOMMATE
-                    ? 'e.g., Looking for Roommate'
-                    : type === ListingType.ACCOMMODATION
-                    ? 'e.g., 2BR Apartment for Rent'
-                    : type === ListingType.ITEM
-                    ? 'e.g., iPhone 13 Pro'
-                    : type === ListingType.EVENT
-                    ? 'e.g., Weekend BBQ Party'
-                    : 'e.g., Ride to Boston'
-                }
-                value={title}
-                onChangeText={setTitle}
-                autoCapitalize="words"
-              />
-            </View>
+            <SectionCard title="Core details" icon="edit">
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Title *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder={
+                    type === ListingType.ROOMMATE
+                      ? "e.g., Looking for Roommate"
+                      : type === ListingType.ACCOMMODATION
+                        ? "e.g., 2BR Apartment for Rent"
+                        : type === ListingType.ITEM
+                          ? "e.g., iPhone 13 Pro"
+                          : type === ListingType.EVENT
+                            ? "e.g., Weekend BBQ Party"
+                            : "e.g., Ride to Boston"
+                  }
+                  value={title}
+                  onChangeText={setTitle}
+                  autoCapitalize="words"
+                />
+              </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Description *</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Describe your SpaceV listing..."
-                value={description}
-                onChangeText={setDescription}
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-              />
-            </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Description *</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  placeholder="Describe your SpaceV listing..."
+                  value={description}
+                  onChangeText={setDescription}
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                />
+              </View>
+            </SectionCard>
 
-            {renderTypeSpecificFields()}
+            <SectionCard title="Details" icon="tune">
+              {renderTypeSpecificFields()}
+            </SectionCard>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Images (Optional)</Text>
+            <SectionCard title="Photos" icon="photo-library">
               {imageUris.length > 0 && (
                 <ScrollView
                   horizontal
@@ -974,12 +1134,16 @@ export function CreateSpaceVScreen({
                 style={styles.imageUploadButton}
                 onPress={pickImages}
               >
-                <MaterialIcons name="add-photo-alternate" size={24} color="#6B7280" />
+                <MaterialIcons
+                  name="add-photo-alternate"
+                  size={24}
+                  color={theme.colors.textSecondary}
+                />
                 <Text style={styles.imageUploadButtonText}>
-                  {imageUris.length > 0 ? 'Add More Images' : 'Add Images'}
+                  {imageUris.length > 0 ? "Add More Images" : "Add Images"}
                 </Text>
               </TouchableOpacity>
-            </View>
+            </SectionCard>
 
             <TouchableOpacity
               style={[styles.saveButton, saving && styles.saveButtonDisabled]}
@@ -987,7 +1151,7 @@ export function CreateSpaceVScreen({
               disabled={saving}
             >
               {saving ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={theme.colors.textInverse} />
               ) : (
                 <Text style={styles.saveButtonText}>List Item</Text>
               )}
@@ -1003,329 +1167,396 @@ export function CreateSpaceVScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollContent: {
-    paddingBottom: 24,
-  },
-  content: {
-    paddingHorizontal: 24,
-  },
-  form: {
-    marginTop: 8,
-  },
-  inputGroup: {
-    marginBottom: 24,
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#374151',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    padding: 12,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: '#111827',
-  },
-  textArea: {
-    minHeight: 100,
-    paddingTop: 12,
-  },
-  marginTop: {
-    marginTop: 8,
-  },
-  typeScroll: {
-    marginTop: 8,
-  },
-  typeContainer: {
-    paddingRight: 24,
-  },
-  typeChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  typeChipSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  typeChipText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  typeChipTextSelected: {
-    color: '#fff',
-  },
-  toggleContainer: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  toggleButton: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#F9FAFB',
-    alignItems: 'center',
-  },
-  toggleButtonSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  toggleText: {
-    fontSize: 16,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  toggleTextSelected: {
-    color: '#fff',
-  },
-  priceContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-  },
-  currencySymbol: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#374151',
-    marginRight: 8,
-  },
-  priceInput: {
-    flex: 1,
-    padding: 12,
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  checkboxContainer: {
-    marginTop: 8,
-  },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderWidth: 2,
-    borderColor: '#D1D5DB',
-    borderRadius: 4,
-    marginRight: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-  },
-  checkboxChecked: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  checkmark: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  checkboxLabel: {
-    fontSize: 16,
-    color: '#374151',
-  },
-  conditionScroll: {
-    marginTop: 8,
-  },
-  conditionContainer: {
-    paddingRight: 24,
-  },
-  conditionChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  conditionChipSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  conditionChipText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  conditionChipTextSelected: {
-    color: '#fff',
-  },
-  imageScroll: {
-    marginBottom: 12,
-  },
-  imageContainer: {
-    paddingRight: 24,
-  },
-  imageWrapper: {
-    position: 'relative',
-    marginRight: 12,
-  },
-  imagePreview: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
-    backgroundColor: '#F3F4F6',
-  },
-  removeImageButton: {
-    position: 'absolute',
-    top: -8,
-    right: -8,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#EF4444',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  removeImageText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  imageUploadButton: {
-    borderWidth: 2,
-    borderColor: '#D1D5DB',
-    borderStyle: 'dashed',
-    borderRadius: 8,
-    padding: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 100,
-  },
-  imageUploadButtonText: {
-    fontSize: 16,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  saveButton: {
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  saveButtonDisabled: {
-    opacity: 0.5,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  cancelButton: {
-    backgroundColor: 'transparent',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#2563EB',
-  },
-  cancelButtonText: {
-    color: '#2563EB',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  categoryLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  autoDetectedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#D1FAE5',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  autoDetectedText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#10B981',
-  },
-  categoryScroll: {
-    marginHorizontal: -24,
-    paddingHorizontal: 24,
-  },
-  categoryContainer: {
-    gap: 8,
-  },
-  categoryChip: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    marginRight: 8,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  categoryChipSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  categoryChipAutoDetected: {
-    backgroundColor: '#10B981',
-    borderColor: '#10B981',
-    shadowColor: '#10B981',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  categoryIcon: {
-    marginRight: 0,
-  },
-  categoryChipText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  categoryChipTextSelected: {
-    color: '#FFFFFF',
-  },
-  checkIcon: {
-    marginLeft: 2,
-  },
-});
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    scrollContent: {
+      paddingBottom: theme.spacing.xl,
+    },
+    content: {
+      paddingHorizontal: theme.spacing.xl,
+    },
+    form: {
+      marginTop: theme.spacing.sm,
+    },
+    heroSection: {
+      alignItems: "center",
+      marginBottom: theme.spacing["2xl"],
+      paddingTop: theme.spacing.sm,
+    },
+    heroTitle: {
+      fontSize: theme.typography.fontSize.lg,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+      marginTop: theme.spacing.sm,
+    },
+    heroSubtitle: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+      textAlign: "center",
+      marginTop: theme.spacing.xs,
+    },
+    sectionCard: {
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: theme.spacing.sm,
+      padding: theme.spacing.base,
+      marginBottom: theme.spacing.lg,
+      backgroundColor: theme.colors.background,
+      shadowColor: theme.colors.black,
+      shadowOpacity: 0.04,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 3 },
+      elevation: 2,
+    },
+    sectionHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.xs,
+      marginBottom: theme.spacing.base,
+    },
+    sectionTitle: {
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+    },
+    inputGroup: {
+      marginBottom: theme.spacing.xl,
+    },
+    label: {
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.gray700,
+      marginBottom: theme.spacing.xs,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: theme.colors.borderDark,
+      borderRadius: theme.spacing.sm,
+      padding: theme.spacing.md,
+      paddingHorizontal: theme.spacing.base,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textPrimary,
+    },
+    textArea: {
+      minHeight: 100,
+      paddingTop: theme.spacing.md,
+    },
+    marginTop: {
+      marginTop: theme.spacing.sm,
+    },
+    typeScroll: {
+      marginTop: theme.spacing.sm,
+    },
+    typeContainer: {
+      paddingRight: theme.spacing.xl,
+    },
+    typeChip: {
+      paddingVertical: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.base,
+      borderRadius: 20,
+      backgroundColor: theme.colors.backgroundTertiary,
+      marginRight: theme.spacing.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.xs,
+    },
+    typeChipSelected: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    typeChipText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.gray700,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    typeChipIcon: {
+      marginRight: theme.spacing.xs,
+    },
+    typeChipTextSelected: {
+      color: theme.colors.textInverse,
+    },
+    toggleContainer: {
+      flexDirection: "row",
+      gap: theme.spacing.md,
+    },
+    toggleButton: {
+      flex: 1,
+      paddingVertical: 12,
+      paddingHorizontal: theme.spacing.base,
+      borderRadius: theme.spacing.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.borderDark,
+      backgroundColor: theme.colors.backgroundSecondary,
+      alignItems: "center",
+    },
+    toggleButtonSelected: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    toggleText: {
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.gray700,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    toggleTextSelected: {
+      color: theme.colors.textInverse,
+    },
+    priceContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: theme.colors.borderDark,
+      borderRadius: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.base,
+    },
+    currencySymbol: {
+      fontSize: 20,
+      fontWeight: "600",
+      color: theme.colors.gray700,
+      marginRight: 8,
+    },
+    priceInput: {
+      flex: 1,
+      padding: theme.spacing.md,
+      fontSize: 20,
+      fontWeight: "600",
+      color: theme.colors.textPrimary,
+    },
+    checkboxContainer: {
+      marginTop: theme.spacing.sm,
+    },
+    checkboxRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: theme.spacing.md,
+    },
+    checkbox: {
+      width: 24,
+      height: 24,
+      borderWidth: 2,
+      borderColor: theme.colors.borderDark,
+      borderRadius: 4,
+      marginRight: 12,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: theme.colors.background,
+    },
+    checkboxChecked: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    checkmark: {
+      color: theme.colors.textInverse,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: "bold",
+    },
+    checkboxLabel: {
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.gray700,
+    },
+    conditionScroll: {
+      marginTop: theme.spacing.sm,
+    },
+    conditionContainer: {
+      paddingRight: 24,
+    },
+    conditionChip: {
+      paddingVertical: 8,
+      paddingHorizontal: theme.spacing.base,
+      borderRadius: 20,
+      backgroundColor: theme.colors.backgroundTertiary,
+      marginRight: 8,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    conditionChipSelected: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    conditionChipText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.gray700,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    conditionChipTextSelected: {
+      color: theme.colors.textInverse,
+    },
+    imageScroll: {
+      marginBottom: theme.spacing.md,
+    },
+    imageContainer: {
+      paddingRight: 24,
+    },
+    imageWrapper: {
+      position: "relative",
+      marginRight: 12,
+    },
+    imagePreview: {
+      width: 100,
+      height: 100,
+      borderRadius: theme.spacing.sm,
+      backgroundColor: theme.colors.backgroundTertiary,
+    },
+    removeImageButton: {
+      position: "absolute",
+      top: -8,
+      right: -8,
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: theme.colors.error,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    removeImageText: {
+      color: theme.colors.textInverse,
+      fontSize: 18,
+      fontWeight: "bold",
+    },
+    imageUploadButton: {
+      borderWidth: 2,
+      borderColor: theme.colors.borderDark,
+      borderStyle: "dashed",
+      borderRadius: theme.spacing.sm,
+      padding: theme.spacing.xl,
+      alignItems: "center",
+      justifyContent: "center",
+      minHeight: 100,
+    },
+    imageUploadButtonText: {
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textSecondary,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    saveButton: {
+      backgroundColor: theme.colors.blue,
+      borderRadius: theme.spacing.sm,
+      paddingVertical: 12,
+      paddingHorizontal: 24,
+      minHeight: 44,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: theme.spacing.md,
+    },
+    saveButtonDisabled: {
+      opacity: 0.5,
+    },
+    saveButtonText: {
+      color: theme.colors.textInverse,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    cancelButton: {
+      backgroundColor: "transparent",
+      borderRadius: theme.spacing.sm,
+      paddingVertical: 12,
+      paddingHorizontal: 24,
+      minHeight: 44,
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: theme.colors.blue,
+    },
+    cancelButtonText: {
+      color: theme.colors.blue,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    categoryLabelRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 8,
+    },
+    autoDetectedBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.xs,
+      backgroundColor: theme.colors.successBackground,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 12,
+    },
+    autoDetectedText: {
+      fontSize: 12,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.success,
+    },
+    categoryScroll: {
+      marginHorizontal: -24,
+      paddingHorizontal: 24,
+    },
+    categoryContainer: {
+      gap: 8,
+    },
+    categoryChip: {
+      backgroundColor: theme.colors.backgroundTertiary,
+      borderRadius: 20,
+      paddingVertical: 8,
+      paddingHorizontal: theme.spacing.base,
+      marginRight: 8,
+      borderWidth: 2,
+      borderColor: "transparent",
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    categoryChipSelected: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    categoryChipAutoDetected: {
+      backgroundColor: theme.colors.success,
+      borderColor: theme.colors.success,
+      shadowColor: theme.colors.success,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    categoryIcon: {
+      marginRight: 0,
+    },
+    categoryChipText: {
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.gray700,
+    },
+    categoryChipTextSelected: {
+      color: theme.colors.textInverse,
+    },
+    checkIcon: {
+      marginLeft: 2,
+    },
+  });
 
+interface SectionCardProps {
+  title: string;
+  icon: keyof typeof MaterialIcons.glyphMap;
+  children: React.ReactNode;
+}
+
+function SectionCard({ title, icon, children }: SectionCardProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  return (
+    <View style={styles.sectionCard}>
+      <View style={styles.sectionHeader}>
+        <MaterialIcons name={icon} size={18} color={theme.colors.blue} />
+        <Text style={styles.sectionTitle}>{title}</Text>
+      </View>
+      {children}
+    </View>
+  );
+}

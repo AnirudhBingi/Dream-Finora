@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -7,9 +7,9 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth } from '../auth/authContext';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useAuth } from "../auth/authContext";
 import {
   getBalance,
   getCombinedBalance,
@@ -17,20 +17,27 @@ import {
   BalanceInfo,
   CombinedBalanceInfo,
   FinanceTransaction,
-} from '../api/financeApi';
-import { getProfile } from '../api/profileApi';
-import { MaterialIcons } from '@expo/vector-icons';
-import { Header } from '../components/Header';
+} from "../api/financeApi";
+import { getProfile } from "../api/profileApi";
+import { MaterialIcons } from "@expo/vector-icons";
+import { Header } from "../components/Header";
+import { ErrorState } from "../components/ErrorState";
+import {
+  SegmentedControl,
+  SegmentedControlOption,
+} from "../components/SegmentedControl";
+import { useDataFetch } from "../hooks/useDataFetch";
+import { useTheme } from "../theme";
 
 interface FinanceScreenProps {
-  onAddIncome: (context: 'local' | 'home') => void;
-  onAddExpense: (context: 'local' | 'home') => void;
-  onViewBudgets: (context: 'local' | 'home') => void;
-  onViewGoals: (context: 'local' | 'home') => void;
-  onViewLoans: (context: 'local' | 'home') => void;
-  onViewAdvisor: (context: 'local' | 'home') => void;
+  onAddIncome: (context: "local" | "home") => void;
+  onAddExpense: (context: "local" | "home") => void;
+  onViewBudgets: (context: "local" | "home") => void;
+  onViewGoals: (context: "local" | "home") => void;
+  onViewLoans: (context: "local" | "home") => void;
+  onViewAdvisor: (context: "local" | "home") => void;
   onEditTransaction?: (transactionId: string) => void;
-  onViewHistory?: (context?: 'local' | 'home') => void;
+  onViewHistory?: (context?: "local" | "home") => void;
   onBack: () => void;
   onNavigateToProfile?: () => void;
   onNavigateToNotifications?: () => void;
@@ -51,71 +58,84 @@ export function FinanceScreen({
   onNavigateToNotifications,
   onNavigateToSettings,
 }: FinanceScreenProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { token } = useAuth();
-  const [context, setContext] = useState<'local' | 'home'>('local');
-  const [balance, setBalance] = useState<BalanceInfo | null>(null);
-  const [combinedBalance, setCombinedBalance] = useState<CombinedBalanceInfo | null>(null);
-  const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [primaryCurrency, setPrimaryCurrency] = useState<string>('USD');
-  const [homeCountryCurrency, setHomeCountryCurrency] = useState<string>('USD');
+  const [context, setContext] = useState<"local" | "home">("local");
+  const [primaryCurrency, setPrimaryCurrency] = useState<string>("USD");
+  const [homeCountryCurrency, setHomeCountryCurrency] = useState<string>("USD");
+
+  interface FinanceData {
+    balance: BalanceInfo;
+    combinedBalance: CombinedBalanceInfo;
+    transactions: FinanceTransaction[];
+  }
+
+  const { data, loading, refreshing, error, refresh, refetch } =
+    useDataFetch<FinanceData>({
+      fetchFn: async () => {
+        if (!token) throw new Error("No authentication token");
+        const currency =
+          context === "local" ? primaryCurrency : homeCountryCurrency;
+        const [balanceData, transactionsData, combinedBalanceData] =
+          await Promise.all([
+            getBalance(token, context, context === "local"), // Include Billchop for local
+            getTransactions(token, context, context === "local"), // Include Billchop for local
+            getCombinedBalance(token, primaryCurrency), // Get combined balance with currency conversion
+          ]);
+        return {
+          balance: balanceData,
+          combinedBalance: combinedBalanceData,
+          transactions: transactionsData,
+        };
+      },
+      immediate: false, // Wait for currencies to load
+      deps: [token, context, primaryCurrency, homeCountryCurrency],
+    });
 
   useEffect(() => {
-    loadCurrencies();
-    loadData();
-  }, [token, context]);
-
-  async function loadCurrencies() {
-    if (!token) return;
-
-    try {
-      const profile = await getProfile(token);
-      if (profile) {
-        setPrimaryCurrency(profile.primaryCurrency || 'USD');
-        setHomeCountryCurrency(profile.homeCountryCurrency || 'USD');
-      } else {
-        // Default to USD if profile is null
-        setPrimaryCurrency('USD');
-        setHomeCountryCurrency('USD');
+    async function loadCurrencies() {
+      if (!token) return;
+      try {
+        const profile = await getProfile(token);
+        if (profile) {
+          setPrimaryCurrency(profile.primaryCurrency || "USD");
+          setHomeCountryCurrency(profile.homeCountryCurrency || "USD");
+        } else {
+          setPrimaryCurrency("USD");
+          setHomeCountryCurrency("USD");
+        }
+      } catch (err) {
+        setPrimaryCurrency("USD");
+        setHomeCountryCurrency("USD");
       }
-    } catch (err) {
-      // Default to USD if loading fails
-      setPrimaryCurrency('USD');
-      setHomeCountryCurrency('USD');
     }
-  }
+    loadCurrencies();
+  }, [token]);
 
-  async function loadData() {
-    if (!token) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-      const currency = context === 'local' ? primaryCurrency : homeCountryCurrency;
-      const [balanceData, transactionsData, combinedBalanceData] = await Promise.all([
-        getBalance(token, context, context === 'local', currency), // Include Billchop for local
-        getTransactions(token, context, context === 'local'), // Include Billchop for local
-        getCombinedBalance(token, primaryCurrency), // Get combined balance with currency conversion
-      ]);
-      setBalance(balanceData);
-      setCombinedBalance(combinedBalanceData);
-      setTransactions(transactionsData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load finances');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+  useEffect(() => {
+    if (primaryCurrency && homeCountryCurrency) {
+      refetch();
     }
-  }
+  }, [primaryCurrency, homeCountryCurrency]);
 
-  function formatCurrency(amount: number | undefined | null, currency?: string): string {
-    if (amount === undefined || amount === null || isNaN(amount)) return '$0.00';
-    const displayCurrency = currency || (context === 'local' ? primaryCurrency : homeCountryCurrency) || 'USD';
+  const balance = data?.balance ?? null;
+  const combinedBalance = data?.combinedBalance ?? null;
+  const transactions = data?.transactions ?? [];
+
+  function formatCurrency(
+    amount: number | undefined | null,
+    currency?: string,
+  ): string {
+    if (amount === undefined || amount === null || isNaN(amount))
+      return "$0.00";
+    const displayCurrency =
+      currency ||
+      (context === "local" ? primaryCurrency : homeCountryCurrency) ||
+      "USD";
     try {
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
         currency: displayCurrency,
       }).format(amount);
     } catch (e) {
@@ -125,19 +145,20 @@ export function FinanceScreen({
   }
 
   function formatDate(dateString: string | undefined | null): string {
-    if (!dateString) return '';
+    if (!dateString) return "";
     const date = new Date(dateString);
-    if (isNaN(date.getTime())) return '';
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined,
+    if (isNaN(date.getTime())) return "";
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year:
+        date.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
     });
   }
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <Header
           title="My Wallet"
           onBack={onBack}
@@ -146,7 +167,7 @@ export function FinanceScreen({
           onNavigateToSettings={onNavigateToSettings}
         />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
+          <ActivityIndicator size="large" color={theme.colors.blue} />
           <Text style={styles.loadingText}>Loading finances...</Text>
         </View>
       </SafeAreaView>
@@ -154,7 +175,7 @@ export function FinanceScreen({
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <Header
         title="My Wallet"
         onBack={onBack}
@@ -166,67 +187,29 @@ export function FinanceScreen({
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={loadData} />
+          <RefreshControl refreshing={refreshing} onRefresh={refresh} />
         }
       >
         <View style={styles.content}>
-
           {error && (
             <View style={styles.errorContainer}>
               <Text style={styles.errorText}>{error}</Text>
-              <TouchableOpacity style={styles.retryButton} onPress={loadData}>
+              <TouchableOpacity style={styles.retryButton} onPress={refetch}>
                 <Text style={styles.retryButtonText}>Retry</Text>
               </TouchableOpacity>
             </View>
           )}
 
           {/* Context Toggle */}
-          <View style={styles.contextToggle}>
-            <TouchableOpacity
-              style={[
-                styles.contextButton,
-                context === 'local' && styles.contextButtonActive,
-              ]}
-              onPress={() => setContext('local')}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons
-                name="location-on"
-                size={20}
-                color={context === 'local' ? '#fff' : '#6B7280'}
-              />
-              <Text
-                style={[
-                  styles.contextButtonText,
-                  context === 'local' && styles.contextButtonTextActive,
-                ]}
-              >
-                Local Finance
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.contextButton,
-                context === 'home' && styles.contextButtonActive,
-              ]}
-              onPress={() => setContext('home')}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons
-                name="home"
-                size={20}
-                color={context === 'home' ? '#fff' : '#6B7280'}
-              />
-              <Text
-                style={[
-                  styles.contextButtonText,
-                  context === 'home' && styles.contextButtonTextActive,
-                ]}
-              >
-                Home Country
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <SegmentedControl
+            options={[
+              { value: "local", label: "Local Finance", icon: "location-on" },
+              { value: "home", label: "Home Country", icon: "home" },
+            ]}
+            value={context}
+            onChange={(value) => setContext(value as "local" | "home")}
+            style={styles.contextToggle}
+          />
 
           {/* Combined Total Balance Card */}
           {combinedBalance && (
@@ -237,12 +220,27 @@ export function FinanceScreen({
               </Text>
               <View style={styles.balanceBreakdown}>
                 <Text style={styles.balanceSubtext}>
-                  Local ({combinedBalance.localBalance.currency || 'USD'}): {formatCurrency(combinedBalance.localBalance.amount, combinedBalance.localBalance.currency)}
+                  Local ({combinedBalance.localBalance.currency || "USD"}):{" "}
+                  {formatCurrency(
+                    combinedBalance.localBalance.amount,
+                    combinedBalance.localBalance.currency,
+                  )}
                 </Text>
                 <Text style={styles.balanceSubtext}>
-                  Home ({combinedBalance.homeBalance.currency || 'USD'}): {formatCurrency(combinedBalance.homeBalance.amount, combinedBalance.homeBalance.currency)}
+                  Home ({combinedBalance.homeBalance.currency || "USD"}):{" "}
+                  {formatCurrency(
+                    combinedBalance.homeBalance.amount,
+                    combinedBalance.homeBalance.currency,
+                  )}
                   {combinedBalance.homeBalance.currency !== primaryCurrency ? (
-                    <Text style={styles.balanceSubtext}> ≈ {formatCurrency(combinedBalance.homeBalance.convertedAmount, primaryCurrency)}</Text>
+                    <Text style={styles.balanceSubtext}>
+                      {" "}
+                      ≈{" "}
+                      {formatCurrency(
+                        combinedBalance.homeBalance.convertedAmount,
+                        primaryCurrency,
+                      )}
+                    </Text>
                   ) : null}
                 </Text>
               </View>
@@ -253,21 +251,27 @@ export function FinanceScreen({
           {balance && (
             <View style={styles.balanceCard}>
               <Text style={styles.balanceTitle}>
-                {context === 'local' ? 'Local' : 'Home Country'} Balance
+                {context === "local" ? "Local" : "Home Country"} Balance
               </Text>
               <Text style={styles.balanceAmount}>
                 {formatCurrency(balance.totalBalance)}
               </Text>
-              {context === 'local' && balance.billchopBalance && balance.billchopBalance > 0 ? (
+              {context === "local" &&
+              balance.billchopBalance &&
+              balance.billchopBalance > 0 ? (
                 <View style={styles.balanceBreakdown}>
                   <Text style={styles.balanceSubtext}>
-                    Finance: {formatCurrency(balance.totalBalance - balance.billchopBalance)}
+                    Finance:{" "}
+                    {formatCurrency(
+                      balance.totalBalance - balance.billchopBalance,
+                    )}
                   </Text>
                   <Text style={styles.balanceSubtext}>
                     Billchop: {formatCurrency(balance.billchopBalance)}
                   </Text>
                   <Text style={styles.balanceTotal}>
-                    Total Available: {formatCurrency(balance.totalAvailableBalance)}
+                    Total Available:{" "}
+                    {formatCurrency(balance.totalAvailableBalance)}
                   </Text>
                 </View>
               ) : null}
@@ -281,7 +285,11 @@ export function FinanceScreen({
               onPress={() => onAddIncome(context)}
               activeOpacity={0.7}
             >
-              <MaterialIcons name="arrow-downward" size={24} color="#fff" />
+              <MaterialIcons
+                name="arrow-downward"
+                size={24}
+                color={theme.colors.white}
+              />
               <Text style={styles.actionButtonText}>Money In</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -289,7 +297,11 @@ export function FinanceScreen({
               onPress={() => onAddExpense(context)}
               activeOpacity={0.7}
             >
-              <MaterialIcons name="arrow-upward" size={24} color="#fff" />
+              <MaterialIcons
+                name="arrow-upward"
+                size={24}
+                color={theme.colors.white}
+              />
               <Text style={styles.actionButtonText}>Spent On</Text>
             </TouchableOpacity>
           </View>
@@ -301,36 +313,68 @@ export function FinanceScreen({
               onPress={() => onViewBudgets(context)}
               activeOpacity={0.7}
             >
-              <MaterialIcons name="account-balance-wallet" size={24} color="#2563EB" />
+              <MaterialIcons
+                name="account-balance-wallet"
+                size={24}
+                color={theme.colors.blue}
+              />
               <Text style={styles.financeActionButtonText}>Budgets</Text>
-              <MaterialIcons name="chevron-right" size={20} color="#6B7280" />
+              <MaterialIcons
+                name="chevron-right"
+                size={20}
+                color={theme.colors.textSecondary}
+              />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.financeActionButton}
               onPress={() => onViewGoals(context)}
               activeOpacity={0.7}
             >
-              <MaterialIcons name="flag" size={24} color="#10B981" />
+              <MaterialIcons
+                name="flag"
+                size={24}
+                color={theme.colors.success}
+              />
               <Text style={styles.financeActionButtonText}>Goals</Text>
-              <MaterialIcons name="chevron-right" size={20} color="#6B7280" />
+              <MaterialIcons
+                name="chevron-right"
+                size={20}
+                color={theme.colors.textSecondary}
+              />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.financeActionButton}
               onPress={() => onViewLoans(context)}
               activeOpacity={0.7}
             >
-              <MaterialIcons name="account-balance" size={24} color="#F59E0B" />
+              <MaterialIcons
+                name="account-balance"
+                size={24}
+                color={theme.colors.warning}
+              />
               <Text style={styles.financeActionButtonText}>Loans</Text>
-              <MaterialIcons name="chevron-right" size={20} color="#6B7280" />
+              <MaterialIcons
+                name="chevron-right"
+                size={20}
+                color={theme.colors.textSecondary}
+              />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.financeActionButton}
               onPress={() => onViewAdvisor(context)}
               activeOpacity={0.7}
             >
-              <MaterialIcons name="psychology" size={24} color="#8B5CF6" />
+              <MaterialIcons
+                name="psychology"
+                size={24}
+                color={theme.colors.primary}
+              />
               <Text style={styles.financeActionButtonText}>AI Advisor</Text>
-              <MaterialIcons name="chevron-right" size={20} color="#6B7280" />
+              <MaterialIcons
+                name="chevron-right"
+                size={20}
+                color={theme.colors.textSecondary}
+              />
             </TouchableOpacity>
           </View>
 
@@ -344,7 +388,11 @@ export function FinanceScreen({
                   onPress={() => onViewHistory(context)}
                   activeOpacity={0.7}
                 >
-                  <MaterialIcons name="history" size={20} color="#2563EB" />
+                  <MaterialIcons
+                    name="history"
+                    size={20}
+                    color={theme.colors.blue}
+                  />
                 </TouchableOpacity>
               )}
               <TouchableOpacity
@@ -354,32 +402,48 @@ export function FinanceScreen({
                 }}
                 activeOpacity={0.7}
               >
-                <MaterialIcons name="filter-list" size={20} color="#6B7280" />
+                <MaterialIcons
+                  name="filter-list"
+                  size={20}
+                  color={theme.colors.textSecondary}
+                />
               </TouchableOpacity>
             </View>
           </View>
 
           {transactions.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <MaterialIcons name="receipt-long" size={48} color="#D1D5DB" />
+              <MaterialIcons
+                name="receipt-long"
+                size={48}
+                color={theme.colors.borderDark}
+              />
               <Text style={styles.emptyText}>No transactions yet</Text>
               <Text style={styles.emptySubtext}>
-                Add your first transaction to start tracking your{' '}
-                {context === 'local' ? 'local' : 'home country'} finances!
+                Add your first transaction to start tracking your{" "}
+                {context === "local" ? "local" : "home country"} finances!
               </Text>
               <View style={styles.emptyActionButtons}>
                 <TouchableOpacity
                   style={[styles.emptyActionButton, styles.emptyMoneyInButton]}
                   onPress={() => onAddIncome(context)}
                 >
-                  <MaterialIcons name="arrow-downward" size={20} color="#fff" />
+                  <MaterialIcons
+                    name="arrow-downward"
+                    size={20}
+                    color={theme.colors.white}
+                  />
                   <Text style={styles.emptyActionButtonText}>Money In</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.emptyActionButton, styles.emptySpentOnButton]}
                   onPress={() => onAddExpense(context)}
                 >
-                  <MaterialIcons name="arrow-upward" size={20} color="#fff" />
+                  <MaterialIcons
+                    name="arrow-upward"
+                    size={20}
+                    color={theme.colors.white}
+                  />
                   <Text style={styles.emptyActionButtonText}>Spent On</Text>
                 </TouchableOpacity>
               </View>
@@ -397,40 +461,71 @@ export function FinanceScreen({
                     <View
                       style={[
                         styles.transactionIcon,
-                        transaction.type === 'income'
+                        transaction.type === "income"
                           ? styles.transactionIconIncome
                           : styles.transactionIconExpense,
                       ]}
                     >
                       <MaterialIcons
-                        name={transaction.type === 'income' ? 'arrow-downward' : 'arrow-upward'}
+                        name={
+                          transaction.type === "income"
+                            ? "arrow-downward"
+                            : "arrow-upward"
+                        }
                         size={20}
-                        color="#fff"
+                        color={theme.colors.white}
                       />
                     </View>
                     <View style={styles.transactionInfo}>
-                      <Text style={styles.transactionDescription} numberOfLines={1}>
-                        {transaction.description || 
-                         (transaction.type === 'income' 
-                           ? transaction.source || 'Income'
-                           : transaction.category || 'Expense')}
+                      <Text
+                        style={styles.transactionDescription}
+                        numberOfLines={1}
+                      >
+                        {transaction.description ||
+                          (transaction.type === "income"
+                            ? transaction.source || "Income"
+                            : transaction.category || "Expense")}
                       </Text>
                       <View style={styles.transactionMeta}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-                          {transaction.type === 'income' && transaction.source && (
-                            <Text style={styles.transactionMetaText}>{transaction.source} • </Text>
-                          )}
-                          {transaction.type === 'expense' && transaction.category && (
-                            <Text style={styles.transactionMetaText}>{transaction.category} • </Text>
-                          )}
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          {transaction.type === "income" &&
+                            transaction.source && (
+                              <Text style={styles.transactionMetaText}>
+                                {transaction.source} •{" "}
+                              </Text>
+                            )}
+                          {transaction.type === "expense" &&
+                            transaction.category && (
+                              <Text style={styles.transactionMetaText}>
+                                {transaction.category} •{" "}
+                              </Text>
+                            )}
                           {transaction.date && (
-                            <Text style={styles.transactionMetaText}>{formatDate(transaction.date)}</Text>
+                            <Text style={styles.transactionMetaText}>
+                              {formatDate(transaction.date)}
+                            </Text>
                           )}
                           {transaction.expenseSplit && (
                             <>
-                              <Text style={styles.transactionMetaText}> • </Text>
-                              <MaterialIcons name="receipt" size={12} color="#6B7280" />
-                              <Text style={styles.transactionMetaText}> Billchop</Text>
+                              <Text style={styles.transactionMetaText}>
+                                {" "}
+                                •{" "}
+                              </Text>
+                              <MaterialIcons
+                                name="receipt"
+                                size={12}
+                                color={theme.colors.textSecondary}
+                              />
+                              <Text style={styles.transactionMetaText}>
+                                {" "}
+                                Billchop
+                              </Text>
                             </>
                           )}
                         </View>
@@ -440,12 +535,12 @@ export function FinanceScreen({
                   <Text
                     style={[
                       styles.transactionAmount,
-                      transaction.type === 'income'
+                      transaction.type === "income"
                         ? styles.transactionAmountIncome
                         : styles.transactionAmountExpense,
                     ]}
                   >
-                    {transaction.type === 'income' ? '+' : '-'}
+                    {transaction.type === "income" ? "+" : "-"}
                     {formatCurrency(transaction.amount)}
                   </Text>
                 </View>
@@ -458,308 +553,283 @@ export function FinanceScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollContent: {
-    paddingBottom: 24,
-  },
-  content: {
-    paddingHorizontal: 24,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#6B7280',
-  },
-  errorContainer: {
-    padding: 16,
-    backgroundColor: '#FEF2F2',
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  errorText: {
-    fontSize: 14,
-    color: '#EF4444',
-    marginBottom: 8,
-  },
-  retryButton: {
-    backgroundColor: '#EF4444',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    alignSelf: 'flex-start',
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  contextToggle: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 24,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 8,
-    padding: 4,
-  },
-  contextButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 6,
-    gap: 8,
-  },
-  contextButtonActive: {
-    backgroundColor: '#2563EB',
-  },
-  contextButtonText: {
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  contextButtonTextActive: {
-    color: '#fff',
-  },
-  balanceCard: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-    alignItems: 'center',
-  },
-  balanceTitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  balanceAmount: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#111827',
-    marginBottom: 8,
-  },
-  balanceBreakdown: {
-    width: '100%',
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-  },
-  balanceSubtext: {
-    fontSize: 12,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  balanceTotal: {
-    fontSize: 14,
-    color: '#111827',
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: 4,
-  },
-  actionButtonsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
-  },
-  financeActionsContainer: {
-    gap: 12,
-    marginBottom: 24,
-  },
-  financeActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    minHeight: 56,
-  },
-  financeActionButtonText: {
-    flex: 1,
-    marginLeft: 12,
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  actionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    gap: 8,
-    minHeight: 56,
-  },
-  moneyInButton: {
-    backgroundColor: '#10B981',
-  },
-  spentOnButton: {
-    backgroundColor: '#EF4444',
-  },
-  actionButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  transactionsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  transactionsHeaderActions: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-  },
-  historyButton: {
-    padding: 8,
-    minHeight: 44,
-    minWidth: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  filterButton: {
-    padding: 8,
-    minHeight: 44,
-    minWidth: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    padding: 32,
-  },
-  emptyText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#374151',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  emptyActionButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
-  emptyActionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    gap: 6,
-    minHeight: 44,
-  },
-  emptyMoneyInButton: {
-    backgroundColor: '#10B981',
-  },
-  emptySpentOnButton: {
-    backgroundColor: '#EF4444',
-  },
-  emptyActionButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  transactionCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  transactionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  transactionLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: 12,
-  },
-  transactionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  transactionIconIncome: {
-    backgroundColor: '#10B981',
-  },
-  transactionIconExpense: {
-    backgroundColor: '#EF4444',
-  },
-  transactionInfo: {
-    flex: 1,
-  },
-  transactionDescription: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  transactionMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-  },
-  transactionMetaText: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  transactionAmount: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  transactionAmountIncome: {
-    color: '#10B981',
-  },
-  transactionAmountExpense: {
-    color: '#EF4444',
-  },
-});
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.backgroundSecondary,
+    },
+    container: {
+      flex: 1,
+    },
+    scrollContent: {
+      paddingBottom: theme.spacing.xl,
+    },
+    content: {
+      paddingHorizontal: theme.spacing.base,
+      paddingTop: theme.spacing.base,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 24,
+    },
+    loadingText: {
+      marginTop: theme.spacing.base,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textSecondary,
+    },
+    errorContainer: {
+      padding: theme.spacing.base,
+      backgroundColor: theme.colors.errorBackground,
+      borderRadius: 8,
+      marginBottom: 16,
+    },
+    errorText: {
+      fontSize: 14,
+      color: theme.colors.error,
+      marginBottom: 8,
+    },
+    retryButton: {
+      backgroundColor: theme.colors.error,
+      borderRadius: 8,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.xl,
+      minHeight: 44,
+      alignSelf: "flex-start",
+    },
+    retryButtonText: {
+      color: theme.colors.white,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: "500",
+    },
+    contextToggle: {
+      marginBottom: theme.spacing.xl,
+    },
+    balanceCard: {
+      backgroundColor: theme.colors.backgroundSecondary,
+      borderRadius: 12,
+      padding: theme.spacing.base,
+      marginBottom: theme.spacing.xl,
+      alignItems: "center",
+    },
+    balanceTitle: {
+      fontSize: 14,
+      color: theme.colors.textSecondary,
+      marginBottom: 8,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    balanceAmount: {
+      fontSize: 32,
+      fontWeight: "bold",
+      color: theme.colors.textPrimary,
+      marginBottom: 8,
+    },
+    balanceBreakdown: {
+      width: "100%",
+      marginTop: 8,
+      paddingTop: 8,
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.border,
+    },
+    balanceSubtext: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.textSecondary,
+      textAlign: "center",
+      marginBottom: 4,
+    },
+    balanceTotal: {
+      fontSize: 14,
+      color: theme.colors.textPrimary,
+      fontWeight: theme.typography.fontWeight.semibold,
+      textAlign: "center",
+      marginTop: 4,
+    },
+    actionButtonsContainer: {
+      flexDirection: "row",
+      gap: 12,
+      marginBottom: 16,
+    },
+    financeActionsContainer: {
+      gap: 12,
+      marginBottom: theme.spacing.xl,
+    },
+    financeActionButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: theme.colors.backgroundSecondary,
+      borderRadius: 12,
+      paddingVertical: 16,
+      paddingHorizontal: 20,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      minHeight: 56,
+    },
+    financeActionButtonText: {
+      flex: 1,
+      marginLeft: 12,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+    },
+    actionButton: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 16,
+      paddingHorizontal: 20,
+      borderRadius: 12,
+      gap: 8,
+      minHeight: 56,
+    },
+    moneyInButton: {
+      backgroundColor: theme.colors.success,
+    },
+    spentOnButton: {
+      backgroundColor: theme.colors.error,
+    },
+    actionButtonText: {
+      color: theme.colors.white,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    transactionsHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 16,
+    },
+    transactionsHeaderActions: {
+      flexDirection: "row",
+      gap: 8,
+      alignItems: "center",
+    },
+    historyButton: {
+      padding: 8,
+      minHeight: 44,
+      minWidth: 44,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    sectionTitle: {
+      fontSize: theme.typography.fontSize["2xl"],
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+    },
+    filterButton: {
+      padding: 8,
+      minHeight: 44,
+      minWidth: 44,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    emptyContainer: {
+      alignItems: "center",
+      padding: 32,
+    },
+    emptyText: {
+      fontSize: 20,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.gray700,
+      marginTop: theme.spacing.base,
+      marginBottom: 8,
+    },
+    emptySubtext: {
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textSecondary,
+      textAlign: "center",
+      marginBottom: theme.spacing.xl,
+    },
+    emptyActionButtons: {
+      flexDirection: "row",
+      gap: 12,
+      width: "100%",
+    },
+    emptyActionButton: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: 16,
+      borderRadius: 8,
+      gap: 6,
+      minHeight: 44,
+    },
+    emptyMoneyInButton: {
+      backgroundColor: theme.colors.success,
+    },
+    emptySpentOnButton: {
+      backgroundColor: theme.colors.error,
+    },
+    emptyActionButtonText: {
+      color: theme.colors.white,
+      fontSize: 14,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    transactionCard: {
+      backgroundColor: theme.colors.background,
+      borderRadius: 12,
+      padding: theme.spacing.base,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    transactionHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    transactionLeft: {
+      flexDirection: "row",
+      alignItems: "center",
+      flex: 1,
+      marginRight: 12,
+    },
+    transactionIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      justifyContent: "center",
+      alignItems: "center",
+      marginRight: 12,
+    },
+    transactionIconIncome: {
+      backgroundColor: theme.colors.success,
+    },
+    transactionIconExpense: {
+      backgroundColor: theme.colors.error,
+    },
+    transactionInfo: {
+      flex: 1,
+    },
+    transactionDescription: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: "500",
+      color: theme.colors.textPrimary,
+      marginBottom: 4,
+    },
+    transactionMeta: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+    },
+    transactionMetaText: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.textSecondary,
+    },
+    transactionAmount: {
+      fontSize: theme.typography.fontSize.lg,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    transactionAmountIncome: {
+      color: theme.colors.success,
+    },
+    transactionAmountExpense: {
+      color: theme.colors.error,
+    },
+  });

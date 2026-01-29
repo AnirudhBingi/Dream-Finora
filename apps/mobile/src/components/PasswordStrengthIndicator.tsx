@@ -1,8 +1,9 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import React, { useMemo } from "react";
+import { View, Text, StyleSheet } from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useTheme } from "../theme";
 
-export type PasswordStrength = 'weak' | 'fair' | 'good' | 'strong';
+export type PasswordStrength = "weak" | "fair" | "good" | "strong";
 
 interface PasswordStrengthIndicatorProps {
   strength: PasswordStrength;
@@ -15,13 +16,15 @@ export function PasswordStrengthIndicator({
   password,
   showRequirements = true,
 }: PasswordStrengthIndicatorProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const getStrengthConfig = () => {
     switch (strength) {
-      case 'weak':
+      case "weak":
         return {
-          color: '#EF4444',
-          label: 'Weak',
-          width: '25%',
+          color: theme.colors.error,
+          label: "Weak",
+          widthPercent: 25,
           requirements: {
             minLength: password.length >= 6,
             hasLetter: /[a-zA-Z]/.test(password),
@@ -29,11 +32,11 @@ export function PasswordStrengthIndicator({
             hasSpecial: /[^a-zA-Z\d]/.test(password),
           },
         };
-      case 'fair':
+      case "fair":
         return {
-          color: '#F59E0B',
-          label: 'Fair',
-          width: '50%',
+          color: theme.colors.warning,
+          label: "Fair",
+          widthPercent: 50,
           requirements: {
             minLength: password.length >= 6,
             hasLetter: /[a-zA-Z]/.test(password),
@@ -41,11 +44,11 @@ export function PasswordStrengthIndicator({
             hasSpecial: /[^a-zA-Z\d]/.test(password),
           },
         };
-      case 'good':
+      case "good":
         return {
-          color: '#3B82F6',
-          label: 'Good',
-          width: '75%',
+          color: theme.colors.blue,
+          label: "Good",
+          widthPercent: 75,
           requirements: {
             minLength: password.length >= 6,
             hasLetter: /[a-zA-Z]/.test(password),
@@ -53,11 +56,11 @@ export function PasswordStrengthIndicator({
             hasSpecial: /[^a-zA-Z\d]/.test(password),
           },
         };
-      case 'strong':
+      case "strong":
         return {
-          color: '#10B981',
-          label: 'Strong',
-          width: '100%',
+          color: theme.colors.success,
+          label: "Strong",
+          widthPercent: 100,
           requirements: {
             minLength: password.length >= 6,
             hasLetter: /[a-zA-Z]/.test(password),
@@ -70,6 +73,21 @@ export function PasswordStrengthIndicator({
 
   const config = getStrengthConfig();
 
+  const RequirementItem = ({ met, text }: { met: boolean; text: string }) => {
+    return (
+      <View style={styles.requirementItem}>
+        <MaterialIcons
+          name={met ? "check-circle" : "radio-button-unchecked"}
+          size={16}
+          color={met ? theme.colors.success : theme.colors.textTertiary}
+        />
+        <Text style={[styles.requirementText, met && styles.requirementMet]}>
+          {text}
+        </Text>
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.meterContainer}>
@@ -77,7 +95,11 @@ export function PasswordStrengthIndicator({
           <View
             style={[
               styles.meterFill,
-              { width: config.width, backgroundColor: config.color },
+              {
+                flex: 0,
+                width: `${config.widthPercent}%`,
+                backgroundColor: config.color,
+              },
             ]}
           />
         </View>
@@ -110,64 +132,48 @@ export function PasswordStrengthIndicator({
   );
 }
 
-function RequirementItem({ met, text }: { met: boolean; text: string }) {
-  return (
-    <View style={styles.requirementItem}>
-      <MaterialIcons
-        name={met ? 'check-circle' : 'radio-button-unchecked'}
-        size={16}
-        color={met ? '#10B981' : '#9CA3AF'}
-      />
-      <Text style={[styles.requirementText, met && styles.requirementMet]}>
-        {text}
-      </Text>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  meterContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  meterBackground: {
-    flex: 1,
-    height: 4,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  meterFill: {
-    height: '100%',
-    borderRadius: 2,
-    transition: 'width 0.3s ease',
-  },
-  strengthLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    minWidth: 50,
-  },
-  requirementsContainer: {
-    marginTop: 12,
-    gap: 8,
-  },
-  requirementItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  requirementText: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  requirementMet: {
-    color: '#10B981',
-    fontWeight: '500',
-  },
-});
-
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    container: {
+      marginTop: theme.spacing.sm,
+      marginBottom: theme.spacing.xs,
+    },
+    meterContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.md,
+    },
+    meterBackground: {
+      flex: 1,
+      height: 4,
+      backgroundColor: theme.colors.border,
+      borderRadius: 2,
+      overflow: "hidden",
+    },
+    meterFill: {
+      height: "100%",
+      borderRadius: 2,
+    },
+    strengthLabel: {
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.semibold,
+      minWidth: 50,
+    },
+    requirementsContainer: {
+      marginTop: theme.spacing.md,
+      gap: theme.spacing.sm,
+    },
+    requirementItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.sm,
+    },
+    requirementText: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.textSecondary,
+    },
+    requirementMet: {
+      color: theme.colors.success,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+  });

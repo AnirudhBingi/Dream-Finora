@@ -1,21 +1,101 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationService } from '../notification/notification.service';
+import { FinanceService } from '../finance/finance.service';
 import { CreateRideDto } from './dto/create-ride.dto';
 import { UpdateRideDto } from './dto/update-ride.dto';
+import {
+  CreateRideFavoriteDto,
+  UpdateRideFavoriteDto,
+} from './dto/create-ride-favorite.dto';
 import { randomUUID } from 'crypto';
+
+type RideParticipantWithUser = Prisma.RideParticipantGetPayload<{
+  include: {
+    User: {
+      select: {
+        id: true;
+        email: true;
+        UserProfile: {
+          select: {
+            displayName: true;
+            avatarUrl: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+
+type RideWithRelations = Prisma.RideGetPayload<{
+  include: {
+    User: {
+      select: {
+        id: true;
+        email: true;
+        UserProfile: {
+          select: {
+            displayName: true;
+            avatarUrl: true;
+          };
+        };
+      };
+    };
+    RideParticipant: {
+      include: {
+        User: {
+          select: {
+            id: true;
+            email: true;
+            UserProfile: {
+              select: {
+                displayName: true;
+                avatarUrl: true;
+              };
+            };
+          };
+        };
+      };
+    };
+  };
+}>;
+
+type RideHistoryEntry = {
+  type: string;
+  timestamp: Date;
+  description: string;
+  user: {
+    id: string;
+    email: string;
+    profile: {
+      displayName: string | null;
+      avatarUrl: string | null;
+    } | null;
+  } | null;
+};
 
 @Injectable()
 export class RideService {
   constructor(
     private prisma: PrismaService,
     private notificationService: NotificationService,
+    @Inject(forwardRef(() => FinanceService))
+    private financeService: FinanceService,
   ) {}
 
   async createRide(userId: string, createRideDto: CreateRideDto) {
     // Validate that either chargePerMile or chargePerRide is provided
     if (!createRideDto.chargePerMile && !createRideDto.chargePerRide) {
-      throw new BadRequestException('Either chargePerMile or chargePerRide must be provided');
+      throw new BadRequestException(
+        'Either chargePerMile or chargePerRide must be provided',
+      );
     }
 
     // Calculate total cost
@@ -40,7 +120,9 @@ export class RideService {
       });
 
       if (!group) {
-        throw new BadRequestException('Group not found or you are not a member');
+        throw new BadRequestException(
+          'Group not found or you are not a member',
+        );
       }
     }
 
@@ -68,7 +150,9 @@ export class RideService {
           });
 
           if (!isMember) {
-            throw new BadRequestException(`Passenger ${passengerId} is not a member of the group`);
+            throw new BadRequestException(
+              `Passenger ${passengerId} is not a member of the group`,
+            );
           }
         }
       }
@@ -76,21 +160,31 @@ export class RideService {
 
     // Filter out driver from passengerIds to avoid duplicates
     const uniquePassengerIds = passengerIds.filter((pid) => pid !== userId);
-    
-    // Determine how to split cost
-    const allParticipants = createRideDto.type === 'rideshare'
-      ? [userId, ...uniquePassengerIds]
-      : uniquePassengerIds;
-    const participantCount = createRideDto.type === 'rideshare' 
-      ? allParticipants.length 
-      : uniquePassengerIds.length; // For giveRide, driver doesn't pay
 
-    const costPerPerson = participantCount > 0 
-      ? totalCost / participantCount 
-      : 0;
+    // Determine how to split cost
+    // For "Charge Riders" (giveRide): Each passenger pays the FULL totalCost (driver charges each passenger individually)
+    // For "Split Cost" (rideshare): Cost is split equally among all participants including driver
+    const allParticipants =
+      createRideDto.type === 'rideshare'
+        ? [userId, ...uniquePassengerIds]
+        : uniquePassengerIds;
+    const participantCount =
+      createRideDto.type === 'rideshare'
+        ? allParticipants.length
+        : uniquePassengerIds.length; // For giveRide, driver doesn't pay
+
+    // Calculate cost per person
+    // For giveRide: Each passenger pays the full amount (totalCost), not split
+    // For rideshare: Split the cost equally among all participants
+    const costPerPerson =
+      createRideDto.type === 'giveRide'
+        ? totalCost // Each passenger pays the full amount for Charge Riders
+        : participantCount > 0
+          ? totalCost / participantCount
+          : 0; // Split equally for rideshare
 
     // Create ride and participants in a transaction
-    const ride = await this.prisma.$transaction(async (tx) => {
+    const transactionResult = await this.prisma.$transaction(async (tx) => {
       // Create ride
       const newRide = await tx.ride.create({
         data: {
@@ -119,7 +213,7 @@ export class RideService {
       });
 
       // Add passengers as participants (filter out driver to avoid duplicate)
-      const uniquePassengerIds = passengerIds.filter((pid) => pid !== userId);
+      // Use the uniquePassengerIds from outer scope (line 81) to avoid shadowing issues
       for (const passengerId of uniquePassengerIds) {
         await tx.rideParticipant.create({
           data: {
@@ -133,29 +227,47 @@ export class RideService {
 
       // Auto-create expense in expense splitting
       const expenseDescription = `Ride: ${createRideDto.origin} → ${createRideDto.destination}`;
-      
+
       // Create expense splits
-      const expenseSplits = createRideDto.type === 'rideshare'
-        ? allParticipants.map((pid) => ({
-            userId: pid,
-            amount: costPerPerson,
-          }))
-        : uniquePassengerIds.map((pid) => ({
-            userId: pid,
-            amount: costPerPerson,
-          }));
+      // For "Charge Riders" (giveRide): Each passenger pays the FULL totalCost (driver charges each passenger individually)
+      // For "Split Cost" (rideshare): Split totalCost equally among all participants (including driver)
+      let expenseSplits: Array<{ userId: string; amount: number }>;
+
+      if (createRideDto.type === 'giveRide') {
+        // Charge Riders: Each passenger pays the FULL amount (NOT split!)
+        expenseSplits = uniquePassengerIds.map((pid) => ({
+          userId: pid,
+          amount: totalCost, // Each passenger pays the FULL amount
+        }));
+      } else {
+        // Split Cost (rideshare): Split equally among all participants including driver
+        expenseSplits = allParticipants.map((pid) => ({
+          userId: pid,
+          amount: costPerPerson, // Split amount (totalCost / participantCount)
+        }));
+      }
 
       // Create expense directly in transaction
       // For rides, the driver is the one who "paid" (provided the ride)
+      // Category is set to "Transportation" for ride expenses
+      // For "Charge Riders" (giveRide): Expense amount = totalCost * passengerCount (total collected from all passengers)
+      // For "Split Cost" (rideshare): Expense amount = totalCost (amount to be split)
+      const expenseAmount =
+        createRideDto.type === 'giveRide'
+          ? totalCost * uniquePassengerIds.length // Total collected: each passenger pays full amount
+          : totalCost; // Total amount to split among participants
+
       const expense = await tx.expense.create({
         data: {
           id: randomUUID(),
           createdBy: userId,
           paidBy: userId, // Driver paid for the ride (provided the ride)
           description: expenseDescription,
-          amount: totalCost,
+          amount: expenseAmount,
           currency: 'USD',
+          category: 'Transportation', // Set category for ride expenses
           groupId: createRideDto.groupId,
+          rideId: newRide.id, // Bidirectional link: expense knows which ride created it
           ExpenseSplit: {
             create: expenseSplits.map((split) => ({
               id: randomUUID(),
@@ -165,16 +277,55 @@ export class RideService {
             })),
           },
         },
+        include: {
+          ExpenseSplit: true,
+        },
       });
 
-      // Link expense to ride
+      // Link expense to ride (for backward compatibility with existing code)
       await tx.ride.update({
         where: { id: newRide.id },
         data: { expenseId: expense.id },
       });
 
-      return { ...newRide, expenseId: expense.id };
+      return { newRide, expense };
     });
+
+    const ride = transactionResult.newRide;
+    const expense = transactionResult.expense;
+
+    // Sync expense splits to personal finance (after transaction completes)
+    // For rideshare, driver is included in splits; for giveRide, driver is excluded
+    if (expense && expense.ExpenseSplit) {
+      const expenseDescription = `Ride: ${createRideDto.origin} → ${createRideDto.destination}`;
+
+      await Promise.all(
+        expense.ExpenseSplit.map(async (split) => {
+          if (split.amount > 0) {
+            // User owes money - create expense transaction in local finance
+            try {
+              await this.financeService.syncExpenseSplitToFinance(
+                split.id,
+                split.userId,
+                {
+                  amount: split.amount,
+                  category: 'Transportation',
+                  description: expenseDescription,
+                  date: expense.date,
+                  currency: expense.currency,
+                },
+              );
+            } catch (err) {
+              console.error(
+                `[RideService] Failed to sync ride expense split ${split.id} to finance:`,
+                err,
+              );
+              // Don't fail ride creation if finance sync fails
+            }
+          }
+        }),
+      );
+    }
 
     // Notify passengers about the ride
     const driver = await this.prisma.user.findUnique({
@@ -184,27 +335,33 @@ export class RideService {
         UserProfile: { select: { displayName: true } },
       },
     });
-    const driverName = driver?.UserProfile?.displayName || driver?.email || 'Someone';
+    const driverName =
+      driver?.UserProfile?.displayName || driver?.email || 'Someone';
 
     for (const passengerId of uniquePassengerIds) {
-      await this.notificationService.notifyRideCreated(
-        passengerId,
-        ride.id,
-        createRideDto.origin,
-        createRideDto.destination,
-        driverName,
-      ).catch(err => {
-        console.error(`Failed to create notification for passenger ${passengerId}:`, err);
-      });
+      await this.notificationService
+        .notifyRideCreated(
+          passengerId,
+          ride.id,
+          createRideDto.origin,
+          createRideDto.destination,
+          driverName,
+        )
+        .catch((err) => {
+          console.error(
+            `Failed to create notification for passenger ${passengerId}:`,
+            err,
+          );
+        });
     }
 
     // Fetch ride with all relations
     return this.getRideById(userId, ride.id);
   }
 
-  private transformRide(ride: any) {
+  private transformRide(ride: RideWithRelations) {
     const { User, RideParticipant, ...rideBase } = ride;
-    
+
     return {
       ...rideBase,
       date: ride.date.toISOString(),
@@ -221,30 +378,32 @@ export class RideService {
               : null,
           }
         : null,
-      participants: (RideParticipant || []).map((participant: any) => ({
-        id: participant.id,
-        rideId: participant.rideId,
-        userId: participant.userId,
-        isDriver: participant.isDriver,
-        createdAt: participant.createdAt.toISOString(),
-        user: participant.User
-          ? {
-              id: participant.User.id,
-              email: participant.User.email,
-              profile: participant.User.UserProfile
-                ? {
-                    displayName: participant.User.UserProfile.displayName,
-                    avatarUrl: participant.User.UserProfile.avatarUrl,
-                  }
-                : null,
-            }
-          : null,
-      })),
+      participants: (RideParticipant || []).map(
+        (participant: RideParticipantWithUser) => ({
+          id: participant.id,
+          rideId: participant.rideId,
+          userId: participant.userId,
+          isDriver: participant.isDriver,
+          createdAt: participant.createdAt.toISOString(),
+          user: participant.User
+            ? {
+                id: participant.User.id,
+                email: participant.User.email,
+                profile: participant.User.UserProfile
+                  ? {
+                      displayName: participant.User.UserProfile.displayName,
+                      avatarUrl: participant.User.UserProfile.avatarUrl,
+                    }
+                  : null,
+              }
+            : null,
+        }),
+      ),
     };
   }
 
   async getRides(userId: string, groupId?: string) {
-    const where: any = {
+    const where: Prisma.RideWhereInput = {
       OR: [
         { driverId: userId },
         {
@@ -300,12 +459,14 @@ export class RideService {
         where: { groupId },
         select: { id: true },
       });
-      const expenseIdSet = new Set(expenseIds.map(e => e.id));
-      filteredRides = rides.filter(ride => ride.expenseId && expenseIdSet.has(ride.expenseId));
+      const expenseIdSet = new Set(expenseIds.map((e) => e.id));
+      filteredRides = rides.filter(
+        (ride) => ride.expenseId && expenseIdSet.has(ride.expenseId),
+      );
     }
 
     // Transform rides to match frontend interface
-    return filteredRides.map(ride => this.transformRide(ride));
+    return filteredRides.map((ride) => this.transformRide(ride));
   }
 
   async getRideById(userId: string, rideId: string) {
@@ -364,15 +525,20 @@ export class RideService {
       const expense = await this.prisma.expense.findUnique({
         where: { id: ride.expenseId },
       });
-      
+
       if (!expense) {
         // Expense was deleted, unlink it from the ride
-        await this.prisma.ride.update({
-          where: { id: rideId },
-          data: { expenseId: null },
-        }).catch(err => {
-          console.error(`[RideService] Failed to unlink deleted expense from ride ${rideId}:`, err);
-        });
+        await this.prisma.ride
+          .update({
+            where: { id: rideId },
+            data: { expenseId: null },
+          })
+          .catch((err) => {
+            console.error(
+              `[RideService] Failed to unlink deleted expense from ride ${rideId}:`,
+              err,
+            );
+          });
         // Set expenseId to null in the ride object
         ride.expenseId = null;
       }
@@ -395,9 +561,13 @@ export class RideService {
     }
 
     // Check if user is already a participant
-    const isParticipant = (ride.RideParticipant || []).some((p) => p.userId === userId);
+    const isParticipant = (ride.RideParticipant || []).some(
+      (p) => p.userId === userId,
+    );
     if (isParticipant) {
-      throw new BadRequestException('You are already a participant in this ride');
+      throw new BadRequestException(
+        'You are already a participant in this ride',
+      );
     }
 
     // Add user as participant
@@ -425,38 +595,108 @@ export class RideService {
           ...ride.RideParticipant.map((p) => p.userId),
           userId,
         ];
-        const participantCount = ride.type === 'rideshare' 
-          ? allParticipants.length 
-          : allParticipants.length - 1; // Exclude driver for giveRide
+        // Calculate cost per person
+        // For "Charge Riders" (giveRide): Each passenger pays the FULL totalCost (driver charges each individually)
+        // For "Split Cost" (rideshare): Cost is split equally among all participants including driver
+        const existingPassengers = ride.RideParticipant.filter(
+          (p) => !p.isDriver,
+        ).map((p) => p.userId);
+        const allPassengersAfterJoin = [...existingPassengers, userId]; // All passengers after new one joins
 
-        const costPerPerson = participantCount > 0 
-          ? ride.totalCost / participantCount 
-          : 0;
+        const costPerPerson =
+          ride.type === 'giveRide'
+            ? ride.totalCost // Each passenger pays the full amount for Charge Riders
+            : allParticipants.length > 0
+              ? ride.totalCost / allParticipants.length
+              : 0; // Split equally for rideshare
 
-        // Update existing splits and add new one
+        // Update existing splits and add new one in transaction
         await this.prisma.$transaction(async (tx) => {
-          // Update existing splits
-          for (const split of expense.ExpenseSplit) {
-            const shouldPay = ride.type === 'rideshare' || split.userId !== ride.driverId;
-            await tx.expenseSplit.update({
-              where: { id: split.id },
+          // For giveRide: Each passenger (excluding driver) pays full amount
+          // For rideshare: Recalculate splits for all participants including driver
+          if (ride.type === 'giveRide') {
+            // For Charge Riders: Existing passengers should already be paying full amount
+            // Only add the new passenger's split (they pay full amount)
+            // Note: We don't update existing splits as they should already be correct
+            // (If they're not correct due to old buggy code, that's a data migration issue)
+
+            // Add new split for the new participant (they pay full amount)
+            await tx.expenseSplit.create({
               data: {
-                amount: shouldPay ? costPerPerson : 0,
+                id: randomUUID(),
+                expenseId: expense.id,
+                userId,
+                amount: ride.totalCost, // New passenger pays full amount
               },
             });
-          }
 
-          // Add new split for the new participant
-          const shouldPay = ride.type === 'rideshare' || userId !== ride.driverId;
-          await tx.expenseSplit.create({
-            data: {
-              id: randomUUID(),
-              expenseId: ride.expenseId!,
-              userId,
-              amount: shouldPay ? costPerPerson : 0,
-            },
-          });
+            // Update expense amount: totalCost * currentPassengerCount (all passengers pay full amount)
+            // This ensures consistency even if expense amount was incorrect before
+            const passengerCountAfterJoin = allPassengersAfterJoin.length; // All passengers including the new one
+            await tx.expense.update({
+              where: { id: expense.id },
+              data: {
+                amount: ride.totalCost * passengerCountAfterJoin,
+              },
+            });
+          } else {
+            // For rideshare: Recalculate splits equally among all participants
+            // When a new passenger joins, everyone's share changes, so update all splits
+            for (const split of expense.ExpenseSplit) {
+              await tx.expenseSplit.update({
+                where: { id: split.id },
+                data: {
+                  amount: costPerPerson, // Split equally among all
+                },
+              });
+            }
+
+            // Add new split for the new participant
+            await tx.expenseSplit.create({
+              data: {
+                id: randomUUID(),
+                expenseId: expense.id,
+                userId,
+                amount: costPerPerson, // Split equally
+              },
+            });
+
+            // For rideshare: Expense amount remains totalCost (it's the amount to be split)
+            // No need to update expense amount as it's already correct
+          }
         });
+
+        // Sync all splits to finance (after transaction completes)
+        const allSplits = await this.prisma.expenseSplit.findMany({
+          where: { expenseId: ride.expenseId },
+        });
+
+        const expenseDescription = `Ride: ${ride.origin} → ${ride.destination}`;
+        await Promise.all(
+          allSplits.map(async (split) => {
+            if (split.amount > 0) {
+              try {
+                await this.financeService.syncExpenseSplitToFinance(
+                  split.id,
+                  split.userId,
+                  {
+                    amount: split.amount,
+                    category: 'Transportation',
+                    description: expenseDescription,
+                    date: expense.date,
+                    currency: expense.currency,
+                  },
+                );
+              } catch (err) {
+                console.error(
+                  `[RideService] Failed to sync ride expense split ${split.id} to finance after join:`,
+                  err,
+                );
+                // Don't fail join if finance sync fails
+              }
+            }
+          }),
+        );
       }
     }
 
@@ -468,24 +708,31 @@ export class RideService {
         UserProfile: { select: { displayName: true } },
       },
     });
-    const joinerName = joiner?.UserProfile?.displayName || joiner?.email || 'Someone';
+    const joinerName =
+      joiner?.UserProfile?.displayName || joiner?.email || 'Someone';
 
     if (ride.driverId !== userId) {
-      await this.notificationService.notifyRideJoined(
-        ride.driverId,
-        rideId,
-        ride.origin,
-        ride.destination,
-        joinerName,
-      ).catch(err => {
-        console.error(`Failed to create notification for driver:`, err);
-      });
+      await this.notificationService
+        .notifyRideJoined(
+          ride.driverId,
+          rideId,
+          ride.origin,
+          ride.destination,
+          joinerName,
+        )
+        .catch((err) => {
+          console.error(`Failed to create notification for driver:`, err);
+        });
     }
 
     return this.getRideById(userId, rideId);
   }
 
-  async updateRide(userId: string, rideId: string, updateRideDto: UpdateRideDto) {
+  async updateRide(
+    userId: string,
+    rideId: string,
+    updateRideDto: UpdateRideDto,
+  ) {
     // Verify ride exists and user is the driver
     const ride = await this.prisma.ride.findFirst({
       where: {
@@ -503,7 +750,11 @@ export class RideService {
 
     // Calculate new total cost if pricing changed
     let totalCost = ride.totalCost;
-    if (updateRideDto.chargePerMile !== undefined || updateRideDto.chargePerRide !== undefined || updateRideDto.distance !== undefined) {
+    if (
+      updateRideDto.chargePerMile !== undefined ||
+      updateRideDto.chargePerRide !== undefined ||
+      updateRideDto.distance !== undefined
+    ) {
       const chargePerMile = updateRideDto.chargePerMile ?? ride.chargePerMile;
       const chargePerRide = updateRideDto.chargePerRide ?? ride.chargePerRide;
       const distance = updateRideDto.distance ?? ride.distance;
@@ -513,7 +764,9 @@ export class RideService {
       } else if (chargePerRide) {
         totalCost = chargePerRide;
       } else {
-        throw new BadRequestException('Either chargePerMile with distance or chargePerRide must be provided');
+        throw new BadRequestException(
+          'Either chargePerMile with distance or chargePerRide must be provided',
+        );
       }
     }
 
@@ -522,7 +775,7 @@ export class RideService {
     if (passengerIds !== undefined) {
       for (const passengerId of passengerIds) {
         if (passengerId === userId) continue; // Skip driver
-        
+
         const user = await this.prisma.user.findUnique({
           where: { id: passengerId },
         });
@@ -531,6 +784,15 @@ export class RideService {
           throw new BadRequestException(`Passenger ${passengerId} not found`);
         }
       }
+    }
+
+    // Get old splits BEFORE transaction (if passengerIds are changing) to delete finance transactions after
+    let oldSplitIds: string[] = [];
+    if (passengerIds !== undefined && ride.expenseId) {
+      const oldSplits = await this.prisma.expenseSplit.findMany({
+        where: { expenseId: ride.expenseId },
+      });
+      oldSplitIds = oldSplits.map((split) => split.id);
     }
 
     // Update ride and recalculate expense splits in a transaction
@@ -550,10 +812,12 @@ export class RideService {
         },
       });
 
+      const expenseDescription = `Ride: ${updated.origin} → ${updated.destination}`;
+
       // Update participants if passengerIds provided
       if (passengerIds !== undefined) {
         const uniquePassengerIds = passengerIds.filter((pid) => pid !== userId);
-        
+
         // Remove existing non-driver participants
         await tx.rideParticipant.deleteMany({
           where: {
@@ -576,38 +840,42 @@ export class RideService {
 
         // Recalculate expense splits if expense exists
         if (ride.expenseId) {
-          const allParticipants = updated.type === 'rideshare'
-            ? [userId, ...uniquePassengerIds]
-            : uniquePassengerIds;
-          const participantCount = updated.type === 'rideshare' 
-            ? allParticipants.length 
-            : uniquePassengerIds.length;
+          const allParticipants =
+            updated.type === 'rideshare'
+              ? [userId, ...uniquePassengerIds]
+              : uniquePassengerIds;
+          // Calculate cost per person
+          // For "Charge Riders" (giveRide): Each passenger pays the FULL totalCost (driver charges each individually)
+          // For "Split Cost" (rideshare): Cost is split equally among all participants including driver
+          const costPerPerson =
+            updated.type === 'giveRide'
+              ? totalCost // Each passenger pays the full amount for Charge Riders
+              : allParticipants.length > 0
+                ? totalCost / allParticipants.length
+                : 0; // Split equally for rideshare
 
-          const costPerPerson = participantCount > 0 
-            ? totalCost / participantCount 
-            : 0;
-
-          // Delete existing splits
+          // Delete existing splits (will be recreated)
           await tx.expenseSplit.deleteMany({
             where: { expenseId: ride.expenseId },
           });
 
           // Create new splits
-          const expenseSplits = updated.type === 'rideshare'
-            ? allParticipants.map((pid) => ({
-                userId: pid,
-                amount: costPerPerson,
-              }))
-            : uniquePassengerIds.map((pid) => ({
-                userId: pid,
-                amount: costPerPerson,
-              }));
+          const expenseSplits =
+            updated.type === 'rideshare'
+              ? allParticipants.map((pid) => ({
+                  userId: pid,
+                  amount: costPerPerson, // Split amount (totalCost / participantCount)
+                }))
+              : uniquePassengerIds.map((pid) => ({
+                  userId: pid,
+                  amount: totalCost, // Each passenger pays the FULL amount for Charge Riders
+                }));
 
           for (const split of expenseSplits) {
             await tx.expenseSplit.create({
               data: {
                 id: randomUUID(),
-                expenseId: ride.expenseId!,
+                expenseId: ride.expenseId,
                 userId: split.userId,
                 amount: split.amount,
                 isPaid: false,
@@ -616,11 +884,19 @@ export class RideService {
           }
 
           // Update expense amount and ensure paidBy is set (driver paid for the ride)
+          // For "Charge Riders" (giveRide): Expense amount = totalCost * passengerCount (total collected from all passengers)
+          // For "Split Cost" (rideshare): Expense amount = totalCost (amount to be split)
+          const expenseAmount =
+            updated.type === 'giveRide'
+              ? totalCost * uniquePassengerIds.length // Total collected: each passenger pays full amount
+              : totalCost; // Total amount to split among participants
+
           await tx.expense.update({
             where: { id: ride.expenseId },
             data: {
-              amount: totalCost,
-              description: `Ride: ${updated.origin} → ${updated.destination}`,
+              amount: expenseAmount,
+              description: expenseDescription,
+              category: 'Transportation', // Ensure category is set
               paidBy: userId, // Driver paid for the ride (provided the ride)
             },
           });
@@ -631,16 +907,25 @@ export class RideService {
           where: { rideId },
         });
 
-        const allParticipants = updated.type === 'rideshare'
-          ? currentParticipants.map((p) => p.userId)
-          : currentParticipants.filter((p) => !p.isDriver).map((p) => p.userId);
-        const participantCount = updated.type === 'rideshare' 
-          ? allParticipants.length 
-          : allParticipants.length;
+        const allParticipants =
+          updated.type === 'rideshare'
+            ? currentParticipants.map((p) => p.userId)
+            : currentParticipants
+                .filter((p) => !p.isDriver)
+                .map((p) => p.userId);
+        // Calculate cost per person
+        // For "Charge Riders" (giveRide): Each passenger pays the FULL totalCost (driver charges each individually)
+        // For "Split Cost" (rideshare): Cost is split equally among all participants including driver
+        const passengerIds = currentParticipants
+          .filter((p) => p.userId !== userId) // Exclude driver
+          .map((p) => p.userId);
 
-        const costPerPerson = participantCount > 0 
-          ? totalCost / participantCount 
-          : 0;
+        const costPerPerson =
+          updated.type === 'giveRide'
+            ? totalCost // Each passenger pays the full amount for Charge Riders
+            : allParticipants.length > 0
+              ? totalCost / allParticipants.length
+              : 0; // Split equally for rideshare
 
         // Update all splits
         const splits = await tx.expenseSplit.findMany({
@@ -648,28 +933,126 @@ export class RideService {
         });
 
         for (const split of splits) {
-          const shouldPay = updated.type === 'rideshare' || split.userId !== userId;
-          await tx.expenseSplit.update({
-            where: { id: split.id },
-            data: {
-              amount: shouldPay ? costPerPerson : 0,
-            },
-          });
+          if (updated.type === 'giveRide') {
+            // For Charge Riders: Driver pays 0, all passengers pay full amount
+            const isDriver = split.userId === userId;
+            await tx.expenseSplit.update({
+              where: { id: split.id },
+              data: {
+                amount: isDriver ? 0 : totalCost, // Each passenger pays full amount
+              },
+            });
+          } else {
+            // For Split Cost: Everyone pays split amount
+            await tx.expenseSplit.update({
+              where: { id: split.id },
+              data: {
+                amount: costPerPerson,
+              },
+            });
+          }
         }
 
         // Update expense amount and ensure paidBy is set (driver paid for the ride)
+        // For "Charge Riders" (giveRide): Expense amount = totalCost * passengerCount (total collected from all passengers)
+        // For "Split Cost" (rideshare): Expense amount = totalCost (amount to be split)
+        const expenseAmount =
+          updated.type === 'giveRide'
+            ? totalCost * passengerIds.length // Total collected: each passenger pays full amount
+            : totalCost; // Total amount to split among participants
+
         await tx.expense.update({
           where: { id: ride.expenseId },
           data: {
-            amount: totalCost,
-            description: `Ride: ${updated.origin} → ${updated.destination}`,
+            amount: expenseAmount,
+            description: expenseDescription,
+            category: 'Transportation', // Ensure category is set
             paidBy: userId, // Driver paid for the ride (provided the ride)
+          },
+        });
+      } else if (
+        ride.expenseId &&
+        (updateRideDto.origin || updateRideDto.destination)
+      ) {
+        // Route changed, update expense description
+        await tx.expense.update({
+          where: { id: ride.expenseId },
+          data: {
+            description: expenseDescription,
           },
         });
       }
 
       return updated;
     });
+
+    // Handle finance transactions after transaction completes
+    // Delete finance transactions for removed splits (when passengerIds changed and splits were recreated)
+    if (
+      passengerIds !== undefined &&
+      ride.expenseId &&
+      oldSplitIds.length > 0
+    ) {
+      for (const oldSplitId of oldSplitIds) {
+        try {
+          await this.financeService.deleteExpenseSplitFinanceTransaction(
+            oldSplitId,
+          );
+        } catch (err) {
+          console.error(
+            `[RideService] Failed to delete finance transaction for old split ${oldSplitId}:`,
+            err,
+          );
+          // Continue even if deletion fails
+        }
+      }
+    }
+
+    // Sync updated splits to personal finance (after transaction completes)
+    // Sync if splits changed (passengerIds changed and splits were recreated) OR if only cost changed (splits were updated)
+    if (
+      ride.expenseId &&
+      (passengerIds !== undefined || totalCost !== ride.totalCost)
+    ) {
+      // Get updated expense with splits
+      const expense = await this.prisma.expense.findUnique({
+        where: { id: ride.expenseId },
+        include: { ExpenseSplit: true },
+      });
+
+      if (expense) {
+        const expenseDescription = `Ride: ${updatedRide.origin} → ${updatedRide.destination}`;
+
+        // Sync finance transactions for all current splits
+        // For new splits (when passengerIds changed): This will create new finance transactions
+        // For updated splits (when only cost changed): This will update existing finance transactions
+        await Promise.all(
+          expense.ExpenseSplit.map(async (split) => {
+            if (split.amount > 0) {
+              try {
+                await this.financeService.syncExpenseSplitToFinance(
+                  split.id,
+                  split.userId,
+                  {
+                    amount: split.amount,
+                    category: 'Transportation',
+                    description: expenseDescription,
+                    date: expense.date,
+                    currency: expense.currency,
+                  },
+                );
+              } catch (err) {
+                console.error(
+                  `[RideService] Failed to sync ride expense split ${split.id} to finance after update:`,
+                  err,
+                );
+                // Don't fail ride update if finance sync fails
+              }
+            }
+          }),
+        );
+      }
+    }
 
     // Notify participants about the update
     const driver = await this.prisma.user.findUnique({
@@ -679,7 +1062,8 @@ export class RideService {
         UserProfile: { select: { displayName: true } },
       },
     });
-    const driverName = driver?.UserProfile?.displayName || driver?.email || 'Someone';
+    const driverName =
+      driver?.UserProfile?.displayName || driver?.email || 'Someone';
 
     const participants = await this.prisma.rideParticipant.findMany({
       where: { rideId, userId: { not: userId } },
@@ -687,15 +1071,20 @@ export class RideService {
     });
 
     for (const participant of participants) {
-      await this.notificationService.notifyRideUpdated(
-        participant.userId,
-        rideId,
-        updatedRide.origin,
-        updatedRide.destination,
-        driverName,
-      ).catch(err => {
-        console.error(`Failed to create notification for participant ${participant.userId}:`, err);
-      });
+      await this.notificationService
+        .notifyRideUpdated(
+          participant.userId,
+          rideId,
+          updatedRide.origin,
+          updatedRide.destination,
+          driverName,
+        )
+        .catch((err) => {
+          console.error(
+            `Failed to create notification for participant ${participant.userId}:`,
+            err,
+          );
+        });
     }
 
     return this.getRideById(userId, rideId);
@@ -735,21 +1124,41 @@ export class RideService {
         UserProfile: { select: { displayName: true } },
       },
     });
-    const driverName = driver?.UserProfile?.displayName || driver?.email || 'Someone';
+    const driverName =
+      driver?.UserProfile?.displayName || driver?.email || 'Someone';
 
     // Get participant IDs before deletion
-    const participantIds = ride.RideParticipant
-      .filter((p) => !p.isDriver)
-      .map((p) => p.userId);
+    const participantIds = ride.RideParticipant.filter((p) => !p.isDriver).map(
+      (p) => p.userId,
+    );
 
-    // Delete ride (cascade will handle participants and expense link)
-    // Note: We don't delete the expense itself, just the link
-    await this.prisma.$transaction(async (tx) => {
-      // Remove expense link
-      await tx.ride.update({
-        where: { id: rideId },
-        data: { expenseId: null },
+    // Get expense splits BEFORE transaction (to delete finance transactions after)
+    let expenseSplitIds: string[] = [];
+    if (ride.expenseId) {
+      const expense = await this.prisma.expense.findUnique({
+        where: { id: ride.expenseId },
+        include: { ExpenseSplit: true },
       });
+
+      if (expense) {
+        expenseSplitIds = expense.ExpenseSplit.map((split) => split.id);
+      }
+    }
+
+    // Delete ride and associated expense/splits in a transaction
+    await this.prisma.$transaction(async (tx) => {
+      // If ride has an associated expense, delete it and its splits
+      if (ride.expenseId) {
+        // Delete all expense splits first (cascade would handle this, but being explicit)
+        await tx.expenseSplit.deleteMany({
+          where: { expenseId: ride.expenseId },
+        });
+
+        // Delete the expense itself
+        await tx.expense.delete({
+          where: { id: ride.expenseId },
+        });
+      }
 
       // Delete ride (cascade deletes participants)
       await tx.ride.delete({
@@ -757,17 +1166,36 @@ export class RideService {
       });
     });
 
+    // Delete finance transactions linked to deleted splits (after transaction to ensure expense is deleted)
+    // This also updates budget tracking
+    for (const splitId of expenseSplitIds) {
+      try {
+        await this.financeService.deleteExpenseSplitFinanceTransaction(splitId);
+      } catch (err) {
+        console.error(
+          `[RideService] Failed to delete finance transaction for split ${splitId}:`,
+          err,
+        );
+        // Continue with deletion even if finance transaction deletion fails
+      }
+    }
+
     // Notify participants about cancellation
     for (const participantId of participantIds) {
-      await this.notificationService.notifyRideCancelled(
-        participantId,
-        rideId,
-        ride.origin,
-        ride.destination,
-        driverName,
-      ).catch(err => {
-        console.error(`Failed to create notification for participant ${participantId}:`, err);
-      });
+      await this.notificationService
+        .notifyRideCancelled(
+          participantId,
+          rideId,
+          ride.origin,
+          ride.destination,
+          driverName,
+        )
+        .catch((err) => {
+          console.error(
+            `Failed to create notification for participant ${participantId}:`,
+            err,
+          );
+        });
     }
 
     return { message: 'Ride deleted successfully' };
@@ -796,7 +1224,7 @@ export class RideService {
     }
 
     // Get expense history if linked
-    const history: any[] = [];
+    const history: RideHistoryEntry[] = [];
 
     // Add ride creation
     history.push({
@@ -858,7 +1286,16 @@ export class RideService {
               type: 'split_paid',
               timestamp: split.paidAt || split.createdAt,
               description: `${split.User.UserProfile?.displayName || split.User.email} paid their share`,
-              user: split.User,
+              user: {
+                id: split.User.id,
+                email: split.User.email,
+                profile: split.User.UserProfile
+                  ? {
+                      displayName: split.User.UserProfile.displayName,
+                      avatarUrl: split.User.UserProfile.avatarUrl,
+                    }
+                  : null,
+              },
             });
           }
         }
@@ -878,9 +1315,331 @@ export class RideService {
     }
 
     // Sort by timestamp
-    history.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    history.sort(
+      (a, b) =>
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+    );
 
     return history;
   }
-}
 
+  /**
+   * Get all favorite rides for a user
+   */
+  async getFavoriteRides(userId: string) {
+    const favorites = await this.prisma.rideFavorite.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Enrich with passenger user details
+    const favoritesWithPassengers = await Promise.all(
+      favorites.map(async (favorite) => {
+        const passengers = await Promise.all(
+          favorite.passengerIds.map(async (passengerId) => {
+            const user = await this.prisma.user.findUnique({
+              where: { id: passengerId },
+              select: {
+                id: true,
+                email: true,
+                UserProfile: {
+                  select: {
+                    displayName: true,
+                    avatarUrl: true,
+                  },
+                },
+              },
+            });
+            return user
+              ? {
+                  id: user.id,
+                  email: user.email,
+                  displayName: user.UserProfile?.displayName || user.email,
+                  avatarUrl: user.UserProfile?.avatarUrl || null,
+                }
+              : null;
+          }),
+        );
+
+        return {
+          id: favorite.id,
+          name: favorite.name,
+          passengerIds: favorite.passengerIds,
+          passengers: passengers.filter((p) => p !== null),
+          chargePerMile: favorite.chargePerMile,
+          chargePerRide: favorite.chargePerRide,
+          origin: favorite.origin,
+          destination: favorite.destination,
+          groupId: favorite.groupId,
+          createdAt: favorite.createdAt.toISOString(),
+          updatedAt: favorite.updatedAt.toISOString(),
+        };
+      }),
+    );
+
+    return favoritesWithPassengers;
+  }
+
+  /**
+   * Create a favorite ride template
+   */
+  async createFavoriteRide(
+    userId: string,
+    createFavoriteDto: CreateRideFavoriteDto,
+  ) {
+    // Validate that either chargePerMile or chargePerRide is provided
+    if (!createFavoriteDto.chargePerMile && !createFavoriteDto.chargePerRide) {
+      throw new BadRequestException(
+        'Either chargePerMile or chargePerRide must be provided',
+      );
+    }
+
+    // Filter out driver from passengerIds
+    const uniquePassengerIds = createFavoriteDto.passengerIds.filter(
+      (pid) => pid !== userId,
+    );
+
+    if (uniquePassengerIds.length === 0) {
+      throw new BadRequestException(
+        'At least one passenger (excluding yourself) is required',
+      );
+    }
+
+    const favorite = await this.prisma.rideFavorite.create({
+      data: {
+        id: randomUUID(),
+        userId,
+        name: createFavoriteDto.name,
+        passengerIds: uniquePassengerIds,
+        chargePerMile: createFavoriteDto.chargePerMile,
+        chargePerRide: createFavoriteDto.chargePerRide,
+        origin: createFavoriteDto.origin,
+        destination: createFavoriteDto.destination,
+        groupId: createFavoriteDto.groupId,
+      },
+    });
+
+    // Enrich with passenger details
+    const passengers = await Promise.all(
+      favorite.passengerIds.map(async (passengerId) => {
+        const user = await this.prisma.user.findUnique({
+          where: { id: passengerId },
+          select: {
+            id: true,
+            email: true,
+            UserProfile: {
+              select: {
+                displayName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        });
+        return user
+          ? {
+              id: user.id,
+              email: user.email,
+              displayName: user.UserProfile?.displayName || user.email,
+              avatarUrl: user.UserProfile?.avatarUrl || null,
+            }
+          : null;
+      }),
+    );
+
+    return {
+      id: favorite.id,
+      name: favorite.name,
+      passengerIds: favorite.passengerIds,
+      passengers: passengers.filter((p) => p !== null),
+      chargePerMile: favorite.chargePerMile,
+      chargePerRide: favorite.chargePerRide,
+      origin: favorite.origin,
+      destination: favorite.destination,
+      groupId: favorite.groupId,
+      createdAt: favorite.createdAt.toISOString(),
+      updatedAt: favorite.updatedAt.toISOString(),
+    };
+  }
+
+  /**
+   * Update a favorite ride
+   */
+  async updateFavoriteRide(
+    userId: string,
+    favoriteId: string,
+    updateDto: UpdateRideFavoriteDto,
+  ) {
+    const favorite = await this.prisma.rideFavorite.findUnique({
+      where: { id: favoriteId },
+    });
+
+    if (!favorite) {
+      throw new NotFoundException('Favorite ride not found');
+    }
+
+    if (favorite.userId !== userId) {
+      throw new BadRequestException(
+        'You can only update your own favorite rides',
+      );
+    }
+
+    // If passengerIds is being updated, filter out driver
+    const passengerIds = updateDto.passengerIds
+      ? updateDto.passengerIds.filter((pid) => pid !== userId)
+      : favorite.passengerIds;
+
+    if (updateDto.passengerIds && passengerIds.length === 0) {
+      throw new BadRequestException(
+        'At least one passenger (excluding yourself) is required',
+      );
+    }
+
+    // Validate that at least one pricing method exists after update
+    const chargePerMile =
+      updateDto.chargePerMile !== undefined
+        ? updateDto.chargePerMile
+        : favorite.chargePerMile;
+    const chargePerRide =
+      updateDto.chargePerRide !== undefined
+        ? updateDto.chargePerRide
+        : favorite.chargePerRide;
+
+    if (!chargePerMile && !chargePerRide) {
+      throw new BadRequestException(
+        'Either chargePerMile or chargePerRide must be provided',
+      );
+    }
+
+    const updated = await this.prisma.rideFavorite.update({
+      where: { id: favoriteId },
+      data: {
+        name: updateDto.name !== undefined ? updateDto.name : favorite.name,
+        passengerIds: passengerIds,
+        chargePerMile:
+          updateDto.chargePerMile !== undefined
+            ? updateDto.chargePerMile
+            : favorite.chargePerMile,
+        chargePerRide:
+          updateDto.chargePerRide !== undefined
+            ? updateDto.chargePerRide
+            : favorite.chargePerRide,
+        origin:
+          updateDto.origin !== undefined ? updateDto.origin : favorite.origin,
+        destination:
+          updateDto.destination !== undefined
+            ? updateDto.destination
+            : favorite.destination,
+        groupId:
+          updateDto.groupId !== undefined
+            ? updateDto.groupId
+            : favorite.groupId,
+      },
+    });
+
+    // Enrich with passenger details
+    const passengers = await Promise.all(
+      updated.passengerIds.map(async (passengerId) => {
+        const user = await this.prisma.user.findUnique({
+          where: { id: passengerId },
+          select: {
+            id: true,
+            email: true,
+            UserProfile: {
+              select: {
+                displayName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        });
+        return user
+          ? {
+              id: user.id,
+              email: user.email,
+              displayName: user.UserProfile?.displayName || user.email,
+              avatarUrl: user.UserProfile?.avatarUrl || null,
+            }
+          : null;
+      }),
+    );
+
+    return {
+      id: updated.id,
+      name: updated.name,
+      passengerIds: updated.passengerIds,
+      passengers: passengers.filter((p) => p !== null),
+      chargePerMile: updated.chargePerMile,
+      chargePerRide: updated.chargePerRide,
+      origin: updated.origin,
+      destination: updated.destination,
+      groupId: updated.groupId,
+      createdAt: updated.createdAt.toISOString(),
+      updatedAt: updated.updatedAt.toISOString(),
+    };
+  }
+
+  /**
+   * Delete a favorite ride
+   */
+  async deleteFavoriteRide(userId: string, favoriteId: string) {
+    const favorite = await this.prisma.rideFavorite.findUnique({
+      where: { id: favoriteId },
+    });
+
+    if (!favorite) {
+      throw new NotFoundException('Favorite ride not found');
+    }
+
+    if (favorite.userId !== userId) {
+      throw new BadRequestException(
+        'You can only delete your own favorite rides',
+      );
+    }
+
+    await this.prisma.rideFavorite.delete({
+      where: { id: favoriteId },
+    });
+
+    return { success: true };
+  }
+
+  /**
+   * Create a ride from a favorite template (quick creation with today's date)
+   * This is the "one-tap" ride creation feature
+   */
+  async createRideFromFavorite(
+    userId: string,
+    favoriteId: string,
+    distance?: number,
+  ) {
+    const favorite = await this.prisma.rideFavorite.findUnique({
+      where: { id: favoriteId },
+    });
+
+    if (!favorite) {
+      throw new NotFoundException('Favorite ride not found');
+    }
+
+    if (favorite.userId !== userId) {
+      throw new BadRequestException(
+        'You can only create rides from your own favorites',
+      );
+    }
+
+    // Build CreateRideDto from favorite
+    const createRideDto: CreateRideDto = {
+      type: 'giveRide', // Favorite rides are always "Charge Riders" type
+      origin: favorite.origin || 'Origin',
+      destination: favorite.destination || 'Destination',
+      passengerIds: favorite.passengerIds,
+      chargePerMile: favorite.chargePerMile || undefined,
+      chargePerRide: favorite.chargePerRide || undefined,
+      distance: distance || undefined, // Distance can be provided when creating ride, or calculated later
+      groupId: favorite.groupId || undefined,
+      date: new Date().toISOString(), // Use today's date for quick creation
+    };
+
+    // Use existing createRide method to create the ride with today's date
+    return this.createRide(userId, createRideDto);
+  }
+}

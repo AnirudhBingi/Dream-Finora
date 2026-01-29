@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,10 +8,10 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
-import { useAuth } from '../auth/authContext';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useAuth } from "../auth/authContext";
 import {
   getNotifications,
   markNotificationAsRead,
@@ -19,11 +19,15 @@ import {
   deleteNotification,
   Notification,
   NotificationType,
-} from '../api/notificationApi';
-import { setBadgeCount } from '../services/pushNotifications';
-import { EmptyState } from '../components/EmptyState';
-import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
-import { Header } from '../components/Header';
+} from "../api/notificationApi";
+import { setBadgeCount } from "../services/pushNotifications";
+import { EmptyState } from "../components/EmptyState";
+import { ErrorState } from "../components/ErrorState";
+import { useDataFetch } from "../hooks/useDataFetch";
+import { useAsyncOperation } from "../hooks/useAsyncOperation";
+import { getUserFriendlyErrorMessage } from "../components/ErrorState";
+import { Header } from "../components/Header";
+import { useTheme } from "../theme";
 
 interface NotificationsScreenProps {
   onBack: () => void;
@@ -33,7 +37,11 @@ interface NotificationsScreenProps {
   onViewRide?: (rideId: string) => void;
   onViewGroup?: (groupId: string) => void;
   onViewFriend?: (friendId: string) => void;
-  onViewMessage?: (chatId: string, groupId?: string, groupName?: string) => void;
+  onViewMessage?: (
+    chatId: string,
+    groupId?: string,
+    groupName?: string,
+  ) => void;
   onNavigateToProfile?: () => void;
   onNavigateToNotifications?: () => void;
   onNavigateToSettings?: () => void;
@@ -52,100 +60,91 @@ export function NotificationsScreen({
   onNavigateToNotifications,
   onNavigateToSettings,
 }: NotificationsScreenProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { token } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [filteredNotifications, setFilteredNotifications] = useState<Notification[]>([]);
-  const [selectedFilter, setSelectedFilter] = useState<string>('all');
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState<string>("all");
 
-  useEffect(() => {
-    loadNotifications();
-  }, [token]);
-
-  async function loadNotifications() {
-    if (!token) return;
-
-    try {
-      setLoading(true);
-      setError(null);
+  // Fetch notifications
+  const {
+    data: notificationsData,
+    loading,
+    refreshing,
+    error,
+    refresh,
+    refetch,
+  } = useDataFetch<{ notifications: Notification[]; hasMore: boolean }>({
+    fetchFn: async () => {
+      if (!token) throw new Error("Not authenticated");
       const data = await getNotifications(token, 50, 0);
-      setNotifications(data?.notifications || []);
-      setFilteredNotifications(data?.notifications || []);
-      setHasMore(data?.hasMore || false);
-    } catch (err) {
-      setError(getUserFriendlyErrorMessage(err));
-      setNotifications([]);
-      setFilteredNotifications([]);
-      setHasMore(false);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      return {
+        notifications: data?.notifications || [],
+        hasMore: data?.hasMore || false,
+      };
+    },
+    immediate: true,
+    deps: [token],
+  });
+
+  const notifications = notificationsData?.notifications || [];
+  const hasMore = notificationsData?.hasMore || false;
+
+  // Filter notifications based on selected filter
+  const filteredNotifications = useMemo(() => {
+    if (selectedFilter === "all") {
+      return notifications;
     }
-  }
+    return notifications.filter((n) => n.type === selectedFilter);
+  }, [notifications, selectedFilter]);
 
-  async function handleMarkAsRead(notificationId: string) {
-    if (!token) return;
-
-    try {
+  const { execute: handleMarkAsRead } = useAsyncOperation({
+    operationFn: async (notificationId: string) => {
+      if (!token) throw new Error("Not authenticated");
       await markNotificationAsRead(token, notificationId);
-      setNotifications(prev =>
-        prev.map(n =>
-          n.id === notificationId ? { ...n, read: true, readAt: new Date().toISOString() } : n,
-        ),
-      );
-      setFilteredNotifications(prev =>
-        prev.map(n =>
-          n.id === notificationId ? { ...n, read: true, readAt: new Date().toISOString() } : n,
-        ),
-      );
       // Update badge count
-      const unreadCount = (notifications || []).filter(n => n.id !== notificationId && !n.read).length;
+      const unreadCount = notifications.filter(
+        (n) => n.id !== notificationId && !n.read,
+      ).length;
       await setBadgeCount(unreadCount);
-    } catch (err) {
-      console.error('Failed to mark notification as read:', err);
-    }
-  }
+      // Refetch to get updated notifications
+      refetch();
+      return notificationId;
+    },
+  });
 
-  async function handleMarkAllAsRead() {
-    if (!token) return;
-
-    try {
+  const { execute: handleMarkAllAsRead } = useAsyncOperation({
+    operationFn: async () => {
+      if (!token) throw new Error("Not authenticated");
       await markAllNotificationsAsRead(token);
-      setNotifications(prev => prev.map(n => ({ ...n, read: true, readAt: new Date().toISOString() })));
-      setFilteredNotifications(prev => prev.map(n => ({ ...n, read: true, readAt: new Date().toISOString() })));
       // Update badge count to 0
       await setBadgeCount(0);
-    } catch (err) {
-      console.error('Failed to mark all notifications as read:', err);
-    }
-  }
+      // Refetch to get updated notifications
+      refetch();
+    },
+  });
 
-  async function handleClearAll() {
-    if (!token) return;
+  const { execute: handleClearAllOperation } = useAsyncOperation({
+    operationFn: async () => {
+      if (!token) throw new Error("Not authenticated");
+      // Delete all notifications one by one (or implement bulk delete endpoint)
+      for (const notification of notifications) {
+        await deleteNotification(token, notification.id);
+      }
+      // Refetch to get updated notifications
+      refetch();
+    },
+  });
 
+  function handleClearAll() {
     Alert.alert(
-      'Clear All Notifications',
-      'Are you sure you want to delete all notifications? This action cannot be undone.',
+      "Clear All Notifications",
+      "Are you sure you want to delete all notifications? This action cannot be undone.",
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Clear All',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Delete all notifications one by one (or implement bulk delete endpoint)
-              for (const notification of notifications) {
-                await deleteNotification(token, notification.id);
-              }
-              setNotifications([]);
-              setFilteredNotifications([]);
-            } catch (err) {
-              console.error('Failed to clear all notifications:', err);
-            }
-          },
+          text: "Clear All",
+          style: "destructive",
+          onPress: () => handleClearAllOperation(),
         },
       ],
     );
@@ -153,23 +152,17 @@ export function NotificationsScreen({
 
   function handleFilter(filter: string) {
     setSelectedFilter(filter);
-    if (filter === 'all') {
-      setFilteredNotifications(notifications);
-    } else {
-      setFilteredNotifications(notifications.filter(n => n.type === filter));
-    }
   }
 
-  async function handleDelete(notificationId: string) {
-    if (!token) return;
-
-    try {
+  const { execute: handleDelete } = useAsyncOperation({
+    operationFn: async (notificationId: string) => {
+      if (!token) throw new Error("Not authenticated");
       await deleteNotification(token, notificationId);
-      setNotifications(prev => prev.filter(n => n.id !== notificationId));
-    } catch (err) {
-      console.error('Failed to delete notification:', err);
-    }
-  }
+      // Refetch to get updated notifications
+      refetch();
+      return notificationId;
+    },
+  });
 
   function handleNotificationPress(notification: Notification) {
     if (!notification.read) {
@@ -193,7 +186,10 @@ export function NotificationsScreen({
         notification.data.groupId,
         notification.data.groupName,
       );
-    } else if (notification.type === 'friend_request' && notification.data?.friendId) {
+    } else if (
+      notification.type === "friend_request" &&
+      notification.data?.friendId
+    ) {
       // For friend requests, clicking the card goes to friends list (requests tab)
       // The "View Profile" button will handle profile navigation separately
       if (onViewFriend) {
@@ -218,79 +214,79 @@ export function NotificationsScreen({
   }
 
   function getActionLabel(notification: Notification): string | null {
-    if (notification.data?.expenseId) return 'View Expense';
-    if (notification.data?.choreId) return 'View Chore';
-    if (notification.data?.listingId) return 'View Listing';
-    if (notification.data?.rideId) return 'View Ride';
-    if (notification.data?.groupId) return 'View Group';
-    if (notification.data?.friendId) return 'View Profile';
-    if (notification.data?.chatId) return 'Open Chat';
+    if (notification.data?.expenseId) return "View Expense";
+    if (notification.data?.choreId) return "View Chore";
+    if (notification.data?.listingId) return "View Listing";
+    if (notification.data?.rideId) return "View Ride";
+    if (notification.data?.groupId) return "View Group";
+    if (notification.data?.friendId) return "View Profile";
+    if (notification.data?.chatId) return "Open Chat";
     return null;
   }
 
   function getNotificationIcon(type: NotificationType): string {
     switch (type) {
-      case 'expense_added':
-      case 'expense_updated':
-      case 'expense_deleted':
-        return 'receipt';
-      case 'expense_settled':
-      case 'expense_split_paid':
-        return 'check-circle';
-      case 'chore_assigned':
-      case 'chore_completed':
-      case 'chore_created':
-      case 'chore_updated':
-      case 'chore_deleted':
-        return 'task';
-      case 'group_member_added':
-      case 'group_member_removed':
-        return 'group';
-      case 'friend_request':
-      case 'friend_accepted':
-        return 'person-add';
-      case 'message_received':
-        return 'message';
-      case 'listing_interest':
-      case 'listing_favorited':
-        return 'favorite';
-      case 'listing_commented':
-        return 'comment';
-      case 'ride_created':
-      case 'ride_joined':
-      case 'ride_updated':
-      case 'ride_cancelled':
-        return 'directions-car';
+      case "expense_added":
+      case "expense_updated":
+      case "expense_deleted":
+        return "receipt";
+      case "expense_settled":
+      case "expense_split_paid":
+        return "check-circle";
+      case "chore_assigned":
+      case "chore_completed":
+      case "chore_created":
+      case "chore_updated":
+      case "chore_deleted":
+        return "task";
+      case "group_member_added":
+      case "group_member_removed":
+        return "group";
+      case "friend_request":
+      case "friend_accepted":
+        return "person-add";
+      case "message_received":
+        return "message";
+      case "listing_interest":
+      case "listing_favorited":
+        return "favorite";
+      case "listing_commented":
+        return "comment";
+      case "ride_created":
+      case "ride_joined":
+      case "ride_updated":
+      case "ride_cancelled":
+        return "directions-car";
       default:
-        return 'notifications';
+        return "notifications";
     }
   }
 
   function getNotificationColor(type: NotificationType): string {
     switch (type) {
-      case 'expense_added':
-      case 'expense_updated':
-        return '#2563EB'; // Blue
-      case 'expense_settled':
-      case 'expense_split_paid':
-      case 'chore_completed':
-        return '#10B981'; // Green
-      case 'expense_deleted':
-        return '#EF4444'; // Red
-      case 'chore_assigned':
-      case 'chore_created':
-        return '#F59E0B'; // Amber
-      case 'chore_updated':
-        return '#3B82F6'; // Blue
-      case 'chore_deleted':
-        return '#EF4444'; // Red
-      case 'friend_request':
-      case 'friend_accepted':
-        return '#8B5CF6'; // Purple
-      case 'message_received':
-        return '#06B6D4'; // Cyan
+      case "expense_added":
+      case "expense_updated":
+        return theme.colors.blue;
+      case "expense_settled":
+      case "expense_split_paid":
+      case "chore_completed":
+        return theme.colors.success;
+      case "expense_deleted":
+        return theme.colors.error;
+      case "chore_assigned":
+      case "chore_created":
+        return theme.colors.warning;
+      case "chore_updated":
+        return theme.colors.info;
+      case "chore_deleted":
+        return theme.colors.error;
+      case "friend_request":
+      case "friend_accepted":
+        return theme.colors.primary;
+      case "message_received":
+        return theme.colors.info;
       default:
-        return '#6B7280'; // Gray
+        return theme.colors.textSecondary;
     }
   }
 
@@ -302,32 +298,41 @@ export function NotificationsScreen({
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMins < 1) return 'Just now';
+    if (diffMins < 1) return "Just now";
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
     return date.toLocaleDateString();
   }
 
-  function groupNotificationsByDate(notifications: Notification[]): { date: string; items: Notification[] }[] {
+  function groupNotificationsByDate(
+    notifications: Notification[],
+  ): { date: string; items: Notification[] }[] {
     const groups: Map<string, Notification[]> = new Map();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    notifications.forEach(notification => {
+    notifications.forEach((notification) => {
       const date = new Date(notification.createdAt);
       date.setHours(0, 0, 0, 0);
-      const diffDays = Math.floor((today.getTime() - date.getTime()) / 86400000);
+      const diffDays = Math.floor(
+        (today.getTime() - date.getTime()) / 86400000,
+      );
 
       let dateLabel: string;
       if (diffDays === 0) {
-        dateLabel = 'Today';
+        dateLabel = "Today";
       } else if (diffDays === 1) {
-        dateLabel = 'Yesterday';
+        dateLabel = "Yesterday";
       } else if (diffDays < 7) {
-        dateLabel = date.toLocaleDateString('en-US', { weekday: 'long' });
+        dateLabel = date.toLocaleDateString("en-US", { weekday: "long" });
       } else {
-        dateLabel = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
+        dateLabel = date.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year:
+            date.getFullYear() !== today.getFullYear() ? "numeric" : undefined,
+        });
       }
 
       if (!groups.has(dateLabel)) {
@@ -336,19 +341,26 @@ export function NotificationsScreen({
       groups.get(dateLabel)!.push(notification);
     });
 
-    return Array.from(groups.entries()).map(([date, items]) => ({ date, items }));
+    return Array.from(groups.entries()).map(([date, items]) => ({
+      date,
+      items,
+    }));
   }
 
-  const unreadCount = (filteredNotifications || []).filter(n => !n.read).length;
-  const groupedNotifications = groupNotificationsByDate(filteredNotifications || []);
+  const unreadCount = (filteredNotifications || []).filter(
+    (n) => !n.read,
+  ).length;
+  const groupedNotifications = groupNotificationsByDate(
+    filteredNotifications || [],
+  );
 
   const filterTypes = [
-    { key: 'all', label: 'All' },
-    { key: 'expense_added', label: 'Expenses' },
-    { key: 'chore_assigned', label: 'Chores' },
-    { key: 'message_received', label: 'Messages' },
-    { key: 'friend_request', label: 'Friends' },
-    { key: 'listing_commented', label: 'Listings' },
+    { key: "all", label: "All" },
+    { key: "expense_added", label: "Expenses" },
+    { key: "chore_assigned", label: "Chores" },
+    { key: "message_received", label: "Messages" },
+    { key: "friend_request", label: "Friends" },
+    { key: "listing_commented", label: "Listings" },
   ];
 
   // Prepare right actions for header (unreadCount is already calculated above)
@@ -357,12 +369,12 @@ export function NotificationsScreen({
       {unreadCount > 0 && (
         <TouchableOpacity
           style={styles.headerActionButton}
-          onPress={handleMarkAllAsRead}
+          onPress={() => handleMarkAllAsRead()}
           activeOpacity={0.7}
           accessibilityRole="button"
           accessibilityLabel="Mark all as read"
         >
-          <MaterialIcons name="done-all" size={24} color="#FFFFFF" />
+          <MaterialIcons name="done-all" size={24} color={theme.colors.white} />
         </TouchableOpacity>
       )}
       {(notifications || []).length > 0 && (
@@ -373,7 +385,11 @@ export function NotificationsScreen({
           accessibilityRole="button"
           accessibilityLabel="Clear all notifications"
         >
-          <MaterialIcons name="delete-outline" size={24} color="#FFFFFF" />
+          <MaterialIcons
+            name="delete-outline"
+            size={24}
+            color={theme.colors.white}
+          />
         </TouchableOpacity>
       )}
     </>
@@ -381,7 +397,7 @@ export function NotificationsScreen({
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <Header
           title="Notifications"
           onBack={onBack}
@@ -391,7 +407,7 @@ export function NotificationsScreen({
           onNavigateToSettings={onNavigateToSettings}
         />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
+          <ActivityIndicator size="large" color={theme.colors.blue} />
           <Text style={styles.loadingText}>Loading notifications...</Text>
         </View>
       </SafeAreaView>
@@ -399,7 +415,7 @@ export function NotificationsScreen({
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <Header
         title="Notifications"
         onBack={onBack}
@@ -431,7 +447,8 @@ export function NotificationsScreen({
                 <Text
                   style={[
                     styles.filterChipText,
-                    selectedFilter === filter.key && styles.filterChipTextSelected,
+                    selectedFilter === filter.key &&
+                      styles.filterChipTextSelected,
                   ]}
                 >
                   {filter.label}
@@ -446,13 +463,13 @@ export function NotificationsScreen({
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={loadNotifications} />
+          <RefreshControl refreshing={refreshing} onRefresh={refresh} />
         }
       >
         {error && (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={loadNotifications}>
+            <TouchableOpacity style={styles.retryButton} onPress={refetch}>
               <Text style={styles.retryButtonText}>Retry</Text>
             </TouchableOpacity>
           </View>
@@ -485,7 +502,9 @@ export function NotificationsScreen({
                       <View
                         style={[
                           styles.iconContainer,
-                          { backgroundColor: `${getNotificationColor(notification.type)}20` },
+                          {
+                            backgroundColor: `${getNotificationColor(notification.type)}20`,
+                          },
                         ]}
                       >
                         <MaterialIcons
@@ -496,11 +515,19 @@ export function NotificationsScreen({
                       </View>
                       <View style={styles.notificationText}>
                         <View style={styles.notificationHeader}>
-                          <Text style={styles.notificationTitle}>{notification.title}</Text>
-                          {!notification.read && <View style={styles.unreadDot} />}
+                          <Text style={styles.notificationTitle}>
+                            {notification.title}
+                          </Text>
+                          {!notification.read && (
+                            <View style={styles.unreadDot} />
+                          )}
                         </View>
-                        <Text style={styles.notificationMessage}>{notification.message}</Text>
-                        <Text style={styles.notificationTime}>{formatDate(notification.createdAt)}</Text>
+                        <Text style={styles.notificationMessage}>
+                          {notification.message}
+                        </Text>
+                        <Text style={styles.notificationTime}>
+                          {formatDate(notification.createdAt)}
+                        </Text>
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -511,7 +538,10 @@ export function NotificationsScreen({
                         onPress={(e) => {
                           e.stopPropagation();
                           // For "View Profile" on friend requests, use separate handler
-                          if (notification.type === 'friend_request' && getActionLabel(notification) === 'View Profile') {
+                          if (
+                            notification.type === "friend_request" &&
+                            getActionLabel(notification) === "View Profile"
+                          ) {
                             handleViewProfile(notification);
                           } else {
                             handleNotificationPress(notification);
@@ -519,7 +549,9 @@ export function NotificationsScreen({
                         }}
                         activeOpacity={0.7}
                       >
-                        <Text style={styles.actionButtonText}>{getActionLabel(notification)}</Text>
+                        <Text style={styles.actionButtonText}>
+                          {getActionLabel(notification)}
+                        </Text>
                       </TouchableOpacity>
                     )}
                     <TouchableOpacity
@@ -530,7 +562,11 @@ export function NotificationsScreen({
                       }}
                       activeOpacity={0.7}
                     >
-                      <MaterialIcons name="close" size={18} color="#9CA3AF" />
+                      <MaterialIcons
+                        name="close"
+                        size={18}
+                        color={theme.colors.textTertiary}
+                      />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -543,213 +579,213 @@ export function NotificationsScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#6B7280',
-  },
-  headerActionButton: {
-    padding: 8,
-    minWidth: 44,
-    minHeight: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 24,
-  },
-  errorContainer: {
-    padding: 16,
-    backgroundColor: '#FEF2F2',
-    borderRadius: 8,
-    margin: 16,
-  },
-  errorText: {
-    fontSize: 14,
-    color: '#EF4444',
-    marginBottom: 8,
-  },
-  retryButton: {
-    backgroundColor: '#EF4444',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    alignSelf: 'flex-start',
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    padding: 48,
-    marginTop: 64,
-  },
-  emptyText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#374151',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-  dateGroup: {
-    marginBottom: 24,
-  },
-  dateHeader: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    paddingHorizontal: 24,
-    marginBottom: 12,
-  },
-  notificationCard: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    marginHorizontal: 24,
-    marginBottom: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  notificationCardUnread: {
-    backgroundColor: '#F0F9FF',
-    borderColor: '#2563EB',
-    borderWidth: 1,
-  },
-  notificationContentWrapper: {
-    flex: 1,
-  },
-  notificationContent: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    flex: 1,
-  },
-  iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  notificationText: {
-    flex: 1,
-  },
-  notificationHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  notificationTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    flex: 1,
-  },
-  notificationMessage: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 4,
-    lineHeight: 20,
-  },
-  notificationTime: {
-    fontSize: 12,
-    color: '#9CA3AF',
-  },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#2563EB',
-    marginLeft: 8,
-  },
-  deleteButton: {
-    padding: 8,
-    marginLeft: 8,
-  },
-  filterWrapper: {
-    height: 56,
-    flexShrink: 0,
-    flexGrow: 0,
-  },
-  filterContainer: {
-    height: 56,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-    backgroundColor: '#F9FAFB',
-  },
-  filterContent: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    gap: 8,
-    alignItems: 'center',
-    flexDirection: 'row',
-  },
-  filterChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginRight: 8,
-    flexShrink: 0,
-    flexGrow: 0,
-  },
-  filterChipSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  filterChipText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#6B7280',
-  },
-  filterChipTextSelected: {
-    color: '#FFFFFF',
-  },
-  notificationRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginTop: 8,
-    gap: 8,
-  },
-  actionButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    backgroundColor: '#2563EB',
-  },
-  actionButtonText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#FFFFFF',
-  },
-});
-
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.backgroundSecondary,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: theme.spacing.xl,
+    },
+    loadingText: {
+      marginTop: theme.spacing.base,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textSecondary,
+    },
+    headerActionButton: {
+      padding: theme.spacing.sm,
+      minWidth: 44,
+      minHeight: 44,
+      justifyContent: "center",
+      alignItems: "center",
+      borderRadius: 22,
+      backgroundColor: theme.colors.overlayLight,
+    },
+    container: {
+      flex: 1,
+    },
+    scrollContent: {
+      paddingBottom: theme.spacing.xl,
+    },
+    errorContainer: {
+      padding: theme.spacing.base,
+      backgroundColor: theme.colors.errorBackground,
+      borderRadius: 8,
+      margin: theme.spacing.base,
+    },
+    errorText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.error,
+      marginBottom: theme.spacing.sm,
+    },
+    retryButton: {
+      backgroundColor: theme.colors.error,
+      borderRadius: 8,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.xl,
+      alignSelf: "flex-start",
+    },
+    retryButtonText: {
+      color: theme.colors.textInverse,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    emptyContainer: {
+      alignItems: "center",
+      padding: 48,
+      marginTop: 64,
+    },
+    emptyText: {
+      fontSize: theme.typography.fontSize.xl,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.gray700,
+      marginTop: theme.spacing.base,
+      marginBottom: theme.spacing.sm,
+    },
+    emptySubtext: {
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textSecondary,
+      textAlign: "center",
+    },
+    dateGroup: {
+      marginBottom: theme.spacing.xl,
+    },
+    dateHeader: {
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textSecondary,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+      paddingHorizontal: theme.spacing.xl,
+      marginBottom: theme.spacing.md,
+    },
+    notificationCard: {
+      backgroundColor: theme.colors.background,
+      padding: theme.spacing.base,
+      marginHorizontal: theme.spacing.xl,
+      marginBottom: theme.spacing.sm,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    notificationCardUnread: {
+      backgroundColor: theme.colors.blueBackground,
+      borderColor: theme.colors.blue,
+      borderWidth: 1,
+    },
+    notificationContentWrapper: {
+      flex: 1,
+    },
+    notificationContent: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      flex: 1,
+    },
+    iconContainer: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      justifyContent: "center",
+      alignItems: "center",
+      marginRight: theme.spacing.md,
+    },
+    notificationText: {
+      flex: 1,
+    },
+    notificationHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: theme.spacing.xs,
+    },
+    notificationTitle: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+      flex: 1,
+    },
+    notificationMessage: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+      marginBottom: theme.spacing.xs,
+      lineHeight: 20,
+    },
+    notificationTime: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.textTertiary,
+    },
+    unreadDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: theme.colors.blue,
+      marginLeft: theme.spacing.sm,
+    },
+    deleteButton: {
+      padding: theme.spacing.sm,
+      marginLeft: theme.spacing.sm,
+    },
+    filterWrapper: {
+      height: 56,
+      flexShrink: 0,
+      flexGrow: 0,
+    },
+    filterContainer: {
+      height: 56,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+      backgroundColor: theme.colors.backgroundSecondary,
+    },
+    filterContent: {
+      paddingHorizontal: theme.spacing.xl,
+      paddingVertical: theme.spacing.md,
+      gap: theme.spacing.sm,
+      alignItems: "center",
+      flexDirection: "row",
+    },
+    filterChip: {
+      paddingVertical: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.base,
+      borderRadius: 20,
+      backgroundColor: theme.colors.background,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      marginRight: theme.spacing.sm,
+      flexShrink: 0,
+      flexGrow: 0,
+    },
+    filterChipSelected: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    filterChipText: {
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.textSecondary,
+    },
+    filterChipTextSelected: {
+      color: theme.colors.textInverse,
+    },
+    notificationRight: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      marginTop: theme.spacing.sm,
+      gap: theme.spacing.sm,
+    },
+    actionButton: {
+      paddingVertical: 6,
+      paddingHorizontal: theme.spacing.md,
+      borderRadius: 6,
+      backgroundColor: theme.colors.blue,
+    },
+    actionButtonText: {
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.textInverse,
+    },
+  });

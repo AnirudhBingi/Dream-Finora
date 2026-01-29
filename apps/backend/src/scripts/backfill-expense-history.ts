@@ -1,7 +1,7 @@
 /**
  * Backfill script to add history entries for existing expenses
  * Run this once after adding the ExpenseHistory feature to populate history for existing expenses
- * 
+ *
  * Usage: npx ts-node src/scripts/backfill-expense-history.ts
  */
 
@@ -31,7 +31,9 @@ async function backfillExpenseHistory() {
       },
     });
 
-    console.log(`Found ${expensesWithoutHistory.length} expenses without history`);
+    console.log(
+      `Found ${expensesWithoutHistory.length} expenses without history`,
+    );
 
     if (expensesWithoutHistory.length === 0) {
       console.log('No expenses need history backfill. Exiting.');
@@ -56,7 +58,10 @@ async function backfillExpenseHistory() {
         });
         successCount++;
       } catch (error) {
-        console.error(`Failed to create history for expense ${expense.id}:`, error);
+        console.error(
+          `Failed to create history for expense ${expense.id}:`,
+          error,
+        );
         errorCount++;
       }
     }
@@ -84,4 +89,3 @@ backfillExpenseHistory()
     console.error('Backfill script failed:', error);
     process.exit(1);
   });
-

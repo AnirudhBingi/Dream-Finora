@@ -69,22 +69,25 @@ export class ActivityService {
           type: 'expense_created',
           timestamp: expense.createdAt,
           description: `Expense "${expense.description}" was created`,
-          user: expense.User_Expense_createdByToUser ? {
-            id: expense.User_Expense_createdByToUser.id,
-            email: expense.User_Expense_createdByToUser.email,
-            profile: expense.User_Expense_createdByToUser.UserProfile,
-          } : null,
-          data: { expenseId: expense.id, amount: expense.amount, currency: expense.currency },
+          user: expense.User_Expense_createdByToUser
+            ? {
+                id: expense.User_Expense_createdByToUser.id,
+                email: expense.User_Expense_createdByToUser.email,
+                profile: expense.User_Expense_createdByToUser.UserProfile,
+              }
+            : null,
+          data: {
+            expenseId: expense.id,
+            amount: expense.amount,
+            currency: expense.currency,
+          },
         });
       }
 
       // Get settlements user is involved in (as payer or payee)
       const settlements = await this.prisma.settlement.findMany({
         where: {
-          OR: [
-            { payerId: userId },
-            { payeeId: userId },
-          ],
+          OR: [{ payerId: userId }, { payeeId: userId }],
         },
         include: {
           User_Settlement_payerIdToUser: {
@@ -132,47 +135,53 @@ export class ActivityService {
       });
 
       for (const settlement of settlements) {
-        const payerName = settlement.User_Settlement_payerIdToUser.UserProfile?.displayName || 
-                          settlement.User_Settlement_payerIdToUser.email;
-        const payeeName = settlement.User_Settlement_payeeIdToUser.UserProfile?.displayName || 
-                          settlement.User_Settlement_payeeIdToUser.email;
+        const payerName =
+          settlement.User_Settlement_payerIdToUser.UserProfile?.displayName ||
+          settlement.User_Settlement_payerIdToUser.email;
+        const payeeName =
+          settlement.User_Settlement_payeeIdToUser.UserProfile?.displayName ||
+          settlement.User_Settlement_payeeIdToUser.email;
         const isUserPayer = settlement.payerId === userId;
-        const otherUser = isUserPayer ? settlement.User_Settlement_payeeIdToUser : settlement.User_Settlement_payerIdToUser;
-        
+        const otherUser = isUserPayer
+          ? settlement.User_Settlement_payeeIdToUser
+          : settlement.User_Settlement_payerIdToUser;
+
         // Check if settlement is linked to a single expense or multiple expenses
-        const linkedExpenses = settlement.SettlementSplit
-          .map(ss => ss.ExpenseSplit?.Expense)
-          .filter(e => e !== null && e !== undefined);
-        
+        const linkedExpenses = settlement.SettlementSplit.map(
+          (ss) => ss.ExpenseSplit?.Expense,
+        ).filter((e) => e !== null && e !== undefined);
+
         // If settlement covers multiple expenses or no specific expense, show as overall settlement
         const isOverallSettlement = linkedExpenses.length !== 1;
         const expense = linkedExpenses.length === 1 ? linkedExpenses[0] : null;
-        
+
         // Build description
         let description: string;
         if (isOverallSettlement) {
           // Overall settlement - don't link to specific expense
-          description = isUserPayer 
+          description = isUserPayer
             ? `You paid ${payeeName} ${settlement.amount} ${settlement.currency}`
             : `${payerName} paid you ${settlement.amount} ${settlement.currency}`;
         } else {
           // Settlement for specific expense
-          description = isUserPayer 
+          description = isUserPayer
             ? `You paid ${payeeName} ${settlement.amount} ${settlement.currency} for "${expense?.description || 'expense'}"`
             : `${payerName} paid you ${settlement.amount} ${settlement.currency} for "${expense?.description || 'expense'}"`;
         }
-        
+
         activities.push({
           id: `settlement-${settlement.id}`,
           type: 'settlement_created',
           timestamp: settlement.createdAt,
           description,
-          user: otherUser ? {
-            id: otherUser.id,
-            email: otherUser.email,
-            profile: otherUser.UserProfile,
-          } : null,
-          data: { 
+          user: otherUser
+            ? {
+                id: otherUser.id,
+                email: otherUser.email,
+                profile: otherUser.UserProfile,
+              }
+            : null,
+          data: {
             settlementId: settlement.id,
             expenseId: isOverallSettlement ? null : expense?.id, // Only link if single expense
             amount: settlement.amount,
@@ -227,11 +236,13 @@ export class ActivityService {
           type: 'chore_created',
           timestamp: chore.createdAt,
           description: `Chore "${chore.title}" was created`,
-          user: chore.User_Chore_createdByToUser ? {
-            id: chore.User_Chore_createdByToUser.id,
-            email: chore.User_Chore_createdByToUser.email,
-            profile: chore.User_Chore_createdByToUser.UserProfile,
-          } : null,
+          user: chore.User_Chore_createdByToUser
+            ? {
+                id: chore.User_Chore_createdByToUser.id,
+                email: chore.User_Chore_createdByToUser.email,
+                profile: chore.User_Chore_createdByToUser.UserProfile,
+              }
+            : null,
           data: { choreId: chore.id },
         });
       }
@@ -286,12 +297,17 @@ export class ActivityService {
           type: 'chore_completed',
           timestamp: completion.completedAt,
           description: `${completion.User.UserProfile?.displayName || completion.User.email} completed chore "${completion.Chore.title}"`,
-          user: completion.User ? {
-            id: completion.User.id,
-            email: completion.User.email,
-            profile: completion.User.UserProfile,
-          } : null,
-          data: { choreId: completion.Chore.id, pointsEarned: completion.pointsEarned },
+          user: completion.User
+            ? {
+                id: completion.User.id,
+                email: completion.User.email,
+                profile: completion.User.UserProfile,
+              }
+            : null,
+          data: {
+            choreId: completion.Chore.id,
+            pointsEarned: completion.pointsEarned,
+          },
         });
       }
     }
@@ -331,11 +347,13 @@ export class ActivityService {
           type: 'group_created',
           timestamp: group.createdAt,
           description: `Group "${group.name}" was created`,
-          user: group.User ? {
-            id: group.User.id,
-            email: group.User.email,
-            profile: group.User.UserProfile,
-          } : null,
+          user: group.User
+            ? {
+                id: group.User.id,
+                email: group.User.email,
+                profile: group.User.UserProfile,
+              }
+            : null,
           data: { groupId: group.id },
         });
       }
@@ -372,11 +390,13 @@ export class ActivityService {
           type: 'listing_created',
           timestamp: listing.createdAt,
           description: `Listing "${listing.title}" was created`,
-          user: listing.User ? {
-            id: listing.User.id,
-            email: listing.User.email,
-            profile: listing.User.UserProfile,
-          } : null,
+          user: listing.User
+            ? {
+                id: listing.User.id,
+                email: listing.User.email,
+                profile: listing.User.UserProfile,
+              }
+            : null,
           data: { listingId: listing.id },
         });
       }
@@ -422,18 +442,23 @@ export class ActivityService {
           type: 'ride_created',
           timestamp: ride.createdAt,
           description: `Ride from ${ride.origin} to ${ride.destination} was created`,
-          user: ride.User ? {
-            id: ride.User.id,
-            email: ride.User.email,
-            profile: ride.User.UserProfile,
-          } : null,
+          user: ride.User
+            ? {
+                id: ride.User.id,
+                email: ride.User.email,
+                profile: ride.User.UserProfile,
+              }
+            : null,
           data: { rideId: ride.id },
         });
       }
     }
 
     // Sort by timestamp (most recent first)
-    activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    activities.sort(
+      (a, b) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    );
 
     // Apply pagination
     const total = activities.length;

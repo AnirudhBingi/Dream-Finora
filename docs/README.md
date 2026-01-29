@@ -1,128 +1,102 @@
-# Documentation Index
+# Documentation
 
-## Overview
-
-This directory contains all development documentation organized by purpose.
+**Purpose:** Essential project documentation organized by category
 
 ---
 
-## Structure
+## 📚 Structure
 
 ```
 docs/
 ├── README.md (this file)
-├── DAILY_LOGS/          # Day-by-day progress tracking
-│   ├── README.md
-│   ├── TEMPLATE.md
-│   ├── DAY_01.md
-│   ├── DAY_02.md
-│   └── ...
-├── DECISIONS/           # Architecture Decision Records (ADR)
-│   ├── README.md
-│   ├── TEMPLATE.md
-│   └── ADR-*.md
-├── ISSUES/              # Bug tracking and solutions
-│   ├── README.md
-│   ├── TEMPLATE.md
-│   └── ISSUE-*.md
-├── CHANGELOG.md         # Version history
-└── PROGRESS.md          # High-level progress tracking
+│
+├── analysis/                 # Codebase analysis & status
+│   ├── CODEBASE_ANALYSIS.md  - What exists in the codebase
+│   └── FEATURES_STATUS.md    - Current feature completion status
+│
+├── architecture/             # System design & architecture
+│   ├── ARCHITECTURAL_OVERVIEW.md  - Development lifecycle & operations
+│   └── ROOT_ARCHITECTURAL_ISSUES.md - Root causes & solutions
+│
+└── planning/                 # Next steps & implementation plans
+    ├── SETTINGS_START_HERE.md      - ⭐ BEGIN HERE - Quick start for Settings UI
+    ├── SETTINGS_IMPLEMENTATION_PLAN.md - Detailed implementation plan
+    ├── SETTINGS_PHASE1_CHECKLIST.md - Step-by-step execution checklist
+    ├── SETTINGS_UI_ANALYSIS.md     - Settings UI analysis & roadmap
+    └── PRIORITY_ACTION_PLAN.md     - High-level project status & roadmap
 ```
 
 ---
 
-## Quick Links
+## 🎯 Quick Start
 
-### Daily Documentation
-- [Today's Log](./DAILY_LOGS/DAY_01.md) - Start here each day
-- [Daily Logs Index](./DAILY_LOGS/README.md)
-- [Daily Log Template](./DAILY_LOGS/TEMPLATE.md)
+### **Current Status: 97% Feature Complete** ✅
+- ✅ **SpaceV (Listings):** 100% complete
+- ✅ **Rideshare Integration:** 100% complete
+- ✅ **All architectural foundations:** 100% complete
+- ⏳ **Settings UI:** 80% → 100% (NEXT PRIORITY)
 
-### Decision Tracking
-- [Architecture Decisions](./DECISIONS/README.md)
-- [Decision Template](./DECISIONS/TEMPLATE.md)
+### **NOW IMPLEMENTING: Settings UI Restructuring!** 🚀
 
-### Issue Tracking
-- [Issue Tracker](./ISSUES/README.md)
-- [Issue Template](./ISSUES/TEMPLATE.md)
+**Start with:** [SETTINGS_START_HERE.md](./planning/SETTINGS_START_HERE.md)
+- Quick overview of what we're building
+- Prerequisites and checklist
+- Next steps
 
-### Progress & History
-- [Project Progress](./PROGRESS.md)
-- [Changelog](./CHANGELOG.md)
+**Then follow:** [SETTINGS_PHASE1_CHECKLIST.md](./planning/SETTINGS_PHASE1_CHECKLIST.md)
+- Step-by-step task breakdown
+- Sub-tasks with time estimates
+- Safety gates and verification
 
----
-
-## Documentation Workflow
-
-### Daily Routine
-
-**Start of Day:**
-1. Open/create today's daily log
-2. Set goals for the day
-3. Note any blockers from yesterday
-
-**During Development:**
-1. Note issues as they arise (create issue docs)
-2. Document decisions (create ADRs if significant)
-3. Update daily log with progress
-
-**End of Day:**
-1. Complete daily log
-2. Update progress tracker
-3. Note tomorrow's goals
-4. Commit changes
-
-**Weekly:**
-1. Review progress
-2. Update PROGRESS.md
-3. Summarize week's achievements
+**Reference:** [SETTINGS_IMPLEMENTATION_PLAN.md](./planning/SETTINGS_IMPLEMENTATION_PLAN.md)
+- Detailed architecture and design
+- Technical notes and patterns
+- Risk assessment
 
 ---
 
-## Best Practices
+## 📖 Reading Guide by Task
 
-### Daily Logs
-- ✅ Be honest about time and blockers
-- ✅ Note solutions immediately (don't rely on memory)
-- ✅ Include error messages and code snippets
-- ✅ Link to related issues/decisions
+### **Understanding What Exists**
+1. [CODEBASE_ANALYSIS.md](./analysis/CODEBASE_ANALYSIS.md) - Complete inventory
+2. [FEATURES_STATUS.md](./analysis/FEATURES_STATUS.md) - Feature completion matrix
 
-### Decisions
-- ✅ Document WHY, not just WHAT
-- ✅ Consider alternatives
-- ✅ Note consequences
-- ✅ Review periodically
+### **Understanding How Systems Work**
+1. [ARCHITECTURAL_OVERVIEW.md](./architecture/ARCHITECTURAL_OVERVIEW.md) - Development lifecycle
+2. [ROOT_ARCHITECTURAL_ISSUES.md](./architecture/ROOT_ARCHITECTURAL_ISSUES.md) - Fixed architectural issues
 
-### Issues
-- ✅ Document immediately when encountered
-- ✅ Include reproduction steps
-- ✅ Note attempted solutions
-- ✅ Link to final solution
+### **Planning What to Build Next**
+1. [PRIORITY_ACTION_PLAN.md](./planning/PRIORITY_ACTION_PLAN.md) - High-level roadmap
+2. [SETTINGS_UI_ANALYSIS.md](./planning/SETTINGS_UI_ANALYSIS.md) - Detailed Settings implementation plan
 
 ---
 
-## Benefits
+## ✅ Documentation Principles
 
-This documentation system helps you:
-- ✅ Track progress over time
-- ✅ Debug faster by referencing past solutions
-- ✅ Understand why decisions were made
-- ✅ Estimate future work better
-- ✅ Maintain project continuity
-- ✅ Onboard future team members
-- ✅ Learn from mistakes
+1. **Single Source of Truth** - One doc per topic, no duplicates
+2. **Clear Organization** - Easy to find what you need
+3. **Based on Code** - Documentation reflects actual implementation
+4. **Actionable** - Clear next steps, not just theory
+5. **Minimal but Complete** - Only essential docs for context & fundamentals
+6. **No Redundancy** - All outdated/duplicate docs removed
 
 ---
 
-## Tips
+## 🧹 Recently Cleaned Up
 
-1. **Don't overthink** - Start simple, refine as needed
-2. **Be consistent** - Use templates, update regularly
-3. **Link everything** - Connect logs, issues, decisions
-4. **Review weekly** - Look back to see patterns
-5. **Keep it searchable** - Use clear titles and tags
+**Removed 8 outdated/redundant documents:**
+- Old SpaceV deep dives & roundups (now 100% complete)
+- Old progress reports (now superseded by current status)
+- Old "what's needed" lists (priorities have changed)
+- Outdated team structure docs
+
+**Why?** These docs were:
+- Either outdated (didn't reflect current 97% completion status)
+- Or redundant (covered by PRIORITY_ACTION_PLAN.md)
+- Creating noise and confusion
+
+**Result:** Clean, focused documentation that only contains essential context.
 
 ---
 
-*Start with Day 1 and build the habit of daily documentation!*
-
+*Last Updated: 2026-01-20*

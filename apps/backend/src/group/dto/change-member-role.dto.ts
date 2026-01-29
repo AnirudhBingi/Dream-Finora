@@ -1,4 +1,4 @@
-import { IsEnum, IsString } from 'class-validator';
+import { IsEnum } from 'class-validator';
 
 export enum GroupMemberRole {
   ADMIN = 'ADMIN',
@@ -9,4 +9,3 @@ export class ChangeMemberRoleDto {
   @IsEnum(GroupMemberRole)
   role: GroupMemberRole;
 }
-

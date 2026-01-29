@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLoanDto } from './dto/create-loan.dto';
 import { UpdateLoanDto } from './dto/update-loan.dto';
@@ -28,7 +33,9 @@ export class LoanService {
 
       // Validate context matches if provided
       if (createLoanDto.context && account.context !== createLoanDto.context) {
-        throw new BadRequestException('Account context does not match loan context');
+        throw new BadRequestException(
+          'Account context does not match loan context',
+        );
       }
     }
 
@@ -39,11 +46,13 @@ export class LoanService {
         name: createLoanDto.name,
         lender: createLoanDto.lender,
         principalAmount: createLoanDto.principalAmount,
-        remainingAmount: createLoanDto.remainingAmount ?? createLoanDto.principalAmount,
+        remainingAmount:
+          createLoanDto.remainingAmount ?? createLoanDto.principalAmount,
         interestRate: createLoanDto.interestRate,
         emi: createLoanDto.emi,
         loanTerm: createLoanDto.loanTerm,
-        remainingMonths: createLoanDto.remainingMonths ?? createLoanDto.loanTerm,
+        remainingMonths:
+          createLoanDto.remainingMonths ?? createLoanDto.loanTerm,
         startDate: new Date(createLoanDto.startDate),
         nextPaymentDate: new Date(createLoanDto.nextPaymentDate),
         paymentFrequency: createLoanDto.paymentFrequency || 'monthly',
@@ -60,7 +69,7 @@ export class LoanService {
    * Get loans for a user, optionally filtered by context and status
    */
   async getLoans(userId: string, context?: 'local' | 'home', status?: string) {
-    const where: any = { userId };
+    const where: Prisma.LoanWhereInput = { userId };
     if (context) {
       where.context = context;
     }
@@ -101,7 +110,11 @@ export class LoanService {
   /**
    * Update a loan
    */
-  async updateLoan(userId: string, loanId: string, updateLoanDto: UpdateLoanDto) {
+  async updateLoan(
+    userId: string,
+    loanId: string,
+    updateLoanDto: UpdateLoanDto,
+  ) {
     const loan = await this.prisma.loan.findFirst({
       where: {
         id: loanId,
@@ -128,23 +141,35 @@ export class LoanService {
 
       // Validate context matches
       if (account.context !== loan.context) {
-        throw new BadRequestException('Account context does not match loan context');
+        throw new BadRequestException(
+          'Account context does not match loan context',
+        );
       }
     }
 
-    const updateData: any = {};
+    const updateData: Prisma.LoanUpdateInput = {};
     if (updateLoanDto.name !== undefined) updateData.name = updateLoanDto.name;
-    if (updateLoanDto.lender !== undefined) updateData.lender = updateLoanDto.lender;
-    if (updateLoanDto.principalAmount !== undefined) updateData.principalAmount = updateLoanDto.principalAmount;
-    if (updateLoanDto.remainingAmount !== undefined) updateData.remainingAmount = updateLoanDto.remainingAmount;
-    if (updateLoanDto.interestRate !== undefined) updateData.interestRate = updateLoanDto.interestRate;
+    if (updateLoanDto.lender !== undefined)
+      updateData.lender = updateLoanDto.lender;
+    if (updateLoanDto.principalAmount !== undefined)
+      updateData.principalAmount = updateLoanDto.principalAmount;
+    if (updateLoanDto.remainingAmount !== undefined)
+      updateData.remainingAmount = updateLoanDto.remainingAmount;
+    if (updateLoanDto.interestRate !== undefined)
+      updateData.interestRate = updateLoanDto.interestRate;
     if (updateLoanDto.emi !== undefined) updateData.emi = updateLoanDto.emi;
-    if (updateLoanDto.loanTerm !== undefined) updateData.loanTerm = updateLoanDto.loanTerm;
-    if (updateLoanDto.remainingMonths !== undefined) updateData.remainingMonths = updateLoanDto.remainingMonths;
-    if (updateLoanDto.startDate !== undefined) updateData.startDate = new Date(updateLoanDto.startDate);
-    if (updateLoanDto.nextPaymentDate !== undefined) updateData.nextPaymentDate = new Date(updateLoanDto.nextPaymentDate);
-    if (updateLoanDto.paymentFrequency !== undefined) updateData.paymentFrequency = updateLoanDto.paymentFrequency;
-    if (updateLoanDto.accountId !== undefined) updateData.accountId = updateLoanDto.accountId;
+    if (updateLoanDto.loanTerm !== undefined)
+      updateData.loanTerm = updateLoanDto.loanTerm;
+    if (updateLoanDto.remainingMonths !== undefined)
+      updateData.remainingMonths = updateLoanDto.remainingMonths;
+    if (updateLoanDto.startDate !== undefined)
+      updateData.startDate = new Date(updateLoanDto.startDate);
+    if (updateLoanDto.nextPaymentDate !== undefined)
+      updateData.nextPaymentDate = new Date(updateLoanDto.nextPaymentDate);
+    if (updateLoanDto.paymentFrequency !== undefined)
+      updateData.paymentFrequency = updateLoanDto.paymentFrequency;
+    if (updateLoanDto.accountId !== undefined)
+      updateData.accountId = updateLoanDto.accountId;
     if (updateLoanDto.status !== undefined) {
       updateData.status = updateLoanDto.status;
       if (updateLoanDto.status === 'completed') {
@@ -185,7 +210,11 @@ export class LoanService {
   /**
    * Add a payment to a loan
    */
-  async addPayment(userId: string, loanId: string, addPaymentDto: AddPaymentDto) {
+  async addPayment(
+    userId: string,
+    loanId: string,
+    addPaymentDto: AddPaymentDto,
+  ) {
     const loan = await this.prisma.loan.findFirst({
       where: {
         id: loanId,
@@ -212,7 +241,7 @@ export class LoanService {
     }
 
     // Create payment
-    const payment = await this.prisma.loanPayment.create({
+    await this.prisma.loanPayment.create({
       data: {
         id: randomUUID(),
         loanId,
@@ -226,10 +255,14 @@ export class LoanService {
     });
 
     // Update loan remaining amount and remaining months
-    const newRemainingAmount = Math.max(0, loan.remainingAmount - addPaymentDto.principalPaid);
-    const newRemainingMonths = newRemainingAmount > 0 ? Math.max(0, loan.remainingMonths - 1) : 0;
+    const newRemainingAmount = Math.max(
+      0,
+      loan.remainingAmount - addPaymentDto.principalPaid,
+    );
+    const newRemainingMonths =
+      newRemainingAmount > 0 ? Math.max(0, loan.remainingMonths - 1) : 0;
 
-    const updateData: any = {
+    const updateData: Prisma.LoanUpdateInput = {
       remainingAmount: newRemainingAmount,
       remainingMonths: newRemainingMonths,
     };
@@ -238,7 +271,7 @@ export class LoanService {
     if (newRemainingMonths > 0) {
       const paymentDate = new Date(addPaymentDto.paymentDate);
       const nextPayment = new Date(paymentDate);
-      
+
       if (loan.paymentFrequency === 'monthly') {
         nextPayment.setMonth(nextPayment.getMonth() + 1);
       } else if (loan.paymentFrequency === 'quarterly') {
@@ -304,7 +337,10 @@ export class LoanService {
 
     // Recalculate loan remaining amount (add back the principal paid)
     const newRemainingAmount = loan.remainingAmount + payment.principalPaid;
-    const newRemainingMonths = Math.min(loan.loanTerm, loan.remainingMonths + 1);
+    const newRemainingMonths = Math.min(
+      loan.loanTerm,
+      loan.remainingMonths + 1,
+    );
 
     await this.prisma.loan.update({
       where: { id: loanId },
@@ -327,4 +363,3 @@ export class LoanService {
     return this.getLoanById(userId, loanId);
   }
 }
-

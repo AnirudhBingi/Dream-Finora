@@ -1,4 +1,10 @@
-import { IsString, IsNumber, IsOptional, IsNotEmpty, Min } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsNotEmpty,
+  Min,
+} from 'class-validator';
 
 export class CreateSettlementDto {
   @IsString()
@@ -33,4 +39,3 @@ export class CreateSettlementDto {
   @IsOptional()
   groupId?: string; // Optional: filter splits to only those within this group (for group-specific settlements)
 }
-

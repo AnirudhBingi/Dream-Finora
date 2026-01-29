@@ -31,7 +31,12 @@ export class ChoreStatsService {
     const streak = await this.calculateStreak(userId);
 
     // Get achievements
-    const achievements = await this.getAchievements(userId, totalCompleted, totalPoints._sum.pointsEarned || 0, streak);
+    const achievements = await this.getAchievements(
+      userId,
+      totalCompleted,
+      totalPoints._sum.pointsEarned || 0,
+      streak,
+    );
 
     // Get recent completions for activity feed
     const recentCompletions = await this.prisma.choreCompletion.findMany({
@@ -53,10 +58,13 @@ export class ChoreStatsService {
       totalPoints: totalPoints._sum.pointsEarned || 0,
       totalCompleted,
       onTimeCount,
-      onTimePercentage: totalCompleted > 0 ? Math.round((onTimeCount / totalCompleted) * 100) : 0,
+      onTimePercentage:
+        totalCompleted > 0
+          ? Math.round((onTimeCount / totalCompleted) * 100)
+          : 0,
       currentStreak: streak,
       achievements,
-      recentCompletions: recentCompletions.map(c => ({
+      recentCompletions: recentCompletions.map((c) => ({
         id: c.id,
         choreTitle: c.Chore.title,
         pointsEarned: c.pointsEarned,
@@ -93,7 +101,7 @@ export class ChoreStatsService {
     for (let i = 0; i < sortedDates.length; i++) {
       const date = new Date(sortedDates[i]);
       date.setHours(0, 0, 0, 0);
-      
+
       const expectedDate = new Date(today);
       expectedDate.setDate(expectedDate.getDate() - i);
 
@@ -112,8 +120,22 @@ export class ChoreStatsService {
     totalCompleted: number,
     totalPoints: number,
     streak: number,
-  ): Promise<Array<{ id: string; name: string; description: string; unlocked: boolean; unlockedAt?: Date }>> {
-    const achievements: Array<{ id: string; name: string; description: string; unlocked: boolean; unlockedAt?: Date }> = [];
+  ): Promise<
+    Array<{
+      id: string;
+      name: string;
+      description: string;
+      unlocked: boolean;
+      unlockedAt?: Date;
+    }>
+  > {
+    const achievements: Array<{
+      id: string;
+      name: string;
+      description: string;
+      unlocked: boolean;
+      unlockedAt?: Date;
+    }> = [];
 
     // First Completion - always show
     achievements.push({
@@ -204,7 +226,11 @@ export class ChoreStatsService {
   /**
    * Get group stats with optional time filter
    */
-  async getGroupStats(userId: string, groupId: string, period?: 'week' | 'month' | 'all-time') {
+  async getGroupStats(
+    userId: string,
+    groupId: string,
+    period?: 'week' | 'month' | 'all-time',
+  ) {
     // Verify user is member of group
     const group = await this.prisma.group.findFirst({
       where: {
@@ -264,30 +290,14 @@ export class ChoreStatsService {
           },
         });
 
-        const totalPoints = completions.reduce((sum, c) => sum + (c.pointsEarned || 0), 0);
+        const totalPoints = completions.reduce(
+          (sum, c) => sum + (c.pointsEarned || 0),
+          0,
+        );
         const totalCompleted = completions.length;
-        const onTimeCount = completions.filter(c => c.onTime).length;
+        const onTimeCount = completions.filter((c) => c.onTime).length;
 
-        // Get all chores assigned to this member (for completion rate calculation)
-        const assignedChores = await this.prisma.chore.findMany({
-          where: {
-            groupId,
-            OR: [
-              { assignedTo: member.userId },
-              {
-                ChoreAssignment: {
-                  some: {
-                    userId: member.userId,
-                  },
-                },
-              },
-            ],
-            status: {
-              in: ['completed', 'cancelled'],
-            },
-          },
-        });
-
+        // Get total chores assigned to this member (for completion rate calculation)
         const totalAssigned = await this.prisma.chore.count({
           where: {
             groupId,
@@ -314,13 +324,14 @@ export class ChoreStatsService {
                 select: { createdAt: true, dueDate: true },
               });
               if (chore && chore.createdAt) {
-                const timeDiff = completion.completedAt.getTime() - chore.createdAt.getTime();
+                const timeDiff =
+                  completion.completedAt.getTime() - chore.createdAt.getTime();
                 return timeDiff / (1000 * 60 * 60); // Convert to hours
               }
               return null;
             }),
           );
-          const validTimes = completionTimes.filter(t => t !== null) as number[];
+          const validTimes = completionTimes.filter((t) => t !== null);
           if (validTimes.length > 0) {
             avgCompletionTime = Math.round(
               validTimes.reduce((sum, t) => sum + t, 0) / validTimes.length,
@@ -330,14 +341,22 @@ export class ChoreStatsService {
 
         return {
           userId: member.userId,
-          displayName: member.User.UserProfile?.displayName || member.User.email.split('@')[0],
+          displayName:
+            member.User.UserProfile?.displayName ||
+            member.User.email.split('@')[0],
           avatarUrl: member.User.UserProfile?.avatarUrl || null,
           totalPoints,
           totalCompleted,
           totalAssigned,
-          completionRate: totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : 0,
+          completionRate:
+            totalAssigned > 0
+              ? Math.round((totalCompleted / totalAssigned) * 100)
+              : 0,
           onTimeCount,
-          onTimePercentage: totalCompleted > 0 ? Math.round((onTimeCount / totalCompleted) * 100) : 0,
+          onTimePercentage:
+            totalCompleted > 0
+              ? Math.round((onTimeCount / totalCompleted) * 100)
+              : 0,
           avgCompletionTimeHours: avgCompletionTime,
           role: member.role,
         };
@@ -345,20 +364,36 @@ export class ChoreStatsService {
     );
 
     // Calculate group totals
-    const groupTotalPoints = memberStats.reduce((sum, m) => sum + m.totalPoints, 0);
-    const groupTotalCompleted = memberStats.reduce((sum, m) => sum + m.totalCompleted, 0);
-    const groupTotalAssigned = memberStats.reduce((sum, m) => sum + m.totalAssigned, 0);
+    const groupTotalPoints = memberStats.reduce(
+      (sum, m) => sum + m.totalPoints,
+      0,
+    );
+    const groupTotalCompleted = memberStats.reduce(
+      (sum, m) => sum + m.totalCompleted,
+      0,
+    );
+    const groupTotalAssigned = memberStats.reduce(
+      (sum, m) => sum + m.totalAssigned,
+      0,
+    );
 
     // Calculate fairness indicators (workload balance)
-    const avgAssignedPerMember = memberStats.length > 0 ? groupTotalAssigned / memberStats.length : 0;
-    const workloadBalance = memberStats.map(m => ({
+    const avgAssignedPerMember =
+      memberStats.length > 0 ? groupTotalAssigned / memberStats.length : 0;
+    const workloadBalance = memberStats.map((m) => ({
       userId: m.userId,
       displayName: m.displayName,
       assignedCount: m.totalAssigned,
       deviation: Math.abs(m.totalAssigned - avgAssignedPerMember),
-      balanceScore: avgAssignedPerMember > 0
-        ? Math.round((1 - Math.abs(m.totalAssigned - avgAssignedPerMember) / avgAssignedPerMember) * 100)
-        : 100,
+      balanceScore:
+        avgAssignedPerMember > 0
+          ? Math.round(
+              (1 -
+                Math.abs(m.totalAssigned - avgAssignedPerMember) /
+                  avgAssignedPerMember) *
+                100,
+            )
+          : 100,
     }));
 
     // Sort by points descending
@@ -370,18 +405,23 @@ export class ChoreStatsService {
       totalPoints: groupTotalPoints,
       totalCompleted: groupTotalCompleted,
       totalAssigned: groupTotalAssigned,
-      overallCompletionRate: groupTotalAssigned > 0
-        ? Math.round((groupTotalCompleted / groupTotalAssigned) * 100)
-        : 0,
+      overallCompletionRate:
+        groupTotalAssigned > 0
+          ? Math.round((groupTotalCompleted / groupTotalAssigned) * 100)
+          : 0,
       memberCount: members.length,
       members: memberStats.map((entry, index) => ({
         ...entry,
         rank: index + 1,
       })),
       workloadBalance,
-      fairnessScore: workloadBalance.length > 0
-        ? Math.round(workloadBalance.reduce((sum, w) => sum + w.balanceScore, 0) / workloadBalance.length)
-        : 100,
+      fairnessScore:
+        workloadBalance.length > 0
+          ? Math.round(
+              workloadBalance.reduce((sum, w) => sum + w.balanceScore, 0) /
+                workloadBalance.length,
+            )
+          : 100,
     };
   }
 
@@ -447,35 +487,49 @@ export class ChoreStatsService {
     });
 
     const userStats = {
-      totalPoints: userCompletions.reduce((sum, c) => sum + (c.pointsEarned || 0), 0),
+      totalPoints: userCompletions.reduce(
+        (sum, c) => sum + (c.pointsEarned || 0),
+        0,
+      ),
       totalCompleted: userCompletions.length,
-      onTimeCount: userCompletions.filter(c => c.onTime).length,
+      onTimeCount: userCompletions.filter((c) => c.onTime).length,
     };
 
     const friendStats = {
-      totalPoints: friendCompletions.reduce((sum, c) => sum + (c.pointsEarned || 0), 0),
+      totalPoints: friendCompletions.reduce(
+        (sum, c) => sum + (c.pointsEarned || 0),
+        0,
+      ),
       totalCompleted: friendCompletions.length,
-      onTimeCount: friendCompletions.filter(c => c.onTime).length,
+      onTimeCount: friendCompletions.filter((c) => c.onTime).length,
     };
 
     return {
       friendId,
-      friendName: friendUser.UserProfile?.displayName || friendUser.email.split('@')[0],
+      friendName:
+        friendUser.UserProfile?.displayName || friendUser.email.split('@')[0],
       friendAvatarUrl: friendUser.UserProfile?.avatarUrl || null,
       userStats: {
         ...userStats,
-        onTimePercentage: userStats.totalCompleted > 0 
-          ? Math.round((userStats.onTimeCount / userStats.totalCompleted) * 100) 
-          : 0,
+        onTimePercentage:
+          userStats.totalCompleted > 0
+            ? Math.round(
+                (userStats.onTimeCount / userStats.totalCompleted) * 100,
+              )
+            : 0,
       },
       friendStats: {
         ...friendStats,
-        onTimePercentage: friendStats.totalCompleted > 0 
-          ? Math.round((friendStats.onTimeCount / friendStats.totalCompleted) * 100) 
-          : 0,
+        onTimePercentage:
+          friendStats.totalCompleted > 0
+            ? Math.round(
+                (friendStats.onTimeCount / friendStats.totalCompleted) * 100,
+              )
+            : 0,
       },
       combinedTotalPoints: userStats.totalPoints + friendStats.totalPoints,
-      combinedTotalCompleted: userStats.totalCompleted + friendStats.totalCompleted,
+      combinedTotalCompleted:
+        userStats.totalCompleted + friendStats.totalCompleted,
     };
   }
 
@@ -509,9 +563,12 @@ export class ChoreStatsService {
       },
     });
 
-    const totalGroupPoints = completions.reduce((sum, c) => sum + (c.pointsEarned || 0), 0);
+    const totalGroupPoints = completions.reduce(
+      (sum, c) => sum + (c.pointsEarned || 0),
+      0,
+    );
     const totalGroupCompleted = completions.length;
-    const groupOnTimeCount = completions.filter(c => c.onTime).length;
+    const groupOnTimeCount = completions.filter((c) => c.onTime).length;
 
     // Get member count
     const memberCount = await this.prisma.groupMember.count({
@@ -519,7 +576,14 @@ export class ChoreStatsService {
     });
 
     // Calculate achievements
-    const achievements: Array<{ id: string; name: string; description: string; unlocked: boolean; progress?: number; target?: number }> = [];
+    const achievements: Array<{
+      id: string;
+      name: string;
+      description: string;
+      unlocked: boolean;
+      progress?: number;
+      target?: number;
+    }> = [];
 
     // First group completion
     achievements.push({
@@ -581,7 +645,8 @@ export class ChoreStatsService {
       id: 'group_ontime',
       name: 'Perfect Timing Team',
       description: 'Complete 20+ chores all on time',
-      unlocked: totalGroupCompleted >= 20 && groupOnTimeCount === totalGroupCompleted,
+      unlocked:
+        totalGroupCompleted >= 20 && groupOnTimeCount === totalGroupCompleted,
       progress: groupOnTimeCount,
       target: 20,
     });
@@ -589,25 +654,31 @@ export class ChoreStatsService {
     // Fairness achievement (if all members have similar completion counts)
     if (memberCount > 1) {
       const memberCompletionCounts = await Promise.all(
-        (await this.prisma.groupMember.findMany({ where: { groupId } })).map(async (member) => {
-          const count = await this.prisma.choreCompletion.count({
-            where: {
-              userId: member.userId,
-              Chore: { groupId },
-            },
-          });
-          return count;
-        }),
+        (await this.prisma.groupMember.findMany({ where: { groupId } })).map(
+          async (member) => {
+            const count = await this.prisma.choreCompletion.count({
+              where: {
+                userId: member.userId,
+                Chore: { groupId },
+              },
+            });
+            return count;
+          },
+        ),
       );
 
-      const avgCompletions = memberCompletionCounts.reduce((sum, c) => sum + c, 0) / memberCount;
-      const maxDeviation = Math.max(...memberCompletionCounts.map(c => Math.abs(c - avgCompletions)));
+      const avgCompletions =
+        memberCompletionCounts.reduce((sum, c) => sum + c, 0) / memberCount;
+      const maxDeviation = Math.max(
+        ...memberCompletionCounts.map((c) => Math.abs(c - avgCompletions)),
+      );
       const isFair = maxDeviation <= avgCompletions * 0.3; // Within 30% deviation
 
       achievements.push({
         id: 'group_fair',
         name: 'Fair Play',
-        description: 'Maintain balanced workload (all members within 30% of average)',
+        description:
+          'Maintain balanced workload (all members within 30% of average)',
         unlocked: isFair && totalGroupCompleted >= 10,
       });
     }
@@ -625,7 +696,11 @@ export class ChoreStatsService {
    * Get group chore history
    * History of all chore activities in a group
    */
-  async getGroupChoreHistory(userId: string, groupId: string, limit: number = 50) {
+  async getGroupChoreHistory(
+    userId: string,
+    groupId: string,
+    limit: number = 50,
+  ) {
     // Verify user is member of group
     const group = await this.prisma.group.findFirst({
       where: {
@@ -648,7 +723,7 @@ export class ChoreStatsService {
       select: { id: true },
     });
 
-    const choreIds = groupChoreIds.map(c => c.id);
+    const choreIds = groupChoreIds.map((c) => c.id);
 
     // Get history for all group chores
     const history = await this.prisma.choreHistory.findMany({
@@ -679,7 +754,7 @@ export class ChoreStatsService {
       take: limit,
     });
 
-    return history.map(entry => ({
+    return history.map((entry) => ({
       id: entry.id,
       action: entry.action,
       choreId: entry.choreId,
@@ -743,14 +818,15 @@ export class ChoreStatsService {
 
     // Daily completion trend
     const dailyTrend: Record<string, number> = {};
-    completions.forEach(c => {
+    completions.forEach((c) => {
       const dateKey = c.completedAt.toISOString().split('T')[0];
       dailyTrend[dateKey] = (dailyTrend[dateKey] || 0) + 1;
     });
 
     // Category breakdown
-    const categoryBreakdown: Record<string, { count: number; points: number }> = {};
-    completions.forEach(c => {
+    const categoryBreakdown: Record<string, { count: number; points: number }> =
+      {};
+    completions.forEach((c) => {
       const category = c.Chore.category || 'Other';
       if (!categoryBreakdown[category]) {
         categoryBreakdown[category] = { count: 0, points: 0 };
@@ -760,15 +836,19 @@ export class ChoreStatsService {
     });
 
     // Weekly summary
-    const weeklySummary: Array<{ week: string; completions: number; points: number }> = [];
+    const weeklySummary: Array<{
+      week: string;
+      completions: number;
+      points: number;
+    }> = [];
     const weeks = new Map<string, { completions: number; points: number }>();
-    
-    completions.forEach(c => {
+
+    completions.forEach((c) => {
       const date = new Date(c.completedAt);
       const weekStart = new Date(date);
       weekStart.setDate(date.getDate() - date.getDay());
       const weekKey = weekStart.toISOString().split('T')[0];
-      
+
       if (!weeks.has(weekKey)) {
         weeks.set(weekKey, { completions: 0, points: 0 });
       }
@@ -790,14 +870,21 @@ export class ChoreStatsService {
       groupId,
       period: days,
       totalCompletions: completions.length,
-      totalPoints: completions.reduce((sum, c) => sum + (c.pointsEarned || 0), 0),
-      dailyTrend: Object.entries(dailyTrend).map(([date, count]) => ({ date, count })),
-      categoryBreakdown: Object.entries(categoryBreakdown).map(([category, data]) => ({
-        category,
-        ...data,
+      totalPoints: completions.reduce(
+        (sum, c) => sum + (c.pointsEarned || 0),
+        0,
+      ),
+      dailyTrend: Object.entries(dailyTrend).map(([date, count]) => ({
+        date,
+        count,
       })),
+      categoryBreakdown: Object.entries(categoryBreakdown).map(
+        ([category, data]) => ({
+          category,
+          ...data,
+        }),
+      ),
       weeklySummary,
     };
   }
 }
-

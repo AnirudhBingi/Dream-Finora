@@ -1,11 +1,183 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CurrencyService } from '../shared/currency.service';
-import { NotificationService, NotificationType } from '../notification/notification.service';
+import {
+  NotificationService,
+  NotificationType,
+} from '../notification/notification.service';
 import { EmailService } from '../shared/email.service';
+import { ListingService } from '../listing/listing.service';
+import { PostService } from '../post/post.service';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { randomUUID } from 'crypto';
+
+type GroupUserSummary = {
+  id: string;
+  email: string;
+  UserProfile: {
+    displayName: string | null;
+    avatarUrl: string | null;
+  } | null;
+};
+
+type GroupMemberWithUser = Prisma.GroupMemberGetPayload<{
+  include: {
+    User: {
+      select: {
+        id: true;
+        email: true;
+        UserProfile: {
+          select: {
+            displayName: true;
+            avatarUrl: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+
+type GroupWithMembers = Prisma.GroupGetPayload<{
+  include: {
+    GroupMember: {
+      include: {
+        User: {
+          select: {
+            id: true;
+            email: true;
+            UserProfile: {
+              select: {
+                displayName: true;
+                avatarUrl: true;
+              };
+            };
+          };
+        };
+      };
+    };
+    User: {
+      select: {
+        id: true;
+        email: true;
+        UserProfile: {
+          select: {
+            displayName: true;
+            avatarUrl: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+
+type GroupResponse = Omit<GroupWithMembers, 'GroupMember' | 'User'> & {
+  members: Array<{
+    id: string;
+    groupId: string;
+    userId: string;
+    role: string;
+    createdAt: string;
+    user: {
+      id: string;
+      email: string;
+      profile: {
+        displayName: string | null;
+        avatarUrl: string | null;
+      } | null;
+    };
+  }>;
+  createdByUser: {
+    id: string;
+    email: string;
+    profile: {
+      displayName: string | null;
+      avatarUrl: string | null;
+    } | null;
+  };
+};
+
+type UserWithProfile = Prisma.UserGetPayload<{
+  include: {
+    UserProfile: true;
+  };
+}>;
+
+type ExpenseSplitWithExpense = Prisma.ExpenseSplitGetPayload<{
+  include: {
+    User: {
+      select: {
+        id: true;
+        email: true;
+        UserProfile: {
+          select: {
+            displayName: true;
+            avatarUrl: true;
+          };
+        };
+      };
+    };
+    Expense: {
+      include: {
+        User_Expense_createdByToUser: {
+          select: {
+            id: true;
+            email: true;
+            UserProfile: {
+              select: {
+                displayName: true;
+                avatarUrl: true;
+              };
+            };
+          };
+        };
+        User_Expense_paidByToUser: {
+          select: {
+            id: true;
+            email: true;
+            UserProfile: {
+              select: {
+                displayName: true;
+                avatarUrl: true;
+              };
+            };
+          };
+        };
+      };
+    };
+  };
+}>;
+
+type ConvertedExpenseSplit = ExpenseSplitWithExpense & {
+  originalAmount: number;
+  originalCurrency: string;
+  convertedAmount: number;
+  convertedCurrency: string;
+};
+
+type GroupFeedPost = Awaited<
+  ReturnType<PostService['getPosts']>
+>['posts'][number];
+type GroupFeedListing =
+  Awaited<ReturnType<ListingService['getListings']>> extends Array<
+    infer ListingItem
+  >
+    ? ListingItem
+    : Awaited<ReturnType<ListingService['getListings']>> extends {
+          listings: Array<infer ListingItem>;
+        }
+      ? ListingItem
+      : never;
+
+type GroupFeedItem =
+  | { type: 'post'; data: GroupFeedPost }
+  | { type: 'listing'; data: GroupFeedListing };
 
 @Injectable()
 export class GroupService {
@@ -14,7 +186,85 @@ export class GroupService {
     private currencyService: CurrencyService,
     private notificationService: NotificationService,
     private emailService: EmailService,
+    private listingService: ListingService,
+    private postService: PostService,
   ) {}
+
+  private async ensureGroupFeedAccess(userId: string, groupId: string) {
+    const group = await this.prisma.group.findUnique({
+      where: { id: groupId },
+      select: { id: true, visibility: true },
+    });
+
+    if (!group) {
+      throw new NotFoundException('Group not found');
+    }
+
+    if (group.visibility === 'public') {
+      return;
+    }
+
+    const member = await this.prisma.groupMember.findUnique({
+      where: {
+        groupId_userId: {
+          groupId,
+          userId,
+        },
+      },
+    });
+
+    if (!member) {
+      throw new ForbiddenException('You do not have access to this group');
+    }
+  }
+
+  async getGroupFeed(
+    userId: string,
+    groupId: string,
+    options?: { limit?: number; cursor?: string },
+  ) {
+    await this.ensureGroupFeedAccess(userId, groupId);
+
+    const limit = options?.limit ?? 20;
+    const cursor = options?.cursor;
+
+    const [postsResponse, listingsResponse] = await Promise.all([
+      this.postService.getPosts(userId, { groupId, limit, cursor }),
+      this.listingService.getListings(userId, { groupId, limit, cursor }),
+    ]);
+
+    const posts: GroupFeedPost[] = postsResponse.posts ?? [];
+    const listings: GroupFeedListing[] = Array.isArray(listingsResponse)
+      ? listingsResponse
+      : (listingsResponse.listings ?? []);
+
+    const items: GroupFeedItem[] = [
+      ...posts.map((post) => ({ type: 'post' as const, data: post })),
+      ...listings.map((listing) => ({
+        type: 'listing' as const,
+        data: listing,
+      })),
+    ]
+      .sort((a, b) => {
+        const aTime = new Date(a.data.createdAt).getTime();
+        const bTime = new Date(b.data.createdAt).getTime();
+        if (aTime !== bTime) return bTime - aTime;
+        if (a.type !== b.type) return a.type === 'post' ? -1 : 1;
+        return String(b.data.id).localeCompare(String(a.data.id));
+      })
+      .slice(0, limit);
+
+    const lastItem = items[items.length - 1];
+    const nextCursor = lastItem
+      ? `${new Date(lastItem.data.createdAt).toISOString()}|${lastItem.type}|${lastItem.data.id}`
+      : null;
+
+    return {
+      items,
+      nextCursor,
+      hasMore: items.length === limit,
+    };
+  }
 
   async createGroup(userId: string, createGroupDto: CreateGroupDto) {
     // Verify all member IDs exist (if provided)
@@ -42,6 +292,7 @@ export class GroupService {
         icon: createGroupDto.icon || 'group',
         avatarUrl: createGroupDto.avatarUrl || null,
         allowMemberEditing: createGroupDto.allowMemberEditing ?? false,
+        visibility: createGroupDto.visibility ?? 'private',
         createdBy: userId,
         GroupMember: {
           create: allMemberIds.map((memberId) => ({
@@ -85,9 +336,10 @@ export class GroupService {
 
     // Transform Prisma structure to match frontend expectations
     const { GroupMember, User, ...groupBase } = group;
-    return {
+    const response: GroupResponse = {
       ...groupBase,
-      members: GroupMember.map((member) => ({
+      visibility: groupBase.visibility,
+      members: GroupMember.map((member: GroupMemberWithUser) => ({
         id: member.id,
         groupId: member.groupId,
         userId: member.userId,
@@ -114,7 +366,8 @@ export class GroupService {
             }
           : null,
       },
-    } as any;
+    };
+    return response;
   }
 
   async getGroups(userId: string, limit: number = 50, offset: number = 0) {
@@ -128,42 +381,42 @@ export class GroupService {
             },
           },
         },
-      include: {
-        GroupMember: {
-          include: {
-            User: {
-              select: {
-                id: true,
-                email: true,
-                UserProfile: {
-                  select: {
-                    displayName: true,
-                    avatarUrl: true,
+        include: {
+          GroupMember: {
+            include: {
+              User: {
+                select: {
+                  id: true,
+                  email: true,
+                  UserProfile: {
+                    select: {
+                      displayName: true,
+                      avatarUrl: true,
+                    },
                   },
                 },
               },
             },
           },
-        },
-        User: {
-          select: {
-            id: true,
-            email: true,
-            UserProfile: {
-              select: {
-                displayName: true,
-                avatarUrl: true,
+          User: {
+            select: {
+              id: true,
+              email: true,
+              UserProfile: {
+                select: {
+                  displayName: true,
+                  avatarUrl: true,
+                },
               },
             },
           },
-        },
-        _count: {
-          select: {
-            Expense: true,
-            Chore: true,
+          _count: {
+            select: {
+              Expense: true,
+              Chore: true,
+            },
           },
         },
-      },
         orderBy: {
           createdAt: 'desc',
         },
@@ -182,8 +435,8 @@ export class GroupService {
     ]);
 
     // Get ride counts for each group (via expenses)
-    const groupIds = groups.map(g => g.id);
-    
+    const groupIds = groups.map((g) => g.id);
+
     // First, get all expenses for these groups
     const expenses = await this.prisma.expense.findMany({
       where: {
@@ -194,15 +447,15 @@ export class GroupService {
         groupId: true,
       },
     });
-    
-    const expenseIds = expenses.map(e => e.id);
+
+    const expenseIds = expenses.map((e) => e.id);
     const expenseToGroupMap = new Map<string, string>();
-    expenses.forEach(e => {
+    expenses.forEach((e) => {
       if (e.groupId) {
         expenseToGroupMap.set(e.id, e.groupId);
       }
     });
-    
+
     // Then get rides linked to these expenses
     const rides = await this.prisma.ride.findMany({
       where: {
@@ -215,7 +468,7 @@ export class GroupService {
 
     // Create a map of groupId -> ride count
     const groupRideCountMap = new Map<string, number>();
-    rides.forEach(ride => {
+    rides.forEach((ride) => {
       if (ride.expenseId) {
         const groupId = expenseToGroupMap.get(ride.expenseId);
         if (groupId) {
@@ -242,7 +495,7 @@ export class GroupService {
 
     // Create a map of groupId -> message count
     const groupMessageCountMap = new Map<string, number>();
-    groupChats.forEach(chat => {
+    groupChats.forEach((chat) => {
       if (chat.groupId) {
         groupMessageCountMap.set(chat.groupId, chat._count.Message);
       }
@@ -297,15 +550,348 @@ export class GroupService {
     };
   }
 
-  async getGroupById(userId: string, groupId: string) {
-    const group = await this.prisma.group.findFirst({
-      where: {
-        id: groupId,
-        GroupMember: {
-          some: {
-            userId,
+  async getPublicGroups(
+    userId: string,
+    memberId?: string,
+    limit: number = 50,
+    offset: number = 0,
+    query?: string,
+  ) {
+    const where: Prisma.GroupWhereInput = {
+      visibility: 'public',
+      ...(memberId
+        ? {
+            GroupMember: {
+              some: {
+                userId: memberId,
+              },
+            },
+          }
+        : {}),
+      ...(query
+        ? {
+            name: {
+              contains: query,
+              mode: 'insensitive',
+            },
+          }
+        : {}),
+    };
+
+    const [groups, total] = await Promise.all([
+      this.prisma.group.findMany({
+        where,
+        include: {
+          GroupMember: {
+            include: {
+              User: {
+                select: {
+                  id: true,
+                  email: true,
+                  UserProfile: {
+                    select: {
+                      displayName: true,
+                      avatarUrl: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          User: {
+            select: {
+              id: true,
+              email: true,
+              UserProfile: {
+                select: {
+                  displayName: true,
+                  avatarUrl: true,
+                },
+              },
+            },
           },
         },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        take: limit,
+        skip: offset,
+      }),
+      this.prisma.group.count({ where }),
+    ]);
+
+    const groupIds = groups.map((group) => group.id);
+    const joinRequests = await this.prisma.groupJoinRequest.findMany({
+      where: {
+        userId,
+        groupId: { in: groupIds },
+      },
+      select: {
+        groupId: true,
+        status: true,
+      },
+    });
+
+    const joinRequestMap = new Map<string, string>();
+    joinRequests.forEach((request) => {
+      joinRequestMap.set(request.groupId, request.status);
+    });
+
+    const transformedGroups = groups.map((group) => {
+      const { GroupMember, User, ...groupBase } = group;
+      const isMember = GroupMember.some((member) => member.userId === userId);
+      return {
+        ...groupBase,
+        members: GroupMember.map((member) => ({
+          id: member.id,
+          groupId: member.groupId,
+          userId: member.userId,
+          role: member.role,
+          createdAt: member.createdAt.toISOString(),
+          user: {
+            id: member.User.id,
+            email: member.User.email,
+            profile: member.User.UserProfile
+              ? {
+                  displayName: member.User.UserProfile.displayName,
+                  avatarUrl: member.User.UserProfile.avatarUrl,
+                }
+              : null,
+          },
+        })),
+        createdByUser: {
+          id: User.id,
+          email: User.email,
+          profile: User.UserProfile
+            ? {
+                displayName: User.UserProfile.displayName,
+                avatarUrl: User.UserProfile.avatarUrl,
+              }
+            : null,
+        },
+        isMember,
+        joinRequestStatus: joinRequestMap.get(group.id) || null,
+      };
+    });
+
+    return {
+      groups: transformedGroups,
+      total,
+      limit,
+      offset,
+      hasMore: offset + groups.length < total,
+    };
+  }
+
+  async requestToJoinGroup(userId: string, groupId: string) {
+    const group = await this.prisma.group.findUnique({
+      where: { id: groupId },
+      select: {
+        id: true,
+        name: true,
+        visibility: true,
+        createdBy: true,
+      },
+    });
+
+    if (!group) {
+      throw new NotFoundException('Group not found');
+    }
+
+    if (group.visibility !== 'public') {
+      throw new BadRequestException('Group is not open for public requests');
+    }
+
+    const existingMember = await this.prisma.groupMember.findUnique({
+      where: {
+        groupId_userId: {
+          groupId,
+          userId,
+        },
+      },
+    });
+
+    if (existingMember) {
+      throw new BadRequestException('You are already a member of this group');
+    }
+
+    const existingRequest = await this.prisma.groupJoinRequest.findUnique({
+      where: {
+        groupId_userId: {
+          groupId,
+          userId,
+        },
+      },
+    });
+
+    if (existingRequest?.status === 'pending') {
+      throw new BadRequestException('Join request already sent');
+    }
+
+    const joinRequest = await this.prisma.groupJoinRequest.upsert({
+      where: {
+        groupId_userId: {
+          groupId,
+          userId,
+        },
+      },
+      update: {
+        status: 'pending',
+        handledBy: null,
+        handledAt: null,
+      },
+      create: {
+        id: randomUUID(),
+        groupId,
+        userId,
+        status: 'pending',
+      },
+    });
+
+    await this.notificationService.createNotification({
+      userId: group.createdBy,
+      type: NotificationType.GROUP_JOIN_REQUEST,
+      title: 'New join request',
+      message: 'Someone requested to join your circle.',
+      data: { groupId: group.id, requestId: joinRequest.id },
+    });
+
+    return joinRequest;
+  }
+
+  async getJoinRequests(userId: string, groupId: string) {
+    const adminMembership = await this.prisma.groupMember.findUnique({
+      where: {
+        groupId_userId: {
+          groupId,
+          userId,
+        },
+      },
+    });
+
+    if (!adminMembership || adminMembership.role !== 'ADMIN') {
+      throw new BadRequestException('Only group admins can view join requests');
+    }
+
+    return this.prisma.groupJoinRequest.findMany({
+      where: { groupId },
+      include: {
+        User: {
+          select: {
+            id: true,
+            email: true,
+            UserProfile: {
+              select: {
+                displayName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async approveJoinRequest(userId: string, groupId: string, requestId: string) {
+    const adminMembership = await this.prisma.groupMember.findUnique({
+      where: {
+        groupId_userId: {
+          groupId,
+          userId,
+        },
+      },
+    });
+
+    if (!adminMembership || adminMembership.role !== 'ADMIN') {
+      throw new BadRequestException(
+        'Only group admins can approve join requests',
+      );
+    }
+
+    const request = await this.prisma.groupJoinRequest.findFirst({
+      where: { id: requestId, groupId },
+    });
+
+    if (!request) {
+      throw new NotFoundException('Join request not found');
+    }
+
+    if (request.status !== 'pending') {
+      throw new BadRequestException('Join request is not pending');
+    }
+
+    await this.prisma.groupMember.create({
+      data: {
+        id: randomUUID(),
+        groupId,
+        userId: request.userId,
+        role: 'MEMBER',
+      },
+    });
+
+    const updated = await this.prisma.groupJoinRequest.update({
+      where: { id: requestId },
+      data: {
+        status: 'approved',
+        handledBy: userId,
+        handledAt: new Date(),
+      },
+    });
+
+    await this.notificationService.createNotification({
+      userId: request.userId,
+      type: NotificationType.GROUP_JOIN_APPROVED,
+      title: 'Request approved',
+      message: 'Your request to join the circle was approved.',
+      data: { groupId },
+    });
+
+    return updated;
+  }
+
+  async declineJoinRequest(userId: string, groupId: string, requestId: string) {
+    const adminMembership = await this.prisma.groupMember.findUnique({
+      where: {
+        groupId_userId: {
+          groupId,
+          userId,
+        },
+      },
+    });
+
+    if (!adminMembership || adminMembership.role !== 'ADMIN') {
+      throw new BadRequestException(
+        'Only group admins can decline join requests',
+      );
+    }
+
+    const request = await this.prisma.groupJoinRequest.findFirst({
+      where: { id: requestId, groupId },
+    });
+
+    if (!request) {
+      throw new NotFoundException('Join request not found');
+    }
+
+    if (request.status !== 'pending') {
+      throw new BadRequestException('Join request is not pending');
+    }
+
+    return this.prisma.groupJoinRequest.update({
+      where: { id: requestId },
+      data: {
+        status: 'declined',
+        handledBy: userId,
+        handledAt: new Date(),
+      },
+    });
+  }
+
+  async getGroupById(userId: string, groupId: string) {
+    const group = await this.prisma.group.findUnique({
+      where: {
+        id: groupId,
       },
       include: {
         GroupMember: {
@@ -366,6 +952,15 @@ export class GroupService {
                 },
               },
             },
+            Ride: {
+              select: {
+                id: true,
+                origin: true,
+                destination: true,
+                type: true,
+                date: true,
+              },
+            },
           },
           orderBy: {
             date: 'desc',
@@ -378,9 +973,37 @@ export class GroupService {
       throw new NotFoundException('Group not found');
     }
 
+    const isMember = group.GroupMember.some(
+      (member) => member.userId === userId,
+    );
+    if (!isMember) {
+      throw new NotFoundException(
+        'Group not found or you do not have permission',
+      );
+    }
+
     // Transform Prisma structure to match frontend expectations
     const { GroupMember, User, Expense, ...groupBase } = group;
-    
+
+    // Calculate ride statistics for this group using bidirectional rideId field
+    const rideExpensesList = (Expense || []).filter((e) => e.rideId !== null);
+
+    const rideStats = {
+      totalRides: rideExpensesList.length,
+      totalSpent: rideExpensesList.reduce((sum, e) => sum + e.amount, 0),
+      rideExpenses: rideExpensesList.map((expense) => ({
+        id: expense.id,
+        rideId: expense.rideId,
+        description: expense.description,
+        amount: expense.amount,
+        currency: expense.currency,
+        date:
+          expense.date instanceof Date
+            ? expense.date.toISOString()
+            : new Date(expense.date).toISOString(),
+      })),
+    };
+
     return {
       ...groupBase,
       members: GroupMember.map((member) => ({
@@ -415,17 +1038,40 @@ export class GroupService {
         description: expense.description,
         amount: expense.amount,
         currency: expense.currency,
-        date: expense.date instanceof Date ? expense.date.toISOString() : new Date(expense.date).toISOString(),
-        createdAt: expense.createdAt instanceof Date ? expense.createdAt.toISOString() : new Date(expense.createdAt).toISOString(),
+        date:
+          expense.date instanceof Date
+            ? expense.date.toISOString()
+            : new Date(expense.date).toISOString(),
+        createdAt:
+          expense.createdAt instanceof Date
+            ? expense.createdAt.toISOString()
+            : new Date(expense.createdAt).toISOString(),
         category: expense.category,
         receiptUrl: expense.receiptUrl,
         paidBy: expense.paidBy,
+        rideId: expense.rideId || null, // Include rideId if expense was created from a ride
+        ride: expense.Ride
+          ? {
+              id: expense.Ride.id,
+              origin: expense.Ride.origin,
+              destination: expense.Ride.destination,
+              type: expense.Ride.type,
+              date:
+                expense.Ride.date instanceof Date
+                  ? expense.Ride.date.toISOString()
+                  : new Date(expense.Ride.date).toISOString(),
+            }
+          : null, // Include ride summary if available
         splits: expense.ExpenseSplit.map((split) => ({
           id: split.id,
           userId: split.userId,
           amount: split.amount,
           isPaid: split.isPaid,
-          paidAt: split.paidAt ? (split.paidAt instanceof Date ? split.paidAt.toISOString() : new Date(split.paidAt).toISOString()) : null,
+          paidAt: split.paidAt
+            ? split.paidAt instanceof Date
+              ? split.paidAt.toISOString()
+              : new Date(split.paidAt).toISOString()
+            : null,
           user: {
             id: split.User.id,
             email: split.User.email,
@@ -438,7 +1084,12 @@ export class GroupService {
           },
         })),
       })),
-    } as any;
+      stats: {
+        totalExpenses: Expense?.length || 0,
+        totalMembers: GroupMember.length,
+        rides: rideStats,
+      },
+    };
   }
 
   async addMember(userId: string, groupId: string, memberId: string) {
@@ -455,7 +1106,9 @@ export class GroupService {
     });
 
     if (!group) {
-      throw new NotFoundException('Group not found or you do not have permission');
+      throw new NotFoundException(
+        'Group not found or you do not have permission',
+      );
     }
 
     // Check if member already exists
@@ -507,7 +1160,11 @@ export class GroupService {
     return member;
   }
 
-  async inviteMember(userId: string, groupId: string, inviteDto: InviteMemberDto) {
+  async inviteMember(
+    userId: string,
+    groupId: string,
+    inviteDto: InviteMemberDto,
+  ) {
     // Verify user has permission (must be member of group)
     const group = await this.prisma.group.findFirst({
       where: {
@@ -534,11 +1191,13 @@ export class GroupService {
     });
 
     if (!group) {
-      throw new NotFoundException('Group not found or you do not have permission');
+      throw new NotFoundException(
+        'Group not found or you do not have permission',
+      );
     }
 
     // Determine if we're inviting by userId, email, or mobileNumber
-    let inviteeUser: { id: string; email: string; mobileNumber: string | null; UserProfile: any } | null = null;
+    let inviteeUser: UserWithProfile | null = null;
     let email: string | null = null;
     let mobileNumber: string | null = null;
 
@@ -577,7 +1236,9 @@ export class GroupService {
         email = user.email;
       }
     } else {
-      throw new BadRequestException('Either userId, email, or mobileNumber must be provided');
+      throw new BadRequestException(
+        'Either userId, email, or mobileNumber must be provided',
+      );
     }
 
     // Check if user is already a member
@@ -615,10 +1276,7 @@ export class GroupService {
       const existingInvitation = await this.prisma.groupInvitation.findFirst({
         where: {
           groupId,
-          OR: [
-            email ? { email } : {},
-            mobileNumber ? { mobileNumber } : {},
-          ],
+          OR: [email ? { email } : {}, mobileNumber ? { mobileNumber } : {}],
           status: 'pending',
           expiresAt: {
             gt: new Date(),
@@ -627,7 +1285,9 @@ export class GroupService {
       });
 
       if (existingInvitation) {
-        throw new BadRequestException('Invitation already sent to this email/mobile number');
+        throw new BadRequestException(
+          'Invitation already sent to this email/mobile number',
+        );
       }
     }
 
@@ -689,10 +1349,7 @@ export class GroupService {
       // Check if app invitation already exists
       const existingAppInvitation = await this.prisma.userInvitation.findFirst({
         where: {
-          OR: [
-            email ? { email } : {},
-            mobileNumber ? { mobileNumber } : {},
-          ],
+          OR: [email ? { email } : {}, mobileNumber ? { mobileNumber } : {}],
           status: 'pending',
           expiresAt: {
             gt: new Date(),
@@ -700,7 +1357,7 @@ export class GroupService {
         },
       });
 
-        if (!existingAppInvitation) {
+      if (!existingAppInvitation) {
         // Create app invitation for non-registered user
         const appInvitationToken = randomUUID();
         const appInvitationExpiresAt = new Date();
@@ -719,30 +1376,35 @@ export class GroupService {
         });
 
         // Send email/SMS invitation
-        const inviterName = group.User.UserProfile?.displayName || group.User.email;
+        const inviterName =
+          group.User.UserProfile?.displayName || group.User.email;
         if (email) {
-          await this.emailService.sendGroupInvitation(
-            email,
-            inviterName,
-            group.name,
-            token,
-            appInvitationToken,
-          ).catch(err => {
-            console.error('Failed to send email invitation:', err);
-            // Don't throw - invitation is still created
-          });
+          await this.emailService
+            .sendGroupInvitation(
+              email,
+              inviterName,
+              group.name,
+              token,
+              appInvitationToken,
+            )
+            .catch((err) => {
+              console.error('Failed to send email invitation:', err);
+              // Don't throw - invitation is still created
+            });
         }
         if (mobileNumber) {
-          await this.emailService.sendSMSInvitation(
-            mobileNumber,
-            inviterName,
-            appInvitationToken,
-            true,
-            group.name,
-          ).catch(err => {
-            console.error('Failed to send SMS invitation:', err);
-            // Don't throw - invitation is still created
-          });
+          await this.emailService
+            .sendSMSInvitation(
+              mobileNumber,
+              inviterName,
+              appInvitationToken,
+              true,
+              group.name,
+            )
+            .catch((err) => {
+              console.error('Failed to send SMS invitation:', err);
+              // Don't throw - invitation is still created
+            });
         }
       }
     }
@@ -782,7 +1444,9 @@ export class GroupService {
     }
 
     if (invitation.status !== 'pending') {
-      throw new BadRequestException('Invitation has already been accepted or declined');
+      throw new BadRequestException(
+        'Invitation has already been accepted or declined',
+      );
     }
 
     if (new Date() > invitation.expiresAt) {
@@ -806,7 +1470,9 @@ export class GroupService {
       }
 
       const emailMatches = invitation.email && user.email === invitation.email;
-      const mobileMatches = invitation.mobileNumber && user.mobileNumber === invitation.mobileNumber;
+      const mobileMatches =
+        invitation.mobileNumber &&
+        user.mobileNumber === invitation.mobileNumber;
 
       if (!emailMatches && !mobileMatches) {
         throw new BadRequestException('This invitation is not for you');
@@ -833,7 +1499,10 @@ export class GroupService {
           userId, // Update userId if it was null
         },
       });
-      return { success: true, message: 'You are already a member of this group' };
+      return {
+        success: true,
+        message: 'You are already a member of this group',
+      };
     }
 
     // Add user as member
@@ -955,7 +1624,9 @@ export class GroupService {
     });
 
     if (!group) {
-      throw new NotFoundException('Group not found or you do not have permission');
+      throw new NotFoundException(
+        'Group not found or you do not have permission',
+      );
     }
 
     // Cannot remove the creator
@@ -965,7 +1636,9 @@ export class GroupService {
 
     // Cannot remove yourself (for now - could allow leaving group later)
     if (userId === memberId) {
-      throw new BadRequestException('Cannot remove yourself. Leave group functionality coming soon.');
+      throw new BadRequestException(
+        'Cannot remove yourself. Leave group functionality coming soon.',
+      );
     }
 
     const member = await this.prisma.groupMember.findUnique({
@@ -1002,22 +1675,34 @@ export class GroupService {
           UserProfile: { select: { displayName: true } },
         },
       });
-      const removerDisplayName = removerName?.UserProfile?.displayName || removerName?.email || 'Someone';
-      
-      await this.notificationService.notifyGroupMemberRemoved(
-        memberId,
-        groupId,
-        groupInfo.name,
-        removerDisplayName,
-      ).catch(err => {
-        console.error(`Failed to create notification for removed member:`, err);
-      });
+      const removerDisplayName =
+        removerName?.UserProfile?.displayName ||
+        removerName?.email ||
+        'Someone';
+
+      await this.notificationService
+        .notifyGroupMemberRemoved(
+          memberId,
+          groupId,
+          groupInfo.name,
+          removerDisplayName,
+        )
+        .catch((err) => {
+          console.error(
+            `Failed to create notification for removed member:`,
+            err,
+          );
+        });
     }
 
     return { success: true };
   }
 
-  async getGroupBalances(userId: string, groupId: string, primaryCurrency: string = 'USD') {
+  async getGroupBalances(
+    userId: string,
+    groupId: string,
+    primaryCurrency: string = 'USD',
+  ) {
     // Verify user is member of group
     const group = await this.prisma.group.findFirst({
       where: {
@@ -1031,102 +1716,132 @@ export class GroupService {
     });
 
     if (!group) {
-      throw new NotFoundException('Group not found or you do not have permission');
+      throw new NotFoundException(
+        'Group not found or you do not have permission',
+      );
     }
 
     // Get all unpaid splits for expenses in this group
-    const owedSplits = await this.prisma.expenseSplit.findMany({
-      where: {
-        Expense: {
-          groupId,
+    const owedSplits: ExpenseSplitWithExpense[] =
+      await this.prisma.expenseSplit.findMany({
+        where: {
+          Expense: {
+            groupId,
+          },
+          userId,
+          isPaid: false,
         },
-        userId,
-        isPaid: false,
-      },
-      include: {
-        Expense: {
-          include: {
-            User_Expense_createdByToUser: {
-              select: {
-                id: true,
-                email: true,
-                UserProfile: {
-                  select: {
-                    displayName: true,
-                    avatarUrl: true,
-                  },
+        include: {
+          User: {
+            select: {
+              id: true,
+              email: true,
+              UserProfile: {
+                select: {
+                  displayName: true,
+                  avatarUrl: true,
                 },
               },
             },
-            User_Expense_paidByToUser: {
-              select: {
-                id: true,
-                email: true,
-                UserProfile: {
-                  select: {
-                    displayName: true,
-                    avatarUrl: true,
+          },
+          Expense: {
+            include: {
+              User_Expense_createdByToUser: {
+                select: {
+                  id: true,
+                  email: true,
+                  UserProfile: {
+                    select: {
+                      displayName: true,
+                      avatarUrl: true,
+                    },
+                  },
+                },
+              },
+              User_Expense_paidByToUser: {
+                select: {
+                  id: true,
+                  email: true,
+                  UserProfile: {
+                    select: {
+                      displayName: true,
+                      avatarUrl: true,
+                    },
                   },
                 },
               },
             },
           },
         },
-      },
-    });
+      });
 
     // Get all unpaid splits where others owe the user (user paid for the expense)
-    const owedToUser = await this.prisma.expenseSplit.findMany({
-      where: {
-        Expense: {
-          groupId,
-          OR: [
-            { paidBy: userId }, // User paid for the expense
-            { 
-              AND: [
-                { paidBy: null }, // Fallback: if paidBy is null, use createdBy (backward compatibility)
-                { createdBy: userId },
-              ],
-            },
-          ],
+    const owedToUser: ExpenseSplitWithExpense[] =
+      await this.prisma.expenseSplit.findMany({
+        where: {
+          Expense: {
+            groupId,
+            OR: [
+              { paidBy: userId }, // User paid for the expense
+              {
+                AND: [
+                  { paidBy: null }, // Fallback: if paidBy is null, use createdBy (backward compatibility)
+                  { createdBy: userId },
+                ],
+              },
+            ],
+          },
+          userId: { not: userId },
+          isPaid: false,
         },
-        userId: { not: userId },
-        isPaid: false,
-      },
-      include: {
-        User: {
-          select: {
-            id: true,
-            email: true,
-            UserProfile: {
-              select: {
-                displayName: true,
-                avatarUrl: true,
+        include: {
+          User: {
+            select: {
+              id: true,
+              email: true,
+              UserProfile: {
+                select: {
+                  displayName: true,
+                  avatarUrl: true,
+                },
               },
             },
           },
-        },
-        Expense: {
-          include: {
-            User_Expense_paidByToUser: {
-              select: {
-                id: true,
-                email: true,
-                UserProfile: {
-                  select: {
-                    displayName: true,
-                    avatarUrl: true,
+          Expense: {
+            include: {
+              User_Expense_paidByToUser: {
+                select: {
+                  id: true,
+                  email: true,
+                  UserProfile: {
+                    select: {
+                      displayName: true,
+                      avatarUrl: true,
+                    },
+                  },
+                },
+              },
+              User_Expense_createdByToUser: {
+                select: {
+                  id: true,
+                  email: true,
+                  UserProfile: {
+                    select: {
+                      displayName: true,
+                      avatarUrl: true,
+                    },
                   },
                 },
               },
             },
           },
         },
-      },
-    });
+      });
 
     // Convert all amounts to primary currency
-    const convertSplits = async (splits: any[]) => {
+    const convertSplits = async (
+      splits: ExpenseSplitWithExpense[],
+    ): Promise<ConvertedExpenseSplit[]> => {
       return Promise.all(
         splits.map(async (split) => {
           const expenseCurrency = split.Expense.currency || 'USD';
@@ -1157,21 +1872,35 @@ export class GroupService {
         return payerId !== userId; // Skip if user owes themselves
       })
       .reduce((sum, split) => sum + split.convertedAmount, 0);
-    const totalOwedToUser = convertedOwedToUser.reduce((sum, split) => sum + split.convertedAmount, 0);
+    const totalOwedToUser = convertedOwedToUser.reduce(
+      (sum, split) => sum + split.convertedAmount,
+      0,
+    );
     const netBalance = totalOwedToUser - totalOwed;
 
     // Group by user (exclude cases where user owes themselves)
-    const owedByUser = new Map<string, { user: any; amount: number; originalAmount: number; originalCurrency: string; splits: any[] }>();
+    const owedByUser = new Map<
+      string,
+      {
+        user: GroupUserSummary;
+        amount: number;
+        originalAmount: number;
+        originalCurrency: string;
+        splits: ConvertedExpenseSplit[];
+      }
+    >();
     convertedOwedSplits.forEach((split) => {
       // Use paidBy if available, otherwise fallback to createdBy for backward compatibility
-        const creditorId = split.Expense.paidBy || split.Expense.createdBy;
+      const creditorId = split.Expense.paidBy || split.Expense.createdBy;
       // Skip if user owes themselves
       if (creditorId === userId) {
         return;
       }
       if (!owedByUser.has(creditorId)) {
         // Use paidByUser if available, otherwise use createdByUser
-          const creditorUser = split.Expense.User_Expense_paidByToUser || split.Expense.User_Expense_createdByToUser;
+        const creditorUser =
+          split.Expense.User_Expense_paidByToUser ||
+          split.Expense.User_Expense_createdByToUser;
         owedByUser.set(creditorId, {
           user: creditorUser,
           amount: 0,
@@ -1186,7 +1915,16 @@ export class GroupService {
       entry.splits.push(split);
     });
 
-    const owedToUserByUser = new Map<string, { user: any; amount: number; originalAmount: number; originalCurrency: string; splits: any[] }>();
+    const owedToUserByUser = new Map<
+      string,
+      {
+        user: GroupUserSummary;
+        amount: number;
+        originalAmount: number;
+        originalCurrency: string;
+        splits: ConvertedExpenseSplit[];
+      }
+    >();
     convertedOwedToUser.forEach((split) => {
       const debtorId = split.userId;
       if (!owedToUserByUser.has(debtorId)) {
@@ -1214,7 +1952,16 @@ export class GroupService {
     };
   }
 
-  async updateGroup(userId: string, groupId: string, updateData: { name?: string; description?: string; avatarUrl?: string }) {
+  async updateGroup(
+    userId: string,
+    groupId: string,
+    updateData: {
+      name?: string;
+      description?: string;
+      avatarUrl?: string;
+      visibility?: 'public' | 'private';
+    },
+  ) {
     // Verify user is admin of group
     const group = await this.prisma.group.findFirst({
       where: {
@@ -1229,14 +1976,18 @@ export class GroupService {
     });
 
     if (!group) {
-      throw new NotFoundException('Group not found or you do not have permission to edit it');
+      throw new NotFoundException(
+        'Group not found or you do not have permission to edit it',
+      );
     }
 
     const updated = await this.prisma.group.update({
       where: { id: groupId },
       data: {
         ...updateData,
-        ...(updateData.avatarUrl !== undefined && { avatarUrl: updateData.avatarUrl }),
+        ...(updateData.avatarUrl !== undefined && {
+          avatarUrl: updateData.avatarUrl,
+        }),
       },
       include: {
         GroupMember: {
@@ -1288,7 +2039,9 @@ export class GroupService {
     });
 
     if (!group) {
-      throw new NotFoundException('Group not found or you do not have permission to delete it');
+      throw new NotFoundException(
+        'Group not found or you do not have permission to delete it',
+      );
     }
 
     // Delete group (cascade will handle expenses, chores, members)
@@ -1314,7 +2067,9 @@ export class GroupService {
     });
 
     if (!group) {
-      throw new NotFoundException('Group not found or you do not have permission to edit it');
+      throw new NotFoundException(
+        'Group not found or you do not have permission to edit it',
+      );
     }
 
     const updated = await this.prisma.group.update({
@@ -1383,10 +2138,15 @@ export class GroupService {
             }
           : null,
       },
-    } as any;
+    };
   }
 
-  async changeMemberRole(userId: string, groupId: string, memberId: string, role: 'ADMIN' | 'MEMBER') {
+  async changeMemberRole(
+    userId: string,
+    groupId: string,
+    memberId: string,
+    role: 'ADMIN' | 'MEMBER',
+  ) {
     // Verify user is admin of group
     const group = await this.prisma.group.findFirst({
       where: {
@@ -1401,7 +2161,9 @@ export class GroupService {
     });
 
     if (!group) {
-      throw new NotFoundException('Group not found or you do not have permission');
+      throw new NotFoundException(
+        'Group not found or you do not have permission',
+      );
     }
 
     // Cannot change role of creator (they're always admin)
@@ -1514,7 +2276,9 @@ export class GroupService {
 
     // Cannot leave if you're the creator (must transfer ownership first)
     if (group.createdBy === userId) {
-      throw new BadRequestException('Cannot leave group as creator. Transfer ownership first.');
+      throw new BadRequestException(
+        'Cannot leave group as creator. Transfer ownership first.',
+      );
     }
 
     const member = await this.prisma.groupMember.findUnique({
@@ -1707,9 +2471,11 @@ export class GroupService {
     }
 
     // Sort by timestamp
-    history.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    history.sort(
+      (a, b) =>
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+    );
 
     return history;
   }
 }
-

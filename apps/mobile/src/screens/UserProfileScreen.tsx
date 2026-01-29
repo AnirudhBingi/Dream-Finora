@@ -1,33 +1,58 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from "react";
 import {
   View,
-  Text,
+  Text as RNText,
   StyleSheet,
   TouchableOpacity,
   Image,
   ActivityIndicator,
-  ScrollView,
   Alert,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
-import { useAuth } from '../auth/authContext';
-import { getUserProfile, UserProfile } from '../api/profileApi';
-import { getAvatarUrl } from '../utils/avatar';
-import { sendFriendRequest, acceptFriendRequest, rejectFriendRequest, removeFriend, blockUser } from '../api/friendApi';
-import { SkeletonDetailScreen } from '../components/SkeletonLoader';
-import { ErrorState, getUserFriendlyErrorMessage } from '../components/ErrorState';
-import { Header } from '../components/Header';
+  Modal,
+  Platform,
+  Animated,
+  Pressable,
+  ScrollView,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useAuth } from "../auth/authContext";
+import { getUserProfile, UserProfile } from "../api/profileApi";
+import { getPosts, PostsResponse } from "../api/postApi";
+import { getListings, Listing } from "../api/listingApi";
+import { getPublicGroups, Group, requestJoinGroup } from "../api/groupApi";
+import { getAvatarUrl } from "../utils/avatar";
+import { getSafeImageUri } from "../utils/imageUri";
+import {
+  Friend,
+  getMutualFriends,
+  sendFriendRequest,
+  acceptFriendRequest,
+  rejectFriendRequest,
+  removeFriend,
+  blockUser,
+} from "../api/friendApi";
+import { SkeletonDetailScreen } from "../components/SkeletonLoader";
+import { ErrorState } from "../components/ErrorState";
+import { useDataFetch } from "../hooks/useDataFetch";
+import { useAsyncOperation } from "../hooks/useAsyncOperation";
+import { Header } from "../components/Header";
+import { useTheme } from "../theme";
+import { ScreenWrapper } from "../components/ScreenWrapper";
 
 interface UserProfileScreenProps {
   userId: string;
   onBack: () => void;
   onNavigateToMessage?: (userId: string) => void;
   onNavigateToMutualFriends?: (userId: string) => void;
-  onNavigateToListings?: (userId: string) => void;
+  onViewListing?: (listingId: string) => void;
+  onViewPost?: (postId: string) => void;
+  onNavigateToGroups?: () => void;
   onNavigateToProfile?: () => void;
   onNavigateToNotifications?: () => void;
   onNavigateToSettings?: () => void;
+  onViewUserProfile?: (userId: string) => void;
+  onViewGroup?: (groupId: string) => void;
 }
 
 export function UserProfileScreen({
@@ -35,95 +60,225 @@ export function UserProfileScreen({
   onBack,
   onNavigateToMessage,
   onNavigateToMutualFriends,
-  onNavigateToListings,
+  onViewListing,
+  onViewPost,
+  onNavigateToGroups,
   onNavigateToProfile,
   onNavigateToNotifications,
   onNavigateToSettings,
+  onViewUserProfile,
+  onViewGroup,
 }: UserProfileScreenProps) {
-  const { token, user: currentUser } = useAuth();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [actionLoading, setActionLoading] = useState(false);
+  const { token } = useAuth();
+  const { theme, resolvedMode } = useTheme();
+  const styles = useMemo(() => createStyles(theme, resolvedMode), [theme, resolvedMode]);
+  const [activeContentTab, setActiveContentTab] = useState<
+    "friends" | "circles" | "posts" | "listings" | "finscore"
+  >("friends");
+  const [previewVisible, setPreviewVisible] = useState(false);
 
+  // Animation value for hero card shimmer
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
+
+  // Start shimmer animation loop
   useEffect(() => {
-    loadProfile();
-  }, [token, userId]);
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnim, {
+          toValue: 1,
+          duration: 3000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmerAnim, {
+          toValue: 0,
+          duration: 3000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
 
-  async function loadProfile() {
-    if (!token) return;
+  const {
+    data: profile,
+    loading,
+    error,
+    refetch,
+  } = useDataFetch<UserProfile>({
+    fetchFn: async () => {
+      if (!token) throw new Error("No authentication token");
+      return getUserProfile(token, userId);
+    },
+    immediate: true,
+    deps: [token, userId],
+  });
 
-    try {
-      setLoading(true);
-      setError(null);
-      const profileData = await getUserProfile(token, userId);
-      setProfile(profileData);
-    } catch (err) {
-      setError(getUserFriendlyErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
+  const { data: postsResponse, loading: postsLoading } =
+    useDataFetch<PostsResponse>({
+      fetchFn: async () => {
+        if (!token) throw new Error("No authentication token");
+        return getPosts(token, { userId, limit: 3, offset: 0 });
+      },
+      immediate: true,
+      deps: [token, userId],
+    });
+
+  const { data: listingsData, loading: listingsLoading } = useDataFetch<
+    Listing[]
+  >({
+    fetchFn: async () => {
+      if (!token) throw new Error("No authentication token");
+      const response = await getListings(token, {
+        userId,
+        limit: 3,
+        offset: 0,
+      });
+      if (Array.isArray(response)) {
+        return response;
+      }
+      return response.listings || [];
+    },
+    immediate: true,
+    deps: [token, userId],
+  });
+
+  const { data: publicGroupsResponse, refetch: refetchPublicGroups } =
+    useDataFetch<{ groups: Group[] }>({
+      fetchFn: async () => {
+        if (!token) throw new Error("No authentication token");
+        return getPublicGroups(token, {
+          memberId: userId,
+          limit: 50,
+          offset: 0,
+        });
+      },
+      immediate: true,
+      deps: [token, userId],
+    });
+
+  const previewPosts = (postsResponse?.posts ?? []).slice(0, 6);
+  const previewListings = (listingsData ?? []).slice(0, 6);
+  const publicGroups = publicGroupsResponse?.groups ?? [];
+
+  const { data: mutualFriends } = useDataFetch<Friend[]>({
+    fetchFn: async () => {
+      if (!token) throw new Error("No authentication token");
+      return getMutualFriends(token, userId);
+    },
+    immediate: true,
+    deps: [token, userId],
+  });
+
+  const tabs = useMemo(
+    () => [
+      { key: "friends", label: "Friends", count: mutualFriends?.length ?? 0 },
+      { key: "circles", label: "Circles", count: publicGroups.length },
+      { key: "finscore", label: "FinScore" },
+      { key: "posts", label: "Posts", count: postsResponse?.total ?? 0 },
+      {
+        key: "listings",
+        label: "Listings",
+        count: profile?.listingsCount ?? 0,
+      },
+    ],
+    [
+      mutualFriends?.length,
+      publicGroups.length,
+      postsResponse?.total,
+      profile?.listingsCount,
+    ],
+  );
+
+  function getMiniPostPreview(post: PostsResponse["posts"][number]) {
+    const image = post.images?.[0] ? getSafeImageUri(post.images[0]) : null;
+    return {
+      image,
+      text: post.content || "Post",
+    };
   }
 
+  function getMiniListingPreview(listing: Listing) {
+    const image = listing.images?.[0]
+      ? getSafeImageUri(listing.images[0])
+      : null;
+    return {
+      image,
+      title: listing.title || "Listing",
+      price: listing.price ? `$${listing.price}` : "Listing",
+    };
+  }
+
+  const { loading: actionLoading, execute: executeFriendAction } =
+    useAsyncOperation({
+      operationFn: async (action: "send" | "accept" | "remove") => {
+        if (!token || !profile) throw new Error("Missing token or profile");
+
+        if (action === "send") {
+          await sendFriendRequest(token, {
+            friendEmailOrMobile: profile.email || "",
+          });
+        }
+        // Other actions need friendship ID, handled separately
+        return null;
+      },
+      onSuccess: () => {
+        refetch(); // Refresh profile after action
+      },
+    });
+
+  const { loading: joinRequestLoading, execute: executeJoinRequest } =
+    useAsyncOperation({
+      operationFn: async (groupId: string) => {
+        if (!token) throw new Error("Missing token");
+        return requestJoinGroup(token, groupId);
+      },
+      onSuccess: () => {
+        refetchPublicGroups();
+      },
+    });
+
   function getTrustScoreColor(score: number): string {
-    if (score >= 90) return '#10B981';
-    if (score >= 70) return '#3B82F6';
-    if (score >= 50) return '#F59E0B';
-    return '#EF4444';
+    if (score >= 90) return theme.colors.success;
+    if (score >= 70) return theme.colors.blue;
+    if (score >= 50) return theme.colors.warning;
+    return theme.colors.error;
   }
 
   async function handleSendFriendRequest() {
     if (!token || !profile) return;
 
     try {
-      setActionLoading(true);
-      await sendFriendRequest(token, { friendEmailOrMobile: profile.email || '' });
-      Alert.alert('Success', 'Friend request sent!');
-      await loadProfile(); // Refresh to update friend status
+      await executeFriendAction("send");
+      Alert.alert("Success", "Friend request sent!");
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to send friend request');
-    } finally {
-      setActionLoading(false);
+      Alert.alert(
+        "Error",
+        err instanceof Error ? err.message : "Failed to send friend request",
+      );
     }
   }
 
   async function handleAcceptRequest() {
     if (!token || !profile) return;
-
-    try {
-      setActionLoading(true);
-      // Need to get the friendship ID - for now, reload and accept
-      Alert.alert('Info', 'Please accept the request from the friends list');
-      await loadProfile();
-    } catch (err) {
-      Alert.alert('Error', 'Failed to accept request');
-    } finally {
-      setActionLoading(false);
-    }
+    // Need to get the friendship ID - for now, reload and accept
+    Alert.alert("Info", "Please accept the request from the friends list");
+    await refetch();
   }
 
   async function handleRemoveFriend() {
     if (!token || !profile) return;
 
     Alert.alert(
-      'Remove Friend',
+      "Remove Friend",
       `Are you sure you want to remove ${profile.displayName || profile.email} as a friend?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Remove',
-          style: 'destructive',
+          text: "Remove",
+          style: "destructive",
           onPress: async () => {
-            try {
-              setActionLoading(true);
-              // Need friendship ID - for now, show message
-              Alert.alert('Info', 'Please remove from friends list');
-              await loadProfile();
-            } catch (err) {
-              Alert.alert('Error', 'Failed to remove friend');
-            } finally {
-              setActionLoading(false);
-            }
+            // Need friendship ID - for now, show message
+            Alert.alert("Info", "Please remove from friends list");
+            await refetch();
           },
         },
       ],
@@ -134,23 +289,23 @@ export function UserProfileScreen({
     if (!token || !profile) return;
 
     Alert.alert(
-      'Block User',
+      "Block User",
       `Are you sure you want to block ${profile.displayName || profile.email}?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Block',
-          style: 'destructive',
+          text: "Block",
+          style: "destructive",
           onPress: async () => {
             try {
-              setActionLoading(true);
               await blockUser(token, userId);
-              Alert.alert('Success', 'User blocked');
-              await loadProfile();
+              Alert.alert("Success", "User blocked");
+              await refetch();
             } catch (err) {
-              Alert.alert('Error', err instanceof Error ? err.message : 'Failed to block user');
-            } finally {
-              setActionLoading(false);
+              Alert.alert(
+                "Error",
+                err instanceof Error ? err.message : "Failed to block user",
+              );
             }
           },
         },
@@ -160,582 +315,1229 @@ export function UserProfileScreen({
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <>
         <Header
           title="Profile"
           onBack={onBack}
+          showProfile={false}
+          showNotifications={false}
+          showSettings={false}
           onNavigateToProfile={onNavigateToProfile}
           onNavigateToNotifications={onNavigateToNotifications}
           onNavigateToSettings={onNavigateToSettings}
         />
-        <SkeletonDetailScreen />
-      </SafeAreaView>
+        <ScreenWrapper scroll>
+          <SkeletonDetailScreen />
+        </ScreenWrapper>
+      </>
     );
   }
 
   if (error) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <>
         <Header
           title="Profile"
           onBack={onBack}
+          showProfile={false}
+          showNotifications={false}
+          showSettings={false}
           onNavigateToProfile={onNavigateToProfile}
           onNavigateToNotifications={onNavigateToNotifications}
           onNavigateToSettings={onNavigateToSettings}
         />
-        <ErrorState message={error} onRetry={loadProfile} />
-      </SafeAreaView>
+        <ScreenWrapper scroll>
+          <ErrorState message={error} onRetry={refetch} />
+        </ScreenWrapper>
+      </>
     );
   }
 
   if (!profile) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <>
         <Header
           title="Profile"
           onBack={onBack}
+          showProfile={false}
+          showNotifications={false}
+          showSettings={false}
           onNavigateToProfile={onNavigateToProfile}
           onNavigateToNotifications={onNavigateToNotifications}
           onNavigateToSettings={onNavigateToSettings}
         />
-        <ErrorState message="Profile not found" onRetry={loadProfile} />
-      </SafeAreaView>
+        <ScreenWrapper scroll>
+          <ErrorState message="Profile not found" onRetry={refetch} />
+        </ScreenWrapper>
+      </>
     );
   }
 
   const avatarUrl = getAvatarUrl(profile.avatarUrl);
-  const isFriend = profile.friendStatus === 'accepted';
-  const isPendingIncoming = profile.friendStatus === 'pending_incoming';
-  const isPendingOutgoing = profile.friendStatus === 'pending_outgoing';
-  const isBlocked = profile.friendStatus === 'blocked';
+  const isFriend = profile.friendStatus === "accepted";
+  const isPendingIncoming = profile.friendStatus === "pending_incoming";
+  const isPendingOutgoing = profile.friendStatus === "pending_outgoing";
+  const isBlocked = profile.friendStatus === "blocked";
+  const finScore = profile.trustScore?.score;
+  const finScoreColor =
+    finScore !== undefined && finScore !== null
+      ? getTrustScoreColor(finScore)
+      : theme.colors.textSecondary;
+
+  // Header actions menu for destructive actions
+  const headerActions = [
+    ...(isFriend ? [{
+      label: 'Remove Friend',
+      icon: 'person-remove',
+      onPress: handleRemoveFriend,
+      danger: true,
+    }] : []),
+    ...(!isBlocked ? [{
+      label: 'Block User',
+      icon: 'block',
+      onPress: handleBlockUser,
+      danger: true,
+    }] : []),
+  ];
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <>
       <Header
-        title={profile.displayName || 'Profile'}
+        title={profile.displayName || "Profile"}
         onBack={onBack}
+        showProfile={false}
+        showNotifications={false}
+        showSettings={false}
         onNavigateToProfile={onNavigateToProfile}
         onNavigateToNotifications={onNavigateToNotifications}
         onNavigateToSettings={onNavigateToSettings}
+        useOptionsMenu={headerActions.length > 0}
+        options={headerActions}
       />
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.content}>
+      <ScreenWrapper scroll>
+          {/* Hero Card with Glassy Effect - Consistent header-to-content gap */}
+          <View style={styles.heroCard}>
+            {/* Glassy gradient overlay */}
+            <LinearGradient
+              colors={[
+                'rgba(255, 255, 255, 0.12)',
+                'rgba(255, 255, 255, 0.04)',
+                'rgba(255, 255, 255, 0.01)',
+              ]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.heroGlassOverlay}
+            />
 
-          <View style={styles.avatarContainer}>
-            {avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarPlaceholderText}>
-                  {profile.displayName?.[0]?.toUpperCase() || profile.email?.[0]?.toUpperCase() || 'U'}
-                </Text>
-              </View>
-            )}
-          </View>
-
-          <Text style={styles.displayName}>{profile.displayName || 'No display name'}</Text>
-          {profile.email && <Text style={styles.email}>{profile.email}</Text>}
-          {profile.mobileNumber && <Text style={styles.mobile}>{profile.mobileNumber}</Text>}
-
-          {/* Friend Status Badge */}
-          <View style={styles.friendStatusContainer}>
-            {isFriend && (
-              <View style={styles.friendBadge}>
-                <MaterialIcons name="check-circle" size={16} color="#10B981" />
-                <Text style={styles.friendBadgeText}>Friends</Text>
-              </View>
-            )}
-            {isPendingIncoming && (
-              <View style={[styles.friendBadge, styles.pendingBadge]}>
-                <MaterialIcons name="schedule" size={16} color="#F59E0B" />
-                <Text style={[styles.friendBadgeText, styles.pendingText]}>Friend Request Received</Text>
-              </View>
-            )}
-            {isPendingOutgoing && (
-              <View style={[styles.friendBadge, styles.pendingBadge]}>
-                <MaterialIcons name="schedule" size={16} color="#F59E0B" />
-                <Text style={[styles.friendBadgeText, styles.pendingText]}>Request Sent</Text>
-              </View>
-            )}
-            {isBlocked && (
-              <View style={[styles.friendBadge, styles.blockedBadge]}>
-                <MaterialIcons name="block" size={16} color="#EF4444" />
-                <Text style={[styles.friendBadgeText, styles.blockedText]}>Blocked</Text>
-              </View>
-            )}
-          </View>
-
-          {/* Trust Score Section */}
-          {profile.trustScore && (
-            <View style={styles.trustScoreContainer}>
-              <Text style={styles.trustScoreLabel}>Trust Score</Text>
-              <View style={styles.trustScoreValueContainer}>
-                <Text style={[styles.trustScoreValue, { color: getTrustScoreColor(profile.trustScore.score) }]}>
-                  {profile.trustScore.score}
-                </Text>
-                <Text style={styles.trustScoreMax}>/ 100</Text>
-              </View>
-              <View style={styles.trustScoreBar}>
-                <View
-                  style={[
-                    styles.trustScoreBarFill,
+            {/* Animated shimmer */}
+            <Animated.View
+              style={[
+                styles.heroShimmerOverlay,
+                {
+                  opacity: shimmerAnim.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [0, 0.2, 0],
+                  }),
+                  transform: [
                     {
-                      width: `${Math.min(100, Math.max(0, profile.trustScore.score))}%`,
-                      backgroundColor: getTrustScoreColor(profile.trustScore.score),
+                      translateX: shimmerAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-300, 300],
+                      }),
                     },
-                  ]}
-                />
-              </View>
+                  ],
+                },
+              ]}
+            >
+              <LinearGradient
+                colors={[
+                  'transparent',
+                  'rgba(255, 255, 255, 0.25)',
+                  'transparent',
+                ]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.heroShimmerGradient}
+              />
+            </Animated.View>
 
-              {/* Breakdown if available */}
-              {profile.trustScore.breakdown && (
-                <View style={styles.breakdownContainer}>
-                  <Text style={styles.breakdownTitle}>Score Breakdown</Text>
-                  <View style={styles.breakdownItem}>
-                    <Text style={styles.breakdownItemLabel}>
-                      Billchop: {Math.round(profile.trustScore.breakdown.expenseScore)}/40
-                    </Text>
-                    <View style={styles.breakdownBar}>
-                      <View
-                        style={[
-                          styles.breakdownBarFill,
-                          {
-                            width: `${(profile.trustScore.breakdown.expenseScore / 40) * 100}%`,
-                            backgroundColor: '#2563EB',
-                          },
-                        ]}
-                      />
+            <View style={styles.heroRow}>
+              <View style={styles.avatarStack}>
+                <View style={styles.avatarBack} />
+                <TouchableOpacity
+                  style={styles.avatarFrame}
+                  activeOpacity={0.9}
+                  onLongPress={() => {
+                    if (avatarUrl) setPreviewVisible(true);
+                  }}
+                >
+                  {avatarUrl ? (
+                    <Image
+                      source={{ uri: avatarUrl }}
+                      style={styles.avatarImage}
+                    />
+                  ) : (
+                    <View style={styles.avatarPlaceholder}>
+                      <RNText style={styles.avatarPlaceholderText}>
+                        {profile.displayName?.[0]?.toUpperCase() ||
+                          profile.email?.[0]?.toUpperCase() ||
+                          "U"}
+                      </RNText>
                     </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+              <View style={styles.heroInfo}>
+                <RNText style={styles.displayName} numberOfLines={1}>
+                  {profile.displayName || "No display name"}
+                </RNText>
+                {finScore !== undefined && finScore !== null && (
+                  <View style={styles.finScoreRow}>
+                    <RNText style={styles.finScoreLabel}>FinScore</RNText>
+                    <RNText
+                      style={[styles.finScoreValue, { color: finScoreColor }]}
+                    >
+                      {finScore}
+                    </RNText>
                   </View>
-                  <View style={styles.breakdownItem}>
-                    <Text style={styles.breakdownItemLabel}>
-                      Chores: {Math.round(profile.trustScore.breakdown.choreScore)}/30
-                    </Text>
-                    <View style={styles.breakdownBar}>
-                      <View
-                        style={[
-                          styles.breakdownBarFill,
-                          {
-                            width: `${(profile.trustScore.breakdown.choreScore / 30) * 100}%`,
-                            backgroundColor: '#10B981',
-                          },
-                        ]}
-                      />
+                )}
+              </View>
+            </View>
+            {profile.bio ? (
+              <View style={styles.bioRow}>
+                <RNText style={styles.bioText}>{profile.bio}</RNText>
+              </View>
+            ) : null}
+            
+            {/* Message Icon Button - Bottom Right of Hero Card */}
+            {onNavigateToMessage &&
+              (isFriend || profile.profileVisibility === "public") && (
+                <TouchableOpacity
+                  style={styles.messageIconButton}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    onNavigateToMessage(userId);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={[theme.colors.blue, theme.colors.primary]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.messageIconGradient}
+                  >
+                    <MaterialIcons
+                      name="message"
+                      size={20}
+                      color={theme.colors.textInverse}
+                    />
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+          </View>
+
+          <View style={styles.contentSection}>
+            <View style={styles.tabRow}>
+              {tabs.map((tab) => (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={[
+                    styles.tabPill,
+                    activeContentTab === tab.key && styles.tabPillActive,
+                  ]}
+                  onPress={() =>
+                    setActiveContentTab(tab.key as typeof activeContentTab)
+                  }
+                  activeOpacity={0.7}
+                >
+                  <RNText
+                    style={[
+                      styles.tabText,
+                      activeContentTab === tab.key && styles.tabTextActive,
+                    ]}
+                  >
+                    {tab.label}
+                  </RNText>
+                  {"count" in tab ? (
+                    <View style={styles.tabCount}>
+                      <RNText style={styles.tabCountText}>{tab.count}</RNText>
                     </View>
+                  ) : null}
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {activeContentTab === "friends" ? (
+              <>
+                {!isFriend &&
+                  !isPendingOutgoing &&
+                  !isPendingIncoming &&
+                  !isBlocked && (
+                    <View style={styles.sectionHeaderRow}>
+                      <TouchableOpacity
+                        style={styles.addFriendButton}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          handleSendFriendRequest();
+                        }}
+                        disabled={actionLoading}
+                        activeOpacity={0.7}
+                      >
+                        <MaterialIcons
+                          name="person-add"
+                          size={18}
+                          color={theme.colors.blue}
+                        />
+                        <RNText style={styles.addFriendButtonText}>Add Friend</RNText>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                {(mutualFriends ?? []).length > 0 ? (
+                  <View style={styles.listStack}>
+                    {(mutualFriends ?? []).map((friend) => {
+                      const friendName = friend.friend.profile?.displayName;
+                      const friendEmail = friend.friend.email;
+                      const displayText = friendName || friendEmail;
+                      const friendAvatar = getAvatarUrl(
+                        friend.friend.profile?.avatarUrl || null,
+                      );
+                      return (
+                        <TouchableOpacity
+                          key={friend.id}
+                          style={styles.listItem}
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            onViewUserProfile?.(friend.friend.id);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          {friendAvatar ? (
+                            <Image
+                              source={{ uri: friendAvatar }}
+                              style={styles.listAvatar}
+                            />
+                          ) : (
+                            <View style={styles.listAvatarPlaceholder}>
+                              <RNText style={styles.listAvatarText}>
+                                {displayText?.[0]?.toUpperCase() || "F"}
+                              </RNText>
+                            </View>
+                          )}
+                          <View style={styles.listInfo}>
+                            <RNText style={styles.listTitle}>{displayText}</RNText>
+                          </View>
+                          <MaterialIcons
+                            name="chevron-right"
+                            size={20}
+                            color={theme.colors.textSecondary}
+                          />
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
-                  <View style={styles.breakdownItem}>
-                    <Text style={styles.breakdownItemLabel}>
-                      Community: {Math.round(profile.trustScore.breakdown.communityScore)}/30
-                    </Text>
-                    <View style={styles.breakdownBar}>
-                      <View
+                ) : (
+                  <View style={styles.emptySection}>
+                    <RNText style={styles.emptySectionText}>
+                      No mutual friends yet.
+                    </RNText>
+                  </View>
+                )}
+                {isPendingIncoming && (
+                  <View style={styles.actionRow}>
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.acceptButton]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        handleAcceptRequest();
+                      }}
+                      disabled={actionLoading}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialIcons name="check" size={20} color={theme.colors.textInverse} />
+                      <RNText style={styles.actionButtonText}>Accept Request</RNText>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.rejectButton]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        Alert.alert("Info", "Please reject from friends list");
+                      }}
+                      disabled={actionLoading}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialIcons name="close" size={20} color={theme.colors.error} />
+                      <RNText
                         style={[
-                          styles.breakdownBarFill,
-                          {
-                            width: `${(profile.trustScore.breakdown.communityScore / 30) * 100}%`,
-                            backgroundColor: '#F59E0B',
-                          },
+                          styles.actionButtonText,
+                          styles.rejectButtonText,
                         ]}
-                      />
-                    </View>
+                      >
+                        Reject
+                      </RNText>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
+            ) : activeContentTab === "circles" ? (
+              <>
+                {publicGroups.length > 0 ? (
+                  <View style={styles.listStack}>
+                    {publicGroups.map((group) => {
+                      const isMember = group.isMember;
+                      const requestPending =
+                        group.joinRequestStatus === "pending";
+                      const groupAvatar = group.avatarUrl ? getSafeImageUri(group.avatarUrl) : null;
+                      return (
+                        <TouchableOpacity
+                          key={group.id}
+                          style={styles.listItem}
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            onViewGroup?.(group.id);
+                          }}
+                          activeOpacity={0.7}
+                          disabled={!isMember}
+                        >
+                          {groupAvatar ? (
+                            <Image
+                              source={{ uri: groupAvatar }}
+                              style={styles.listAvatar}
+                            />
+                          ) : (
+                            <View style={styles.listIcon}>
+                              <MaterialIcons
+                                name="groups"
+                                size={20}
+                                color={theme.colors.blue}
+                              />
+                            </View>
+                          )}
+                          <View style={styles.listInfo}>
+                            <RNText style={styles.listTitle}>{group.name}</RNText>
+                            <RNText style={styles.listSubtitle}>
+                              {group.members?.length ?? 0} members
+                            </RNText>
+                          </View>
+                          {isMember ? (
+                            <MaterialIcons
+                              name="chevron-right"
+                              size={20}
+                              color={theme.colors.textSecondary}
+                            />
+                          ) : requestPending ? (
+                            <View style={styles.statusPill}>
+                              <RNText style={styles.statusPillText}>
+                                Requested
+                              </RNText>
+                            </View>
+                          ) : (
+                            <TouchableOpacity
+                              style={styles.listActionButton}
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                executeJoinRequest(group.id);
+                              }}
+                              disabled={joinRequestLoading}
+                              activeOpacity={0.7}
+                            >
+                              <RNText style={styles.listActionText}>
+                                Request to join
+                              </RNText>
+                            </TouchableOpacity>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <View style={styles.emptySection}>
+                    <RNText style={styles.emptySectionText}>
+                      No public circles yet.
+                    </RNText>
+                  </View>
+                )}
+              </>
+            ) : activeContentTab === "posts" ? (
+              postsLoading ? (
+                <View style={styles.sectionLoading}>
+                  <ActivityIndicator size="small" color={theme.colors.blue} />
+                </View>
+              ) : previewPosts.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={styles.miniRow}>
+                    {previewPosts.map((post) => {
+                      const preview = getMiniPostPreview(post);
+                      return (
+                        <TouchableOpacity
+                          key={post.id}
+                          style={styles.miniCard}
+                          onPress={() => onViewPost?.(post.id)}
+                          activeOpacity={0.8}
+                        >
+                          {preview.image ? (
+                            <Image
+                              source={{ uri: preview.image }}
+                              style={styles.miniImage}
+                            />
+                          ) : (
+                            <View style={styles.miniFallback}>
+                              <RNText style={styles.miniFallbackText}>Post</RNText>
+                            </View>
+                          )}
+                          <RNText style={styles.miniCaption} numberOfLines={1}>
+                            {preview.text}
+                          </RNText>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+              ) : (
+                <View style={styles.emptySection}>
+                  <RNText style={styles.emptySectionText}>No posts yet.</RNText>
+                </View>
+              )
+            ) : activeContentTab === "listings" ? (
+              listingsLoading ? (
+                <View style={styles.sectionLoading}>
+                  <ActivityIndicator size="small" color={theme.colors.blue} />
+                </View>
+              ) : previewListings.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={styles.miniRow}>
+                    {previewListings.map((listing) => {
+                      const preview = getMiniListingPreview(listing);
+                      return (
+                        <TouchableOpacity
+                          key={listing.id}
+                          style={styles.miniCard}
+                          onPress={() => onViewListing?.(listing.id)}
+                          activeOpacity={0.8}
+                        >
+                          {preview.image ? (
+                            <Image
+                              source={{ uri: preview.image }}
+                              style={styles.miniImage}
+                            />
+                          ) : (
+                            <View style={styles.miniFallback}>
+                              <RNText style={styles.miniFallbackText}>
+                                Listing
+                              </RNText>
+                            </View>
+                          )}
+                          <RNText style={styles.miniCaption} numberOfLines={1}>
+                            {preview.title}
+                          </RNText>
+                          <RNText style={styles.miniMeta} numberOfLines={1}>
+                            {preview.price}
+                          </RNText>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+              ) : (
+                <View style={styles.emptySection}>
+                  <RNText style={styles.emptySectionText}>No listings yet.</RNText>
+                </View>
+              )
+            ) : profile.trustScore?.breakdown ? (
+              <View style={styles.breakdownCard}>
+                <RNText style={styles.breakdownTitle}>FinScore Breakdown</RNText>
+                <View style={styles.breakdownItem}>
+                  <View style={styles.breakdownLabelRow}>
+                    <View
+                      style={[styles.breakdownIcon, styles.breakdownBlue]}
+                    />
+                    <RNText style={styles.breakdownItemLabel}>Billchop</RNText>
+                    <RNText style={styles.breakdownScore}>
+                      {Math.round(profile.trustScore.breakdown.expenseScore)}/35
+                    </RNText>
+                  </View>
+                  <View style={styles.breakdownBar}>
+                    <View
+                      style={[
+                        styles.breakdownBarFill,
+                        {
+                          width: `${(profile.trustScore.breakdown.expenseScore / 35) * 100}%`,
+                          backgroundColor: theme.colors.blue,
+                        },
+                      ]}
+                    />
                   </View>
                 </View>
-              )}
-            </View>
-          )}
-
-          {/* Bio Section */}
-          {profile.bio && (
-            <View style={styles.bioContainer}>
-              <Text style={styles.bioLabel}>Bio</Text>
-              <Text style={styles.bio}>{profile.bio}</Text>
-            </View>
-          )}
-
-          {/* Mutual Friends Section */}
-          {profile.mutualFriendsCount > 0 && (
-            <TouchableOpacity
-              style={styles.infoCard}
-              onPress={() => onNavigateToMutualFriends?.(userId)}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons name="people" size={20} color="#2563EB" />
-              <Text style={styles.infoCardText}>
-                {profile.mutualFriendsCount} mutual friend{profile.mutualFriendsCount !== 1 ? 's' : ''}
-              </Text>
-              <MaterialIcons name="chevron-right" size={20} color="#9CA3AF" />
-            </TouchableOpacity>
-          )}
-
-          {/* Listings Count */}
-          {profile.listingsCount > 0 && (
-            <TouchableOpacity
-              style={styles.infoCard}
-              onPress={() => onNavigateToListings?.(userId)}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons name="home" size={20} color="#2563EB" />
-              <Text style={styles.infoCardText}>
-                {profile.listingsCount} listing{profile.listingsCount !== 1 ? 's' : ''}
-              </Text>
-              <MaterialIcons name="chevron-right" size={20} color="#9CA3AF" />
-            </TouchableOpacity>
-          )}
-
-          {/* Shared Groups */}
-          {profile.sharedGroupsCount > 0 && (
-            <View style={styles.infoCard}>
-              <MaterialIcons name="group" size={20} color="#2563EB" />
-              <Text style={styles.infoCardText}>
-                {profile.sharedGroupsCount} shared group{profile.sharedGroupsCount !== 1 ? 's' : ''}
-              </Text>
-            </View>
-          )}
-
-          {/* Action Buttons */}
-          <View style={styles.actionsContainer}>
-            {!isFriend && !isPendingOutgoing && !isPendingIncoming && !isBlocked && (
-              <TouchableOpacity
-                style={styles.primaryButton}
-                onPress={handleSendFriendRequest}
-                disabled={actionLoading}
-                activeOpacity={0.7}
-              >
-                {actionLoading ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <>
-                    <MaterialIcons name="person-add" size={20} color="#FFFFFF" />
-                    <Text style={styles.primaryButtonText}>Add Friend</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            )}
-
-            {isPendingIncoming && (
-              <View style={styles.actionRow}>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.acceptButton]}
-                  onPress={handleAcceptRequest}
-                  disabled={actionLoading}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.actionButtonText}>Accept</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.rejectButton]}
-                  onPress={() => Alert.alert('Info', 'Please reject from friends list')}
-                  disabled={actionLoading}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.actionButtonText, styles.rejectButtonText]}>Reject</Text>
-                </TouchableOpacity>
+                <View style={styles.breakdownItem}>
+                  <View style={styles.breakdownLabelRow}>
+                    <View
+                      style={[styles.breakdownIcon, styles.breakdownGreen]}
+                    />
+                    <RNText style={styles.breakdownItemLabel}>Chores</RNText>
+                    <RNText style={styles.breakdownScore}>
+                      {Math.round(profile.trustScore.breakdown.choreScore)}/35
+                    </RNText>
+                  </View>
+                  <View style={styles.breakdownBar}>
+                    <View
+                      style={[
+                        styles.breakdownBarFill,
+                        {
+                          width: `${(profile.trustScore.breakdown.choreScore / 35) * 100}%`,
+                          backgroundColor: theme.colors.success,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+                <View style={styles.breakdownItem}>
+                  <View style={styles.breakdownLabelRow}>
+                    <View
+                      style={[styles.breakdownIcon, styles.breakdownAmber]}
+                    />
+                    <RNText style={styles.breakdownItemLabel}>Community</RNText>
+                    <RNText style={styles.breakdownScore}>
+                      {Math.round(profile.trustScore.breakdown.communityScore)}
+                      /15
+                    </RNText>
+                  </View>
+                  <View style={styles.breakdownBar}>
+                    <View
+                      style={[
+                        styles.breakdownBarFill,
+                        {
+                          width: `${(profile.trustScore.breakdown.communityScore / 15) * 100}%`,
+                          backgroundColor: theme.colors.warning,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+                <View style={styles.breakdownItem}>
+                  <View style={styles.breakdownLabelRow}>
+                    <View
+                      style={[styles.breakdownIcon, styles.breakdownTeal]}
+                    />
+                    <RNText style={styles.breakdownItemLabel}>
+                      Responsiveness
+                    </RNText>
+                    <RNText style={styles.breakdownScore}>
+                      {Math.round(
+                        profile.trustScore.breakdown.responsivenessScore || 0,
+                      )}
+                      /10
+                    </RNText>
+                  </View>
+                  <View style={styles.breakdownBar}>
+                    <View
+                      style={[
+                        styles.breakdownBarFill,
+                        {
+                          width: `${((profile.trustScore.breakdown.responsivenessScore || 0) / 10) * 100}%`,
+                          backgroundColor: theme.colors.info,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+                <View style={styles.breakdownItem}>
+                  <View style={styles.breakdownLabelRow}>
+                    <View
+                      style={[styles.breakdownIcon, styles.breakdownSlate]}
+                    />
+                    <RNText style={styles.breakdownItemLabel}>Account Trust</RNText>
+                    <RNText style={styles.breakdownScore}>
+                      {Math.round(
+                        profile.trustScore.breakdown.accountTrustScore || 0,
+                      )}
+                      /5
+                    </RNText>
+                  </View>
+                  <View style={styles.breakdownBar}>
+                    <View
+                      style={[
+                        styles.breakdownBarFill,
+                        {
+                          width: `${((profile.trustScore.breakdown.accountTrustScore || 0) / 5) * 100}%`,
+                          backgroundColor: theme.colors.backgroundSecondary,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.emptySection}>
+                <RNText style={styles.emptySectionText}>
+                  FinScore details are not available.
+                </RNText>
               </View>
             )}
+          </View>
+      </ScreenWrapper>
 
-            {isFriend && (
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={handleRemoveFriend}
-                disabled={actionLoading}
-                activeOpacity={0.7}
-              >
-                <MaterialIcons name="person-remove" size={20} color="#EF4444" />
-                <Text style={[styles.secondaryButtonText, { color: '#EF4444' }]}>Remove Friend</Text>
-              </TouchableOpacity>
-            )}
-
-            {onNavigateToMessage && (isFriend || profile.profileVisibility === 'public') && (
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={() => onNavigateToMessage(userId)}
-                activeOpacity={0.7}
-              >
-                <MaterialIcons name="message" size={20} color="#2563EB" />
-                <Text style={styles.secondaryButtonText}>Message</Text>
-              </TouchableOpacity>
-            )}
-
-            {!isBlocked && (
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={handleBlockUser}
-                disabled={actionLoading}
-                activeOpacity={0.7}
-              >
-                <MaterialIcons name="block" size={20} color="#EF4444" />
-                <Text style={[styles.secondaryButtonText, { color: '#EF4444' }]}>Block User</Text>
-              </TouchableOpacity>
+      <Modal
+        visible={previewVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewVisible(false)}
+      >
+        <View style={styles.previewOverlay}>
+          <TouchableOpacity
+            style={styles.previewBackdrop}
+            onPress={() => setPreviewVisible(false)}
+            activeOpacity={1}
+          />
+          <View style={styles.previewCard}>
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.previewImage} />
+            ) : (
+              <View style={styles.previewFallback}>
+                <RNText style={styles.previewFallbackText}>No image</RNText>
+              </View>
             )}
           </View>
         </View>
-      </ScrollView>
-    </SafeAreaView>
+      </Modal>
+    </>
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollContent: {
-    paddingBottom: 24,
-  },
-  content: {
-    paddingHorizontal: 24,
-    alignItems: 'center',
-  },
-  avatarContainer: {
-    marginBottom: 16,
-  },
-  avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#E5E7EB',
-  },
-  avatarPlaceholder: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#2563EB',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarPlaceholderText: {
-    fontSize: 48,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  displayName: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  email: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 4,
-  },
-  mobile: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 16,
-  },
-  friendStatusContainer: {
-    marginBottom: 16,
-  },
-  friendBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#ECFDF5',
-    borderRadius: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  friendBadgeText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#10B981',
-  },
-  pendingBadge: {
-    backgroundColor: '#FEF3C7',
-  },
-  pendingText: {
-    color: '#F59E0B',
-  },
-  blockedBadge: {
-    backgroundColor: '#FEE2E2',
-  },
-  blockedText: {
-    color: '#EF4444',
-  },
-  trustScoreContainer: {
-    width: '100%',
-    marginBottom: 24,
-    padding: 16,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  trustScoreLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#6B7280',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  trustScoreValueContainer: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginBottom: 12,
-  },
-  trustScoreValue: {
-    fontSize: 48,
-    fontWeight: 'bold',
-  },
-  trustScoreMax: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#9CA3AF',
-    marginLeft: 4,
-  },
-  trustScoreBar: {
-    width: '100%',
-    height: 8,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  trustScoreBarFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  breakdownContainer: {
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    width: '100%',
-  },
-  breakdownTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 12,
-  },
-  breakdownItem: {
-    marginBottom: 16,
-  },
-  breakdownItemLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-    marginBottom: 6,
-  },
-  breakdownBar: {
-    height: 6,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 3,
-    marginBottom: 4,
-    overflow: 'hidden',
-  },
-  breakdownBarFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  bioContainer: {
-    width: '100%',
-    marginBottom: 24,
-    padding: 16,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-  },
-  bioLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#6B7280',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  bio: {
-    fontSize: 16,
-    color: '#111827',
-    lineHeight: 24,
-  },
-  infoCard: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 16,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  infoCardText: {
-    flex: 1,
-    fontSize: 16,
-    color: '#111827',
-    fontWeight: '500',
-  },
-  actionsContainer: {
-    marginTop: 24,
-    gap: 12,
-    width: '100%',
-  },
-  primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    width: '100%',
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
-  actionButton: {
-    flex: 1,
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  acceptButton: {
-    backgroundColor: '#10B981',
-  },
-  rejectButton: {
-    backgroundColor: '#FEE2E2',
-  },
-  actionButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  rejectButtonText: {
-    color: '#EF4444',
-  },
-  secondaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#FFFFFF',
-    width: '100%',
-  },
-  secondaryButtonText: {
-    color: '#2563EB',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-});
-
+function createStyles(theme: ReturnType<typeof useTheme>["theme"], resolvedMode: ReturnType<typeof useTheme>["resolvedMode"]) {
+  return StyleSheet.create({
+    heroCard: {
+      width: "100%",
+      padding: theme.spacing.lg,
+      borderRadius: theme.radii["2xl"],
+      backgroundColor: theme.colors.background,
+      marginTop: theme.spacing.headerContentGap || theme.spacing.base,
+      marginBottom: theme.spacing.lg,
+      overflow: 'hidden',
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.primary,
+          shadowOffset: { width: 0, height: 12 },
+          shadowOpacity: 0.25,
+          shadowRadius: 20,
+        },
+        android: {
+          elevation: 8,
+        },
+      }),
+      borderWidth: 2,
+      borderColor: resolvedMode === 'light' 
+        ? 'rgba(0, 0, 0, 0.08)' 
+        : 'rgba(255, 255, 255, 0.12)',
+    },
+    heroGlassOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 1,
+    },
+    heroShimmerOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: -100,
+      right: -100,
+      bottom: 0,
+      zIndex: 1,
+    },
+    heroShimmerGradient: {
+      flex: 1,
+      width: 200,
+      transform: [{ skewX: '-20deg' }],
+    },
+    heroRow: {
+      flexDirection: "row",
+      gap: theme.spacing.lg,
+      zIndex: 2,
+    },
+    avatarStack: {
+      width: 132,
+      height: 152,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    avatarBack: {
+      position: "absolute",
+      width: 120,
+      height: 140,
+      borderRadius: theme.radii["2xl"],
+      backgroundColor: theme.colors.backgroundTertiary,
+      transform: [{ rotate: "-3deg" }],
+    },
+    avatarFrame: {
+      width: 120,
+      height: 140,
+      borderRadius: theme.radii["2xl"],
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.background,
+      overflow: "hidden",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    avatarImage: {
+      width: "100%",
+      height: "100%",
+    },
+    avatarPlaceholder: {
+      width: "100%",
+      height: "100%",
+      backgroundColor: theme.colors.blue,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    avatarPlaceholderText: {
+      fontSize: 44,
+      fontWeight: theme.typography.fontWeight.bold,
+      color: theme.colors.white,
+    },
+    heroInfo: {
+      flex: 1,
+      justifyContent: "center",
+      gap: theme.spacing.sm,
+    },
+    displayName: {
+      fontSize: theme.typography.fontSize.xl,
+      fontWeight: theme.typography.fontWeight.bold,
+      color: theme.colors.textPrimary,
+      marginBottom: theme.spacing.xs,
+      lineHeight: 26,
+    },
+    finScoreRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.xs,
+    },
+    finScoreLabel: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.textSecondary,
+      textTransform: "uppercase",
+      letterSpacing: 0.6,
+    },
+    finScoreValue: {
+      fontSize: theme.typography.fontSize["2xl"],
+      fontWeight: theme.typography.fontWeight.bold,
+    },
+    bioRow: {
+      marginTop: theme.spacing.base,
+    },
+    bioText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+      lineHeight: 20,
+    },
+    breakdownTitle: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.gray700,
+      marginBottom: theme.spacing.md,
+    },
+    breakdownItem: {
+      marginBottom: theme.spacing.base,
+    },
+    breakdownItemLabel: {
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.textPrimary,
+    },
+    breakdownScore: {
+      marginLeft: "auto",
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+    },
+    breakdownBar: {
+      height: 8,
+      backgroundColor: theme.colors.backgroundTertiary,
+      borderRadius: 6,
+      marginBottom: theme.spacing.xs,
+      overflow: "hidden",
+    },
+    breakdownBarFill: {
+      height: "100%",
+      borderRadius: 6,
+    },
+    bio: {
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textPrimary,
+      lineHeight: 24,
+    },
+    breakdownCard: {
+      width: "100%",
+      padding: theme.spacing.base,
+      borderRadius: theme.radii.xl,
+      backgroundColor: theme.colors.backgroundSecondary,
+      marginTop: theme.spacing.base,
+    },
+    breakdownLabelRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.xs,
+      marginBottom: theme.spacing.xs,
+    },
+    breakdownIcon: {
+      width: 8,
+      height: 8,
+      borderRadius: theme.radii.xs,
+    },
+    breakdownBlue: {
+      backgroundColor: theme.colors.blue,
+    },
+    breakdownGreen: {
+      backgroundColor: theme.colors.success,
+    },
+    breakdownAmber: {
+      backgroundColor: theme.colors.warning,
+    },
+    breakdownTeal: {
+      backgroundColor: theme.colors.info,
+    },
+    breakdownSlate: {
+      backgroundColor: theme.colors.backgroundSecondary,
+    },
+    contentSection: {
+      width: "100%",
+      marginTop: theme.spacing.sm,
+      backgroundColor: "transparent",
+      padding: 0,
+    },
+    sectionHeaderRow: {
+      marginBottom: theme.spacing.base,
+    },
+    addFriendButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: theme.spacing.xs,
+      paddingHorizontal: theme.spacing.lg,
+      paddingVertical: theme.spacing.sm,
+      borderRadius: theme.radii.full,
+      backgroundColor: theme.colors.blueBackground,
+      borderWidth: 1,
+      borderColor: theme.colors.blue,
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.blue,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.15,
+          shadowRadius: 4,
+        },
+        android: {
+          elevation: 2,
+        },
+      }),
+    },
+    addFriendButtonText: {
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.blue,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    tabRow: {
+      flexDirection: "row",
+      gap: theme.spacing.xs,
+      paddingHorizontal: theme.spacing.base,
+      paddingVertical: theme.spacing.xs,
+      borderRadius: theme.radii.full,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.backgroundSecondary,
+      justifyContent: "space-between",
+    },
+    tabPill: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 2,
+      borderRadius: theme.radii.full,
+      borderWidth: 0,
+      paddingVertical: theme.spacing.xs,
+      paddingHorizontal: theme.spacing.xs,
+      backgroundColor: "transparent",
+      minHeight: 28,
+      justifyContent: "center",
+    },
+    tabPillActive: {
+      backgroundColor: theme.colors.primary,
+      borderWidth: 0,
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.primary,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.3,
+          shadowRadius: 4,
+        },
+        android: {
+          elevation: 3,
+        },
+      }),
+    },
+    tabText: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.textSecondary,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    tabTextActive: {
+      color: theme.colors.textInverse,
+      fontWeight: theme.typography.fontWeight.bold,
+    },
+    tabCount: {
+      paddingHorizontal: theme.spacing.xs,
+      paddingVertical: 0,
+      borderRadius: theme.radii.full,
+      backgroundColor: theme.colors.backgroundTertiary,
+    },
+    tabCountActive: {
+      backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    },
+    tabCountText: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.textSecondary,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    tabCountTextActive: {
+      color: theme.colors.textInverse,
+    },
+    sectionLoading: {
+      paddingVertical: theme.spacing.md,
+      alignItems: "center",
+    },
+    sectionList: {
+      gap: theme.spacing.lg,
+    },
+    listStack: {
+      gap: theme.spacing.sm,
+    },
+    listItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.sm,
+      padding: theme.spacing.sm,
+      borderRadius: theme.radii.lg,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.backgroundSecondary,
+    },
+    listAvatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: theme.colors.backgroundTertiary,
+    },
+    listAvatarPlaceholder: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: theme.colors.blue,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    listAvatarText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textInverse,
+      fontWeight: theme.typography.fontWeight.bold,
+    },
+    listIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: theme.radii.full,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.colors.blueBackground,
+    },
+    listInfo: {
+      flex: 1,
+    },
+    listActionButton: {
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: theme.spacing.xs,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: theme.colors.blue,
+      backgroundColor: theme.colors.blueBackground,
+    },
+    listActionText: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.blue,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    statusPill: {
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: theme.spacing.xs,
+      borderRadius: theme.radii.full,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.backgroundTertiary,
+    },
+    statusPillText: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.textSecondary,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    listTitle: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+    },
+    listSubtitle: {
+      marginTop: theme.spacing.xs / 2,
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+    },
+    miniRow: {
+      flexDirection: "row",
+      gap: theme.spacing.sm,
+      paddingBottom: theme.spacing.xs,
+    },
+    miniCard: {
+      width: 140,
+      borderRadius: 14,
+      backgroundColor: theme.colors.background,
+      borderWidth: 1,
+      borderColor: theme.colors.borderLight,
+      padding: theme.spacing.sm,
+    },
+    miniImage: {
+      width: "100%",
+      height: 90,
+      borderRadius: 10,
+      backgroundColor: theme.colors.backgroundSecondary,
+      marginBottom: theme.spacing.xs,
+    },
+    miniFallback: {
+      width: "100%",
+      height: 90,
+      borderRadius: 10,
+      backgroundColor: theme.colors.backgroundSecondary,
+      marginBottom: theme.spacing.xs,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    miniFallbackText: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.textSecondary,
+    },
+    miniCaption: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textPrimary,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    miniMeta: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.textSecondary,
+    },
+    previewOverlay: {
+      flex: 1,
+      backgroundColor: theme.colors.overlayLight,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    previewBackdrop: {
+      ...StyleSheet.absoluteFillObject,
+    },
+    previewCard: {
+      width: 240,
+      height: 280,
+      borderRadius: theme.radii.xl,
+      overflow: "hidden",
+      backgroundColor: theme.colors.background,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    previewImage: {
+      width: "100%",
+      height: "100%",
+    },
+    previewFallback: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.colors.backgroundSecondary,
+    },
+    previewFallbackText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+    },
+    emptySection: {
+      paddingVertical: theme.spacing.md,
+      alignItems: "center",
+    },
+    emptySectionText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+    },
+    actionRow: {
+      flexDirection: "row",
+      gap: theme.spacing.sm,
+      width: "100%",
+      marginTop: theme.spacing.sm,
+    },
+    actionButton: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: theme.spacing.xs,
+      borderRadius: theme.radii.lg,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.lg,
+      minHeight: 48,
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.black,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 4,
+        },
+        android: {
+          elevation: 2,
+        },
+      }),
+    },
+    acceptButton: {
+      backgroundColor: theme.colors.success,
+    },
+    rejectButton: {
+      backgroundColor: theme.colors.background,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    actionButtonText: {
+      color: theme.colors.textInverse,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    rejectButtonText: {
+      color: theme.colors.error,
+    },
+    messageIconButton: {
+      position: 'absolute',
+      bottom: theme.spacing.sm,
+      right: theme.spacing.sm,
+      borderRadius: theme.radii.full,
+      overflow: 'hidden',
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.primary,
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: 0.3,
+          shadowRadius: 8,
+        },
+        android: {
+          elevation: 6,
+        },
+      }),
+    },
+    messageIconGradient: {
+      width: 48,
+      height: 48,
+      borderRadius: theme.radii.full,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+  });
+}

@@ -59,7 +59,10 @@ export class ExpenseController {
     @CurrentUser() user: { userId: string },
     @Query('primaryCurrency') primaryCurrency?: string,
   ) {
-    return this.expenseService.getBalances(user.userId, primaryCurrency || 'USD');
+    return this.expenseService.getBalances(
+      user.userId,
+      primaryCurrency || 'USD',
+    );
   }
 
   @Get(':id')
@@ -129,11 +132,14 @@ export class ExpenseController {
   }
 
   @Get('suggest-category')
-  async suggestCategory(@Query('description') description: string) {
+  suggestCategory(@Query('description') description: string) {
     if (!description) {
       return { category: null };
     }
-    const match = this.categorizationService.categorizeFinance(description, 'expense');
+    const match = this.categorizationService.categorizeFinance(
+      description,
+      'expense',
+    );
     return { category: match?.category || null };
   }
 
@@ -143,7 +149,10 @@ export class ExpenseController {
     @CurrentUser() user: { userId: string },
     @Body() createSettlementDto: CreateSettlementDto,
   ) {
-    return this.expenseService.createSettlement(user.userId, createSettlementDto);
+    return this.expenseService.createSettlement(
+      user.userId,
+      createSettlementDto,
+    );
   }
 
   @Get('settlements')
@@ -183,4 +192,3 @@ export class ExpenseController {
     return this.expenseService.getExpenseHistory(user.userId, id);
   }
 }
-

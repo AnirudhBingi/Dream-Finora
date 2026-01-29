@@ -1,4 +1,12 @@
-import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, Min, Max } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsEnum,
+  IsDateString,
+  Min,
+  Max,
+} from 'class-validator';
 
 export class CreateBudgetDto {
   @IsString()
@@ -37,4 +45,3 @@ export class CreateBudgetDto {
   @IsOptional()
   context?: 'local' | 'home';
 }
-

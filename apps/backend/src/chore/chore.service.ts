@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import { Prisma, ChoreAssignment } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateChoreDto } from './dto/create-chore.dto';
 import { UpdateChoreDto } from './dto/update-chore.dto';
@@ -9,6 +14,106 @@ import { ChorePointsService } from './chore-points.service';
 import { RecurringChoreService } from './recurring-chore.service';
 import { ChoreRotationService } from './chore-rotation.service';
 import { randomUUID } from 'crypto';
+import { NotificationType } from '../notification/notification.service';
+
+type UserWithProfile = Prisma.UserGetPayload<{
+  select: {
+    id: true;
+    email: true;
+    UserProfile: {
+      select: {
+        displayName: true;
+        avatarUrl: true;
+      };
+    };
+  };
+}>;
+
+type ChoreAssignmentWithUser = Prisma.ChoreAssignmentGetPayload<{
+  include: {
+    User: {
+      select: {
+        id: true;
+        email: true;
+        UserProfile: {
+          select: {
+            displayName: true;
+            avatarUrl: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+
+type ChoreCompletionWithUser = Prisma.ChoreCompletionGetPayload<{
+  include: {
+    User: {
+      select: {
+        id: true;
+        email: true;
+        UserProfile: {
+          select: {
+            displayName: true;
+            avatarUrl: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+
+type ChoreRotationWithUser = Prisma.ChoreRotationGetPayload<{
+  include: {
+    User: {
+      select: {
+        id: true;
+        email: true;
+        UserProfile: {
+          select: {
+            displayName: true;
+            avatarUrl: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+
+type ChoreWithRelations = Prisma.ChoreGetPayload<Prisma.ChoreDefaultArgs> & {
+  Group?: {
+    id: string;
+    name: string;
+    avatarUrl: string | null;
+  } | null;
+  User_Chore_createdByToUser?: {
+    id: string;
+    email: string;
+    UserProfile: {
+      displayName: string | null;
+      avatarUrl: string | null;
+    } | null;
+  } | null;
+  User_Chore_assignedToToUser?: {
+    id: string;
+    email: string;
+    UserProfile: {
+      displayName: string | null;
+      avatarUrl: string | null;
+    } | null;
+  } | null;
+  User_Chore_friendIdToUser?: {
+    id: string;
+    email: string;
+    UserProfile: {
+      displayName: string | null;
+      avatarUrl: string | null;
+    } | null;
+  } | null;
+  ChoreCompletion?: ChoreCompletionWithUser[];
+  ChoreAssignment?: ChoreAssignmentWithUser[];
+  ChoreRotation?: ChoreRotationWithUser[];
+};
 
 @Injectable()
 export class ChoreService {
@@ -22,18 +127,18 @@ export class ChoreService {
     private choreRotationService: ChoreRotationService,
   ) {}
 
-  private transformChore(chore: any) {
-    const { 
-      User_Chore_createdByToUser, 
-      User_Chore_assignedToToUser, 
+  private transformChore(chore: ChoreWithRelations) {
+    const {
+      User_Chore_createdByToUser,
+      User_Chore_assignedToToUser,
       User_Chore_friendIdToUser,
-      Group, 
-      ChoreCompletion, 
+      Group,
+      ChoreCompletion,
       ChoreAssignment,
       ChoreRotation,
-      ...choreBase 
+      ...choreBase
     } = chore;
-    
+
     return {
       ...choreBase,
       createdAt: chore.createdAt?.toISOString(),
@@ -52,7 +157,8 @@ export class ChoreService {
             email: User_Chore_friendIdToUser.email,
             profile: User_Chore_friendIdToUser.UserProfile
               ? {
-                  displayName: User_Chore_friendIdToUser.UserProfile.displayName,
+                  displayName:
+                    User_Chore_friendIdToUser.UserProfile.displayName,
                   avatarUrl: User_Chore_friendIdToUser.UserProfile.avatarUrl,
                 }
               : null,
@@ -64,7 +170,8 @@ export class ChoreService {
             email: User_Chore_createdByToUser.email,
             profile: User_Chore_createdByToUser.UserProfile
               ? {
-                  displayName: User_Chore_createdByToUser.UserProfile.displayName,
+                  displayName:
+                    User_Chore_createdByToUser.UserProfile.displayName,
                   avatarUrl: User_Chore_createdByToUser.UserProfile.avatarUrl,
                 }
               : null,
@@ -80,53 +187,58 @@ export class ChoreService {
             email: User_Chore_assignedToToUser.email,
             profile: User_Chore_assignedToToUser.UserProfile
               ? {
-                  displayName: User_Chore_assignedToToUser.UserProfile.displayName,
+                  displayName:
+                    User_Chore_assignedToToUser.UserProfile.displayName,
                   avatarUrl: User_Chore_assignedToToUser.UserProfile.avatarUrl,
                 }
               : null,
           }
         : null,
-      assignments: (ChoreAssignment || []).map((assignment: any) => ({
-        id: assignment.id,
-        choreId: assignment.choreId,
-        userId: assignment.userId,
-        assignedAt: assignment.assignedAt?.toISOString(),
-        completedAt: assignment.completedAt?.toISOString() || null,
-        pointsEarned: assignment.pointsEarned || null,
-        onTime: assignment.onTime || null,
-        user: assignment.User
-          ? {
-              id: assignment.User.id,
-              email: assignment.User.email,
-              profile: assignment.User.UserProfile
-                ? {
-                    displayName: assignment.User.UserProfile.displayName,
-                    avatarUrl: assignment.User.UserProfile.avatarUrl,
-                  }
-                : null,
-            }
-          : null,
-      })),
-      completions: (ChoreCompletion || []).map((completion: any) => ({
-        id: completion.id,
-        choreId: completion.choreId,
-        userId: completion.userId,
-        completedAt: completion.completedAt?.toISOString(),
-        pointsEarned: completion.pointsEarned,
-        onTime: completion.onTime,
-        user: completion.User
-          ? {
-              id: completion.User.id,
-              email: completion.User.email,
-              profile: completion.User.UserProfile
-                ? {
-                    displayName: completion.User.UserProfile.displayName,
-                    avatarUrl: completion.User.UserProfile.avatarUrl,
-                  }
-                : null,
-            }
-          : null,
-      })),
+      assignments: (ChoreAssignment || []).map(
+        (assignment: ChoreAssignmentWithUser) => ({
+          id: assignment.id,
+          choreId: assignment.choreId,
+          userId: assignment.userId,
+          assignedAt: assignment.assignedAt?.toISOString(),
+          completedAt: assignment.completedAt?.toISOString() || null,
+          pointsEarned: assignment.pointsEarned || null,
+          onTime: assignment.onTime || null,
+          user: assignment.User
+            ? {
+                id: assignment.User.id,
+                email: assignment.User.email,
+                profile: assignment.User.UserProfile
+                  ? {
+                      displayName: assignment.User.UserProfile.displayName,
+                      avatarUrl: assignment.User.UserProfile.avatarUrl,
+                    }
+                  : null,
+              }
+            : null,
+        }),
+      ),
+      completions: (ChoreCompletion || []).map(
+        (completion: ChoreCompletionWithUser) => ({
+          id: completion.id,
+          choreId: completion.choreId,
+          userId: completion.userId,
+          completedAt: completion.completedAt?.toISOString(),
+          pointsEarned: completion.pointsEarned,
+          onTime: completion.onTime,
+          user: completion.User
+            ? {
+                id: completion.User.id,
+                email: completion.User.email,
+                profile: completion.User.UserProfile
+                  ? {
+                      displayName: completion.User.UserProfile.displayName,
+                      avatarUrl: completion.User.UserProfile.avatarUrl,
+                    }
+                  : null,
+              }
+            : null,
+        }),
+      ),
       // Recurring fields
       isRecurring: chore.isRecurring ?? false,
       recurrencePattern: chore.recurrencePattern,
@@ -139,32 +251,36 @@ export class ChoreService {
       // Rotation fields
       rotationEnabled: chore.rotationEnabled ?? false,
       rotationType: chore.rotationType,
-      rotation: (ChoreRotation || []).map((rotation: any) => ({
-        id: rotation.id,
-        userId: rotation.userId,
-        rotationOrder: rotation.rotationOrder,
-        lastAssignedAt: rotation.lastAssignedAt?.toISOString() || null,
-        skipUntil: rotation.skipUntil?.toISOString() || null,
-        user: rotation.User
-          ? {
-              id: rotation.User.id,
-              email: rotation.User.email,
-              profile: rotation.User.UserProfile
-                ? {
-                    displayName: rotation.User.UserProfile.displayName,
-                    avatarUrl: rotation.User.UserProfile.avatarUrl,
-                  }
-                : null,
-            }
-          : null,
-      })),
+      rotation: (ChoreRotation || []).map(
+        (rotation: ChoreRotationWithUser) => ({
+          id: rotation.id,
+          userId: rotation.userId,
+          rotationOrder: rotation.rotationOrder,
+          lastAssignedAt: rotation.lastAssignedAt?.toISOString() || null,
+          skipUntil: rotation.skipUntil?.toISOString() || null,
+          user: rotation.User
+            ? {
+                id: rotation.User.id,
+                email: rotation.User.email,
+                profile: rotation.User.UserProfile
+                  ? {
+                      displayName: rotation.User.UserProfile.displayName,
+                      avatarUrl: rotation.User.UserProfile.avatarUrl,
+                    }
+                  : null,
+              }
+            : null,
+        }),
+      ),
     };
   }
 
   async createChore(userId: string, createChoreDto: CreateChoreDto) {
     // Validate: Cannot have both groupId and friendId
     if (createChoreDto.groupId && createChoreDto.friendId) {
-      throw new BadRequestException('Cannot assign chore to both group and friend');
+      throw new BadRequestException(
+        'Cannot assign chore to both group and friend',
+      );
     }
 
     // If groupId is provided, verify user is member of group
@@ -181,7 +297,9 @@ export class ChoreService {
       });
 
       if (!group) {
-        throw new BadRequestException('Group not found or you are not a member');
+        throw new BadRequestException(
+          'Group not found or you are not a member',
+        );
       }
     }
 
@@ -191,13 +309,19 @@ export class ChoreService {
         where: {
           OR: [
             { userId, friendId: createChoreDto.friendId, status: 'accepted' },
-            { userId: createChoreDto.friendId, friendId: userId, status: 'accepted' },
+            {
+              userId: createChoreDto.friendId,
+              friendId: userId,
+              status: 'accepted',
+            },
           ],
         },
       });
 
       if (!friendship) {
-        throw new BadRequestException('Friend not found or friendship not accepted');
+        throw new BadRequestException(
+          'Friend not found or friendship not accepted',
+        );
       }
     }
 
@@ -213,15 +337,26 @@ export class ChoreService {
         assignmentType = createChoreDto.assignedTo ? 'single' : 'open';
       } else {
         // No rotation: normal assignment type logic
-        assignmentType = createChoreDto.assignedToMultiple && createChoreDto.assignedToMultiple.length > 0 ? 'multiple' :
-          (createChoreDto.assignedTo ? 'single' : 'open');
+        assignmentType =
+          createChoreDto.assignedToMultiple &&
+          createChoreDto.assignedToMultiple.length > 0
+            ? 'multiple'
+            : createChoreDto.assignedTo
+              ? 'single'
+              : 'open';
       }
     }
 
     // Validate multiple assignments (only if rotation is NOT enabled)
-    if (assignmentType === 'multiple' && createChoreDto.assignedToMultiple && !createChoreDto.rotationEnabled) {
+    if (
+      assignmentType === 'multiple' &&
+      createChoreDto.assignedToMultiple &&
+      !createChoreDto.rotationEnabled
+    ) {
       if (createChoreDto.assignedToMultiple.length === 0) {
-        throw new BadRequestException('Multiple assignment requires at least one user');
+        throw new BadRequestException(
+          'Multiple assignment requires at least one user',
+        );
       }
 
       // Verify all users exist and are in group (if groupId provided)
@@ -231,7 +366,9 @@ export class ChoreService {
         });
 
         if (!assignedUser) {
-          throw new BadRequestException(`Assigned user ${assigneeId} not found`);
+          throw new BadRequestException(
+            `Assigned user ${assigneeId} not found`,
+          );
         }
 
         if (createChoreDto.groupId) {
@@ -245,7 +382,9 @@ export class ChoreService {
           });
 
           if (!isMember) {
-            throw new BadRequestException(`User ${assigneeId} is not a member of the group`);
+            throw new BadRequestException(
+              `User ${assigneeId} is not a member of the group`,
+            );
           }
         }
       }
@@ -272,7 +411,9 @@ export class ChoreService {
         });
 
         if (!isMember) {
-          throw new BadRequestException('Assigned user is not a member of the group');
+          throw new BadRequestException(
+            'Assigned user is not a member of the group',
+          );
         }
       }
     }
@@ -280,8 +421,8 @@ export class ChoreService {
     const chore = await this.prisma.$transaction(async (tx) => {
       // Calculate points automatically based on category, title, and description
       // Only use manual points if explicitly provided (for admin overrides)
-      const calculatedPoints = createChoreDto.points 
-        ? createChoreDto.points 
+      const calculatedPoints = createChoreDto.points
+        ? createChoreDto.points
         : this.chorePointsService.calculatePoints(
             createChoreDto.category,
             createChoreDto.title,
@@ -291,11 +432,13 @@ export class ChoreService {
       // Handle recurring chore setup
       const isRecurring = createChoreDto.isRecurring || false;
       let nextOccurrenceDate: Date | null = null;
-      
+
       if (isRecurring && createChoreDto.recurrencePattern) {
-        const dueDate = createChoreDto.dueDate ? new Date(createChoreDto.dueDate) : new Date();
+        const dueDate = createChoreDto.dueDate
+          ? new Date(createChoreDto.dueDate)
+          : new Date();
         nextOccurrenceDate = this.recurringChoreService.calculateNextOccurrence(
-          createChoreDto.recurrencePattern as 'daily' | 'weekly' | 'monthly' | 'custom',
+          createChoreDto.recurrencePattern,
           createChoreDto.recurrenceConfig || null,
           dueDate,
           dueDate,
@@ -313,18 +456,31 @@ export class ChoreService {
           category: createChoreDto.category,
           points: calculatedPoints,
           assignmentType,
-          status: (assignmentType === 'single' && createChoreDto.assignedTo) || 
-                  (assignmentType === 'multiple' && createChoreDto.assignedToMultiple && createChoreDto.assignedToMultiple.length > 0)
-                  ? 'assigned' : 'pending',
-          assignedTo: assignmentType === 'single' ? createChoreDto.assignedTo : null,
-          dueDate: createChoreDto.dueDate ? new Date(createChoreDto.dueDate) : null,
-          reminderEnabled: createChoreDto.reminderEnabled !== undefined ? createChoreDto.reminderEnabled : (createChoreDto.reminderHoursBefore !== undefined && createChoreDto.reminderHoursBefore > 0),
+          status:
+            (assignmentType === 'single' && createChoreDto.assignedTo) ||
+            (assignmentType === 'multiple' &&
+              createChoreDto.assignedToMultiple &&
+              createChoreDto.assignedToMultiple.length > 0)
+              ? 'assigned'
+              : 'pending',
+          assignedTo:
+            assignmentType === 'single' ? createChoreDto.assignedTo : null,
+          dueDate: createChoreDto.dueDate
+            ? new Date(createChoreDto.dueDate)
+            : null,
+          reminderEnabled:
+            createChoreDto.reminderEnabled !== undefined
+              ? createChoreDto.reminderEnabled
+              : createChoreDto.reminderHoursBefore !== undefined &&
+                createChoreDto.reminderHoursBefore > 0,
           reminderHoursBefore: createChoreDto.reminderHoursBefore || null,
           // Recurring fields
           isRecurring,
           recurrencePattern: createChoreDto.recurrencePattern || null,
-          recurrenceConfig: createChoreDto.recurrenceConfig ? createChoreDto.recurrenceConfig as any : null,
-          recurrenceEndDate: createChoreDto.recurrenceEndDate ? new Date(createChoreDto.recurrenceEndDate) : null,
+          recurrenceConfig: createChoreDto.recurrenceConfig ?? Prisma.JsonNull,
+          recurrenceEndDate: createChoreDto.recurrenceEndDate
+            ? new Date(createChoreDto.recurrenceEndDate)
+            : null,
           recurrenceCount: createChoreDto.recurrenceCount || null,
           nextOccurrenceDate,
           occurrencesGenerated: 0,
@@ -337,7 +493,11 @@ export class ChoreService {
       // Create multiple assignments if needed
       // IMPORTANT: Don't create ChoreAssignment if rotation is enabled
       // Rotation members are stored in ChoreRotation, and each occurrence is assigned to ONE person
-      if (assignmentType === 'multiple' && createChoreDto.assignedToMultiple && !createChoreDto.rotationEnabled) {
+      if (
+        assignmentType === 'multiple' &&
+        createChoreDto.assignedToMultiple &&
+        !createChoreDto.rotationEnabled
+      ) {
         for (const assigneeId of createChoreDto.assignedToMultiple) {
           await tx.choreAssignment.create({
             data: {
@@ -369,10 +529,16 @@ export class ChoreService {
     // Initialize rotation if enabled
     // IMPORTANT: Rotation only works with recurring tasks
     // For one-time tasks, rotation doesn't make sense (there's only one occurrence)
-    if (createChoreDto.rotationEnabled && createChoreDto.groupId && createChoreDto.rotationType) {
+    if (
+      createChoreDto.rotationEnabled &&
+      createChoreDto.groupId &&
+      createChoreDto.rotationType
+    ) {
       // Validate that rotation is only enabled for recurring tasks
       if (!createChoreDto.isRecurring || !createChoreDto.recurrencePattern) {
-        console.warn(`Rotation enabled for non-recurring task ${chore.id}. Rotation only works with recurring tasks.`);
+        console.warn(
+          `Rotation enabled for non-recurring task ${chore.id}. Rotation only works with recurring tasks.`,
+        );
         // Don't initialize rotation for non-recurring tasks
         // The UI should prevent this, but we handle it gracefully here
       } else {
@@ -380,8 +546,11 @@ export class ChoreService {
           // Determine which users should be in rotation
           // Priority: assignedToMultiple > assignedTo (single) > all group members
           let rotationUserIds: string[] | undefined;
-          
-          if (createChoreDto.assignedToMultiple && createChoreDto.assignedToMultiple.length > 0) {
+
+          if (
+            createChoreDto.assignedToMultiple &&
+            createChoreDto.assignedToMultiple.length > 0
+          ) {
             // Use selected members from multiple assignment
             rotationUserIds = createChoreDto.assignedToMultiple;
           } else if (createChoreDto.assignedTo) {
@@ -403,7 +572,10 @@ export class ChoreService {
           // The actual assignments happen in RecurringChoreService.generateNextOccurrence
         } catch (error) {
           // Log error but don't fail chore creation
-          console.error(`Failed to initialize rotation for chore ${chore.id}:`, error);
+          console.error(
+            `Failed to initialize rotation for chore ${chore.id}:`,
+            error,
+          );
         }
       }
     }
@@ -488,6 +660,23 @@ export class ChoreService {
           },
           orderBy: { rotationOrder: 'asc' },
         },
+        ChoreCompletion: {
+          include: {
+            User: {
+              select: {
+                id: true,
+                email: true,
+                UserProfile: {
+                  select: {
+                    displayName: true,
+                    avatarUrl: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { completedAt: 'desc' },
+        },
       },
     });
 
@@ -496,39 +685,61 @@ export class ChoreService {
     }
 
     // Notify assigned users
-    const creatorName = choreWithRelations.User_Chore_createdByToUser.UserProfile?.displayName || choreWithRelations.User_Chore_createdByToUser.email;
+    const creatorName =
+      choreWithRelations.User_Chore_createdByToUser.UserProfile?.displayName ||
+      choreWithRelations.User_Chore_createdByToUser.email;
     const groupName = choreWithRelations.Group?.name;
-    
+
     // Single assignment notification
-    if (choreWithRelations.assignedTo && choreWithRelations.assignedTo !== userId) {
-      await this.notificationService.notifyChoreAssigned(
-        choreWithRelations.assignedTo,
-        choreWithRelations.id,
-        choreWithRelations.title,
-        creatorName,
-      ).catch(err => {
-        console.error(`Failed to create notification for assigned user:`, err);
-      });
+    if (
+      choreWithRelations.assignedTo &&
+      choreWithRelations.assignedTo !== userId
+    ) {
+      await this.notificationService
+        .notifyChoreAssigned(
+          choreWithRelations.assignedTo,
+          choreWithRelations.id,
+          choreWithRelations.title,
+          creatorName,
+        )
+        .catch((err) => {
+          console.error(
+            `Failed to create notification for assigned user:`,
+            err,
+          );
+        });
     }
 
     // Multiple assignment notifications
-    if (choreWithRelations.ChoreAssignment && choreWithRelations.ChoreAssignment.length > 0) {
+    if (
+      choreWithRelations.ChoreAssignment &&
+      choreWithRelations.ChoreAssignment.length > 0
+    ) {
       for (const assignment of choreWithRelations.ChoreAssignment) {
         if (assignment.userId !== userId) {
-          await this.notificationService.notifyChoreAssigned(
-            assignment.userId,
-            choreWithRelations.id,
-            choreWithRelations.title,
-            creatorName,
-          ).catch(err => {
-            console.error(`Failed to create notification for assigned user ${assignment.userId}:`, err);
-          });
+          await this.notificationService
+            .notifyChoreAssigned(
+              assignment.userId,
+              choreWithRelations.id,
+              choreWithRelations.title,
+              creatorName,
+            )
+            .catch((err) => {
+              console.error(
+                `Failed to create notification for assigned user ${assignment.userId}:`,
+                err,
+              );
+            });
         }
       }
     }
 
     // Notify all group members about new chore (if in a group and open/unassigned)
-    if (choreWithRelations.groupId && (choreWithRelations.status === 'pending' || !choreWithRelations.assignedTo)) {
+    if (
+      choreWithRelations.groupId &&
+      (choreWithRelations.status === 'pending' ||
+        !choreWithRelations.assignedTo)
+    ) {
       const groupMembers = await this.prisma.groupMember.findMany({
         where: { groupId: choreWithRelations.groupId },
         select: { userId: true },
@@ -536,15 +747,20 @@ export class ChoreService {
 
       for (const member of groupMembers) {
         if (member.userId !== userId) {
-          await this.notificationService.notifyChoreCreated(
-            member.userId,
-            choreWithRelations.id,
-            choreWithRelations.title,
-            creatorName,
-            groupName,
-          ).catch(err => {
-            console.error(`Failed to create notification for group member ${member.userId}:`, err);
-          });
+          await this.notificationService
+            .notifyChoreCreated(
+              member.userId,
+              choreWithRelations.id,
+              choreWithRelations.title,
+              creatorName,
+              groupName,
+            )
+            .catch((err) => {
+              console.error(
+                `Failed to create notification for group member ${member.userId}:`,
+                err,
+              );
+            });
         }
       }
     }
@@ -552,9 +768,19 @@ export class ChoreService {
     return this.transformChore(choreWithRelations);
   }
 
-  async getChores(userId: string, groupId?: string, limit: number = 50, offset: number = 0) {
-    console.log('[ChoreService] Getting chores for user:', userId, 'groupId:', groupId);
-    const where: any = {
+  async getChores(
+    userId: string,
+    groupId?: string,
+    limit: number = 50,
+    offset: number = 0,
+  ) {
+    console.log(
+      '[ChoreService] Getting chores for user:',
+      userId,
+      'groupId:',
+      groupId,
+    );
+    const where: Prisma.ChoreWhereInput = {
       OR: [
         { createdBy: userId },
         { assignedTo: userId },
@@ -663,6 +889,20 @@ export class ChoreService {
             orderBy: { rotationOrder: 'asc' },
           },
           ChoreCompletion: {
+            include: {
+              User: {
+                select: {
+                  id: true,
+                  email: true,
+                  UserProfile: {
+                    select: {
+                      displayName: true,
+                      avatarUrl: true,
+                    },
+                  },
+                },
+              },
+            },
             orderBy: { completedAt: 'desc' },
             take: 1, // Latest completion
           },
@@ -677,9 +917,14 @@ export class ChoreService {
       this.prisma.chore.count({ where }),
     ]);
 
-    console.log('[ChoreService] Found chores:', chores.length, 'for user:', userId);
+    console.log(
+      '[ChoreService] Found chores:',
+      chores.length,
+      'for user:',
+      userId,
+    );
 
-    const transformedChores = chores.map(chore => this.transformChore(chore));
+    const transformedChores = chores.map((chore) => this.transformChore(chore));
 
     return {
       chores: transformedChores,
@@ -691,31 +936,8 @@ export class ChoreService {
   }
 
   async getChoreById(userId: string, choreId: string) {
-    const chore = await this.prisma.chore.findFirst({
-      where: {
-        id: choreId,
-        OR: [
-          { createdBy: userId },
-          { assignedTo: userId },
-          { friendId: userId },
-          {
-            Group: {
-              GroupMember: {
-                some: {
-                  userId,
-                },
-              },
-            },
-          },
-          {
-            ChoreAssignment: {
-              some: {
-                userId,
-              },
-            },
-          },
-        ],
-      },
+    const chore = await this.prisma.chore.findUnique({
+      where: { id: choreId },
       include: {
         Group: {
           select: {
@@ -817,6 +1039,36 @@ export class ChoreService {
       throw new NotFoundException('Chore not found');
     }
 
+    const isCreator = chore.createdBy === userId;
+    const isAssignedToMe = chore.assignedTo === userId;
+    const isFriendChore = chore.friendId === userId;
+    const hasAssignment =
+      chore.ChoreAssignment?.some(
+        (assignment) => assignment.userId === userId,
+      ) || false;
+    const isGroupMember = chore.groupId
+      ? await this.prisma.groupMember.findUnique({
+          where: {
+            groupId_userId: {
+              groupId: chore.groupId,
+              userId,
+            },
+          },
+        })
+      : null;
+
+    if (
+      !isCreator &&
+      !isAssignedToMe &&
+      !isFriendChore &&
+      !hasAssignment &&
+      !isGroupMember
+    ) {
+      throw new NotFoundException(
+        'Chore not found or you do not have permission',
+      );
+    }
+
     return this.transformChore(chore);
   }
 
@@ -841,7 +1093,9 @@ export class ChoreService {
     });
 
     if (!chore) {
-      throw new NotFoundException('Chore not found or you do not have permission');
+      throw new NotFoundException(
+        'Chore not found or you do not have permission',
+      );
     }
 
     if (chore.status === 'completed') {
@@ -872,7 +1126,7 @@ export class ChoreService {
       }
     }
 
-    const updated = await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx) => {
       const updatedChore = await tx.chore.update({
         where: { id: choreId },
         data: {
@@ -883,16 +1137,16 @@ export class ChoreService {
 
       // Create history entry
       await tx.choreHistory.create({
-          data: {
-            id: randomUUID(),
-            choreId,
-            action: 'assigned',
-            userId,
-            changes: {
-              before: { assignedTo: chore.assignedTo },
-              after: { assignedTo: assignToUserId },
-            },
+        data: {
+          id: randomUUID(),
+          choreId,
+          action: 'assigned',
+          userId,
+          changes: {
+            before: { assignedTo: chore.assignedTo },
+            after: { assignedTo: assignToUserId },
           },
+        },
       });
 
       return updatedChore;
@@ -938,18 +1192,28 @@ export class ChoreService {
 
     // Notify assigned user
     if (assignToUserId !== userId && updatedWithRelations) {
-      const assignerName = updatedWithRelations.User_Chore_createdByToUser.UserProfile?.displayName || updatedWithRelations.User_Chore_createdByToUser.email;
-      await this.notificationService.notifyChoreAssigned(
-        assignToUserId,
-        updatedWithRelations.id,
-        updatedWithRelations.title,
-        assignerName,
-      ).catch(err => {
-        console.error(`Failed to create notification for assigned user:`, err);
-      });
+      const assignerName =
+        updatedWithRelations.User_Chore_createdByToUser.UserProfile
+          ?.displayName ||
+        updatedWithRelations.User_Chore_createdByToUser.email;
+      await this.notificationService
+        .notifyChoreAssigned(
+          assignToUserId,
+          updatedWithRelations.id,
+          updatedWithRelations.title,
+          assignerName,
+        )
+        .catch((err) => {
+          console.error(
+            `Failed to create notification for assigned user:`,
+            err,
+          );
+        });
     }
 
-    return updatedWithRelations ? this.transformChore(updatedWithRelations) : null;
+    return updatedWithRelations
+      ? this.transformChore(updatedWithRelations)
+      : null;
   }
 
   async grabChore(userId: string, choreId: string) {
@@ -1021,16 +1285,24 @@ export class ChoreService {
     });
 
     // Notify creator that someone grabbed the chore
-    const creatorName = updated.User_Chore_assignedToToUser?.UserProfile?.displayName || updated.User_Chore_assignedToToUser?.email || 'Someone';
+    const creatorName =
+      updated.User_Chore_assignedToToUser?.UserProfile?.displayName ||
+      updated.User_Chore_assignedToToUser?.email ||
+      'Someone';
     if (updated.createdBy && updated.createdBy !== userId) {
-      await this.notificationService.notifyChoreAssigned(
-        updated.createdBy,
-        updated.id,
-        updated.title,
-        creatorName,
-      ).catch(err => {
-        console.error(`Failed to create notification for chore creator:`, err);
-      });
+      await this.notificationService
+        .notifyChoreAssigned(
+          updated.createdBy,
+          updated.id,
+          updated.title,
+          creatorName,
+        )
+        .catch((err) => {
+          console.error(
+            `Failed to create notification for chore creator:`,
+            err,
+          );
+        });
     }
 
     return this.transformChore(updated);
@@ -1058,18 +1330,18 @@ export class ChoreService {
     // So they get FULL points (not divided)
     // This is correct because rotation tasks use 'single' assignmentType
     // and are completed via completeChore (not completeChoreAssignment)
-    
+
     // Calculate points using enhanced calculation (includes streak, category bonuses, late penalties)
     const completedAt = new Date();
-    const pointsCalculation = await this.chorePointsService.calculatePointsEarned(
-      userId,
-      chore.points, // Full points for single assignment (including rotation tasks)
-      chore.category,
-      chore.dueDate ? new Date(chore.dueDate) : null,
-      completedAt,
-      wasUnassigned,
-      chore.groupId || null,
-    );
+    const pointsCalculation =
+      await this.chorePointsService.calculatePointsEarned(
+        userId,
+        chore.points, // Full points for single assignment (including rotation tasks)
+        chore.category,
+        chore.dueDate ? new Date(chore.dueDate) : null,
+        completedAt,
+        wasUnassigned,
+      );
 
     const pointsEarned = pointsCalculation.pointsEarned;
 
@@ -1114,7 +1386,7 @@ export class ChoreService {
     });
 
     // Cancel reminders since chore is completed
-    await this.choreReminderService.cancelReminders(choreId).catch(err => {
+    await this.choreReminderService.cancelReminders(choreId).catch((err) => {
       console.error(`Failed to cancel reminders for chore ${choreId}:`, err);
     });
 
@@ -1184,28 +1456,44 @@ export class ChoreService {
 
     // Notify creator when chore is completed (if creator is different from completer)
     if (updatedChore.createdBy !== userId) {
-      const completerName = updatedChore.User_Chore_assignedToToUser?.UserProfile?.displayName || updatedChore.User_Chore_assignedToToUser?.email || 'Someone';
-      await this.notificationService.notifyChoreCompleted(
-        updatedChore.createdBy,
-        updatedChore.id,
-        updatedChore.title,
-        completerName,
-      ).catch(err => {
-        console.error(`Failed to create notification for chore creator:`, err);
-      });
+      const completerName =
+        updatedChore.User_Chore_assignedToToUser?.UserProfile?.displayName ||
+        updatedChore.User_Chore_assignedToToUser?.email ||
+        'Someone';
+      await this.notificationService
+        .notifyChoreCompleted(
+          updatedChore.createdBy,
+          updatedChore.id,
+          updatedChore.title,
+          completerName,
+        )
+        .catch((err) => {
+          console.error(
+            `Failed to create notification for chore creator:`,
+            err,
+          );
+        });
     }
 
     // Notify creator when chore is completed (if creator is different from completer)
     if (updatedChore && updatedChore.createdBy !== userId) {
-      const completerName = updatedChore.User_Chore_assignedToToUser?.UserProfile?.displayName || updatedChore.User_Chore_assignedToToUser?.email || 'Someone';
-      await this.notificationService.notifyChoreCompleted(
-        updatedChore.createdBy,
-        updatedChore.id,
-        updatedChore.title,
-        completerName,
-      ).catch(err => {
-        console.error(`Failed to create notification for chore creator:`, err);
-      });
+      const completerName =
+        updatedChore.User_Chore_assignedToToUser?.UserProfile?.displayName ||
+        updatedChore.User_Chore_assignedToToUser?.email ||
+        'Someone';
+      await this.notificationService
+        .notifyChoreCompleted(
+          updatedChore.createdBy,
+          updatedChore.id,
+          updatedChore.title,
+          completerName,
+        )
+        .catch((err) => {
+          console.error(
+            `Failed to create notification for chore creator:`,
+            err,
+          );
+        });
     }
 
     return {
@@ -1217,7 +1505,11 @@ export class ChoreService {
     };
   }
 
-  async updateChore(userId: string, choreId: string, updateChoreDto: UpdateChoreDto) {
+  async updateChore(
+    userId: string,
+    choreId: string,
+    updateChoreDto: UpdateChoreDto,
+  ) {
     // Verify chore exists and user has permission
     const chore = await this.prisma.chore.findFirst({
       where: {
@@ -1247,42 +1539,72 @@ export class ChoreService {
     });
 
     if (!chore) {
-      throw new NotFoundException('Chore not found or you do not have permission');
+      throw new NotFoundException(
+        'Chore not found or you do not have permission',
+      );
     }
 
     if (chore.status === 'completed' || chore.status === 'cancelled') {
-      throw new BadRequestException('Cannot edit a completed or cancelled chore');
+      throw new BadRequestException(
+        'Cannot edit a completed or cancelled chore',
+      );
     }
 
     // Track changes for history
-    const changes: any = {};
-    const oldValues: any = {};
+    const changes: Record<string, unknown> = {};
+    const oldValues: Record<string, unknown> = {};
 
-    if (updateChoreDto.title !== undefined && updateChoreDto.title !== chore.title) {
+    if (
+      updateChoreDto.title !== undefined &&
+      updateChoreDto.title !== chore.title
+    ) {
       oldValues.title = chore.title;
       changes.title = updateChoreDto.title;
     }
-    if (updateChoreDto.description !== undefined && updateChoreDto.description !== chore.description) {
+    if (
+      updateChoreDto.description !== undefined &&
+      updateChoreDto.description !== chore.description
+    ) {
       oldValues.description = chore.description;
       changes.description = updateChoreDto.description;
     }
     // Handle points changes (manual or auto-calculated)
-    if (updateChoreDto.points !== undefined && updateChoreDto.points !== chore.points) {
+    if (
+      updateChoreDto.points !== undefined &&
+      updateChoreDto.points !== chore.points
+    ) {
       oldValues.points = chore.points;
       changes.points = updateChoreDto.points;
-    } else if (updateChoreDto.title !== undefined || updateChoreDto.description !== undefined || updateChoreDto.category !== undefined) {
+    } else if (
+      updateChoreDto.title !== undefined ||
+      updateChoreDto.description !== undefined ||
+      updateChoreDto.category !== undefined
+    ) {
       // Auto-calculate points if title/description/category changed
-      const finalTitle = updateChoreDto.title !== undefined ? updateChoreDto.title : chore.title;
-      const finalDescription = updateChoreDto.description !== undefined ? updateChoreDto.description : chore.description;
-      const finalCategory = updateChoreDto.category !== undefined ? updateChoreDto.category : chore.category;
-      const calculatedPoints = this.chorePointsService.calculatePoints(finalCategory, finalTitle, finalDescription);
+      const finalTitle =
+        updateChoreDto.title !== undefined ? updateChoreDto.title : chore.title;
+      const finalDescription =
+        updateChoreDto.description !== undefined
+          ? updateChoreDto.description
+          : chore.description;
+      const finalCategory =
+        updateChoreDto.category !== undefined
+          ? updateChoreDto.category
+          : chore.category;
+      const calculatedPoints = this.chorePointsService.calculatePoints(
+        finalCategory,
+        finalTitle,
+        finalDescription,
+      );
       if (calculatedPoints !== chore.points) {
         oldValues.points = chore.points;
         changes.points = calculatedPoints;
       }
     }
     if (updateChoreDto.dueDate !== undefined) {
-      const newDueDate = updateChoreDto.dueDate ? new Date(updateChoreDto.dueDate) : null;
+      const newDueDate = updateChoreDto.dueDate
+        ? new Date(updateChoreDto.dueDate)
+        : null;
       if (chore.dueDate?.getTime() !== newDueDate?.getTime()) {
         oldValues.dueDate = chore.dueDate;
         changes.dueDate = newDueDate;
@@ -1317,7 +1639,9 @@ export class ChoreService {
               },
             });
             if (!isMember) {
-              throw new BadRequestException('Assigned user is not a member of the group');
+              throw new BadRequestException(
+                'Assigned user is not a member of the group',
+              );
             }
           }
         }
@@ -1325,26 +1649,48 @@ export class ChoreService {
     }
 
     // Build update data
-    const updateData: any = {};
-    if (updateChoreDto.title !== undefined) updateData.title = updateChoreDto.title;
-    if (updateChoreDto.description !== undefined) updateData.description = updateChoreDto.description;
-    
+    const updateData: Prisma.ChoreUncheckedUpdateInput = {};
+    if (updateChoreDto.title !== undefined)
+      updateData.title = updateChoreDto.title;
+    if (updateChoreDto.description !== undefined)
+      updateData.description = updateChoreDto.description;
+
     // Auto-calculate points if not explicitly provided and title/description/category changed
     if (updateChoreDto.points !== undefined) {
       updateData.points = updateChoreDto.points;
-    } else if (updateChoreDto.title !== undefined || updateChoreDto.description !== undefined || updateChoreDto.category !== undefined) {
+    } else if (
+      updateChoreDto.title !== undefined ||
+      updateChoreDto.description !== undefined ||
+      updateChoreDto.category !== undefined
+    ) {
       // Recalculate points based on updated title/description/category
-      const finalTitle = updateChoreDto.title !== undefined ? updateChoreDto.title : chore.title;
-      const finalDescription = updateChoreDto.description !== undefined ? updateChoreDto.description : chore.description;
-      const finalCategory = updateChoreDto.category !== undefined ? updateChoreDto.category : chore.category;
-      updateData.points = this.chorePointsService.calculatePoints(finalCategory, finalTitle, finalDescription);
+      const finalTitle =
+        updateChoreDto.title !== undefined ? updateChoreDto.title : chore.title;
+      const finalDescription =
+        updateChoreDto.description !== undefined
+          ? updateChoreDto.description
+          : chore.description;
+      const finalCategory =
+        updateChoreDto.category !== undefined
+          ? updateChoreDto.category
+          : chore.category;
+      updateData.points = this.chorePointsService.calculatePoints(
+        finalCategory,
+        finalTitle,
+        finalDescription,
+      );
     }
     if (updateChoreDto.dueDate !== undefined) {
-      updateData.dueDate = updateChoreDto.dueDate ? new Date(updateChoreDto.dueDate) : null;
+      updateData.dueDate = updateChoreDto.dueDate
+        ? new Date(updateChoreDto.dueDate)
+        : null;
     }
     if (updateChoreDto.reminderHoursBefore !== undefined) {
       updateData.reminderEnabled = updateChoreDto.reminderHoursBefore > 0;
-      updateData.reminderHoursBefore = updateChoreDto.reminderHoursBefore > 0 ? updateChoreDto.reminderHoursBefore : null;
+      updateData.reminderHoursBefore =
+        updateChoreDto.reminderHoursBefore > 0
+          ? updateChoreDto.reminderHoursBefore
+          : null;
     }
     if (updateChoreDto.assignedTo !== undefined) {
       updateData.assignedTo = updateChoreDto.assignedTo || null;
@@ -1402,7 +1748,7 @@ export class ChoreService {
             changes: {
               before: oldValues,
               after: changes,
-            },
+            } as Prisma.InputJsonValue,
           },
         });
       }
@@ -1411,7 +1757,11 @@ export class ChoreService {
     });
 
     // Notify newly assigned user if assignment changed
-    if (assignmentChanged && updateChoreDto.assignedTo && updateChoreDto.assignedTo !== userId) {
+    if (
+      assignmentChanged &&
+      updateChoreDto.assignedTo &&
+      updateChoreDto.assignedTo !== userId
+    ) {
       const updaterName = await this.prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -1419,33 +1769,58 @@ export class ChoreService {
           UserProfile: { select: { displayName: true } },
         },
       });
-      const updaterDisplayName = updaterName?.UserProfile?.displayName || updaterName?.email || 'Someone';
-      
-      await this.notificationService.notifyChoreAssigned(
-        updateChoreDto.assignedTo,
-        choreId,
-        updated.title,
-        updaterDisplayName,
-      ).catch(err => {
-        console.error(`Failed to create notification for assigned user:`, err);
-      });
+      const updaterDisplayName =
+        updaterName?.UserProfile?.displayName ||
+        updaterName?.email ||
+        'Someone';
+
+      await this.notificationService
+        .notifyChoreAssigned(
+          updateChoreDto.assignedTo,
+          choreId,
+          updated.title,
+          updaterDisplayName,
+        )
+        .catch((err) => {
+          console.error(
+            `Failed to create notification for assigned user:`,
+            err,
+          );
+        });
     }
 
     // Notify assigned user if chore was updated (and they're different from updater)
-    const updaterName = updated.User_Chore_createdByToUser?.UserProfile?.displayName || updated.User_Chore_createdByToUser?.email || 'Someone';
-    if (updated.assignedTo && updated.assignedTo !== userId && Object.keys(changes).length > 0 && !assignmentChanged) {
-      await this.notificationService.notifyChoreUpdated(
-        updated.assignedTo,
-        updated.id,
-        updated.title,
-        updaterName,
-      ).catch(err => {
-        console.error(`Failed to create notification for assigned user:`, err);
-      });
+    const updaterName =
+      updated.User_Chore_createdByToUser?.UserProfile?.displayName ||
+      updated.User_Chore_createdByToUser?.email ||
+      'Someone';
+    if (
+      updated.assignedTo &&
+      updated.assignedTo !== userId &&
+      Object.keys(changes).length > 0 &&
+      !assignmentChanged
+    ) {
+      await this.notificationService
+        .notifyChoreUpdated(
+          updated.assignedTo,
+          updated.id,
+          updated.title,
+          updaterName,
+        )
+        .catch((err) => {
+          console.error(
+            `Failed to create notification for assigned user:`,
+            err,
+          );
+        });
     }
 
     // Update reminders if due date or reminder settings changed
-    if ((updateChoreDto.dueDate !== undefined || updateChoreDto.reminderHoursBefore !== undefined) && updated.dueDate) {
+    if (
+      (updateChoreDto.dueDate !== undefined ||
+        updateChoreDto.reminderHoursBefore !== undefined) &&
+      updated.dueDate
+    ) {
       const userIds: string[] = [];
       if (updated.assignedTo) {
         userIds.push(updated.assignedTo);
@@ -1455,26 +1830,40 @@ export class ChoreService {
         where: { choreId: updated.id },
         select: { userId: true },
       });
-      assignments.forEach(assignment => {
+      assignments.forEach((assignment) => {
         if (!userIds.includes(assignment.userId)) {
           userIds.push(assignment.userId);
         }
       });
 
-      if (userIds.length > 0 && updated.reminderEnabled && updated.reminderHoursBefore) {
-        await this.choreReminderService.scheduleReminders(
-          updated.id,
-          new Date(updated.dueDate),
-          updated.reminderHoursBefore,
-          userIds,
-        ).catch(err => {
-          console.error(`Failed to update reminders for chore ${updated.id}:`, err);
-        });
+      if (
+        userIds.length > 0 &&
+        updated.reminderEnabled &&
+        updated.reminderHoursBefore
+      ) {
+        await this.choreReminderService
+          .scheduleReminders(
+            updated.id,
+            new Date(updated.dueDate),
+            updated.reminderHoursBefore,
+            userIds,
+          )
+          .catch((err) => {
+            console.error(
+              `Failed to update reminders for chore ${updated.id}:`,
+              err,
+            );
+          });
       } else {
         // Cancel reminders if disabled
-        await this.choreReminderService.cancelReminders(updated.id).catch(err => {
-          console.error(`Failed to cancel reminders for chore ${updated.id}:`, err);
-        });
+        await this.choreReminderService
+          .cancelReminders(updated.id)
+          .catch((err) => {
+            console.error(
+              `Failed to cancel reminders for chore ${updated.id}:`,
+              err,
+            );
+          });
       }
     }
 
@@ -1533,7 +1922,9 @@ export class ChoreService {
     const isGroupAdmin = chore.Group?.GroupMember?.[0]?.role === 'ADMIN';
 
     if (!isCreator && !isAssigned && !isGroupAdmin) {
-      throw new NotFoundException('You do not have permission to cancel this chore');
+      throw new NotFoundException(
+        'You do not have permission to cancel this chore',
+      );
     }
 
     // Update chore and create history
@@ -1592,22 +1983,27 @@ export class ChoreService {
     });
 
     // Cancel reminders
-    await this.choreReminderService.cancelReminders(choreId).catch(err => {
+    await this.choreReminderService.cancelReminders(choreId).catch((err) => {
       console.error(`Failed to cancel reminders for chore ${choreId}:`, err);
     });
 
     // Notify assigned user if different from canceller
     if (chore.assignedTo && chore.assignedTo !== userId) {
-      const cancellerName = chore.User_Chore_createdByToUser?.UserProfile?.displayName || chore.User_Chore_createdByToUser?.email || 'Someone';
-      await this.notificationService.createNotification({
-        userId: chore.assignedTo,
-        type: 'chore_updated' as any,
-        title: 'Chore Cancelled',
-        message: `${cancellerName} cancelled chore: ${chore.title}`,
-        data: { choreId },
-      }).catch(err => {
-        console.error(`Failed to create notification:`, err);
-      });
+      const cancellerName =
+        chore.User_Chore_createdByToUser?.UserProfile?.displayName ||
+        chore.User_Chore_createdByToUser?.email ||
+        'Someone';
+      await this.notificationService
+        .createNotification({
+          userId: chore.assignedTo,
+          type: NotificationType.CHORE_UPDATED,
+          title: 'Chore Cancelled',
+          message: `${cancellerName} cancelled chore: ${chore.title}`,
+          data: { choreId },
+        })
+        .catch((err) => {
+          console.error(`Failed to create notification:`, err);
+        });
     }
 
     return this.transformChore(updated);
@@ -1616,7 +2012,12 @@ export class ChoreService {
   /**
    * Reassign a chore from one user to another (when someone can't complete)
    */
-  async reassignChore(userId: string, choreId: string, newUserId: string, reason?: string) {
+  async reassignChore(
+    userId: string,
+    choreId: string,
+    newUserId: string,
+    reason?: string,
+  ) {
     // Verify chore exists and user has permission
     const chore = await this.prisma.chore.findFirst({
       where: {
@@ -1665,7 +2066,9 @@ export class ChoreService {
     const isGroupAdmin = chore.Group?.GroupMember?.[0]?.role === 'ADMIN';
 
     if (!isCreator && !isAssigned && !isGroupAdmin) {
-      throw new NotFoundException('You do not have permission to reassign this chore');
+      throw new NotFoundException(
+        'You do not have permission to reassign this chore',
+      );
     }
 
     // Verify new user exists and is in group (if group chore)
@@ -1688,7 +2091,9 @@ export class ChoreService {
       });
 
       if (!isMember) {
-        throw new BadRequestException('New assigned user is not a member of the group');
+        throw new BadRequestException(
+          'New assigned user is not a member of the group',
+        );
       }
     }
 
@@ -1741,7 +2146,9 @@ export class ChoreService {
           choreId,
           action: 'reassigned',
           userId,
-          notes: reason || `Chore reassigned from ${chore.User_Chore_assignedToToUser?.email || 'previous assignee'} to new user`,
+          notes:
+            reason ||
+            `Chore reassigned from ${chore.User_Chore_assignedToToUser?.email || 'previous assignee'} to new user`,
           changes: {
             from: chore.assignedTo,
             to: newUserId,
@@ -1754,27 +2161,33 @@ export class ChoreService {
     });
 
     // Notify new assignee
-    const reassignerName = chore.User_Chore_createdByToUser?.UserProfile?.displayName || chore.User_Chore_createdByToUser?.email || 'Someone';
-    await this.notificationService.notifyChoreAssigned(
-      newUserId,
-      choreId,
-      chore.title,
-      reassignerName,
-    ).catch(err => {
-      console.error(`Failed to create notification for new assignee:`, err);
-    });
+    const reassignerName =
+      chore.User_Chore_createdByToUser?.UserProfile?.displayName ||
+      chore.User_Chore_createdByToUser?.email ||
+      'Someone';
+    await this.notificationService
+      .notifyChoreAssigned(newUserId, choreId, chore.title, reassignerName)
+      .catch((err) => {
+        console.error(`Failed to create notification for new assignee:`, err);
+      });
 
     // Notify previous assignee if different
-    if (chore.assignedTo && chore.assignedTo !== userId && chore.assignedTo !== newUserId) {
-      await this.notificationService.createNotification({
-        userId: chore.assignedTo,
-        type: 'chore_updated' as any,
-        title: 'Chore Reassigned',
-        message: `${reassignerName} reassigned "${chore.title}" to someone else`,
-        data: { choreId },
-      }).catch(err => {
-        console.error(`Failed to create notification:`, err);
-      });
+    if (
+      chore.assignedTo &&
+      chore.assignedTo !== userId &&
+      chore.assignedTo !== newUserId
+    ) {
+      await this.notificationService
+        .createNotification({
+          userId: chore.assignedTo,
+          type: NotificationType.CHORE_UPDATED,
+          title: 'Chore Reassigned',
+          message: `${reassignerName} reassigned "${chore.title}" to someone else`,
+          data: { choreId },
+        })
+        .catch((err) => {
+          console.error(`Failed to create notification:`, err);
+        });
     }
 
     return this.transformChore(updated);
@@ -1806,7 +2219,9 @@ export class ChoreService {
     });
 
     if (!chore) {
-      throw new NotFoundException('Chore not found or you do not have permission to delete it');
+      throw new NotFoundException(
+        'Chore not found or you do not have permission to delete it',
+      );
     }
 
     // Create history entry before deletion
@@ -1821,19 +2236,23 @@ export class ChoreService {
     });
 
     // Notify assigned user if chore was deleted (and they're different from deleter)
-    const deleterName = chore.User_Chore_createdByToUser?.UserProfile?.displayName || chore.User_Chore_createdByToUser?.email || 'Someone';
+    const deleterName =
+      chore.User_Chore_createdByToUser?.UserProfile?.displayName ||
+      chore.User_Chore_createdByToUser?.email ||
+      'Someone';
     if (chore.assignedTo && chore.assignedTo !== userId) {
-      await this.notificationService.notifyChoreDeleted(
-        chore.assignedTo,
-        chore.title,
-        deleterName,
-      ).catch(err => {
-        console.error(`Failed to create notification for assigned user:`, err);
-      });
+      await this.notificationService
+        .notifyChoreDeleted(chore.assignedTo, chore.title, deleterName)
+        .catch((err) => {
+          console.error(
+            `Failed to create notification for assigned user:`,
+            err,
+          );
+        });
     }
 
     // Cancel reminders before deletion
-    await this.choreReminderService.cancelReminders(choreId).catch(err => {
+    await this.choreReminderService.cancelReminders(choreId).catch((err) => {
       console.error(`Failed to cancel reminders for chore ${choreId}:`, err);
     });
 
@@ -1867,7 +2286,9 @@ export class ChoreService {
     });
 
     if (!chore) {
-      throw new NotFoundException('Chore not found or you do not have permission');
+      throw new NotFoundException(
+        'Chore not found or you do not have permission',
+      );
     }
 
     if (!chore.assignedTo) {
@@ -1875,7 +2296,9 @@ export class ChoreService {
     }
 
     if (chore.status === 'completed' || chore.status === 'cancelled') {
-      throw new BadRequestException('Cannot unassign a completed or cancelled chore');
+      throw new BadRequestException(
+        'Cannot unassign a completed or cancelled chore',
+      );
     }
 
     // Update chore and create history
@@ -1939,22 +2362,31 @@ export class ChoreService {
 
     // Notify the previously assigned user that they were unassigned (if different from unassigner)
     if (chore.assignedTo && chore.assignedTo !== userId) {
-      const unassignerName = updated.User_Chore_createdByToUser?.UserProfile?.displayName || updated.User_Chore_createdByToUser?.email || 'Someone';
-      await this.notificationService.createNotification({
-        userId: chore.assignedTo,
-        type: 'chore_updated' as any,
-        title: 'Chore Unassigned',
-        message: `${unassignerName} unassigned you from "${chore.title}"`,
-        data: { choreId },
-      }).catch(err => {
-        console.error(`Failed to create notification:`, err);
-      });
+      const unassignerName =
+        updated.User_Chore_createdByToUser?.UserProfile?.displayName ||
+        updated.User_Chore_createdByToUser?.email ||
+        'Someone';
+      await this.notificationService
+        .createNotification({
+          userId: chore.assignedTo,
+          type: NotificationType.CHORE_UPDATED,
+          title: 'Chore Unassigned',
+          message: `${unassignerName} unassigned you from "${chore.title}"`,
+          data: { choreId },
+        })
+        .catch((err) => {
+          console.error(`Failed to create notification:`, err);
+        });
     }
 
     return this.transformChore(updated);
   }
 
-  async getGroupPointsLeaderboard(userId: string, groupId: string, period?: 'week' | 'month' | 'all-time') {
+  async getGroupPointsLeaderboard(
+    userId: string,
+    groupId: string,
+    period?: 'week' | 'month' | 'all-time',
+  ) {
     // Verify user is member of group
     const group = await this.prisma.group.findFirst({
       where: {
@@ -2033,15 +2465,20 @@ export class ChoreService {
         let currentStreak = 0;
         if (completions.length > 0) {
           const completionsByDate = new Map<string, number>();
-          completions.forEach(c => {
+          completions.forEach((c) => {
             const dateKey = c.completedAt.toISOString().split('T')[0];
-            completionsByDate.set(dateKey, (completionsByDate.get(dateKey) || 0) + 1);
+            completionsByDate.set(
+              dateKey,
+              (completionsByDate.get(dateKey) || 0) + 1,
+            );
           });
-          
-          const sortedDates = Array.from(completionsByDate.keys()).sort().reverse();
+
+          const sortedDates = Array.from(completionsByDate.keys())
+            .sort()
+            .reverse();
           const today = new Date();
           today.setHours(0, 0, 0, 0);
-          
+
           for (let i = 0; i < sortedDates.length; i++) {
             const date = new Date(sortedDates[i]);
             date.setHours(0, 0, 0, 0);
@@ -2057,7 +2494,9 @@ export class ChoreService {
 
         return {
           userId: member.userId,
-          displayName: member.User.UserProfile?.displayName || member.User.email.split('@')[0],
+          displayName:
+            member.User.UserProfile?.displayName ||
+            member.User.email.split('@')[0],
           avatarUrl: member.User.UserProfile?.avatarUrl || null,
           totalPoints: totalPoints._sum?.pointsEarned || 0,
           totalCompleted: completions.length,
@@ -2102,7 +2541,9 @@ export class ChoreService {
     });
 
     if (!chore) {
-      throw new NotFoundException('Recurring chore not found or you do not have permission');
+      throw new NotFoundException(
+        'Recurring chore not found or you do not have permission',
+      );
     }
 
     const updated = await this.prisma.chore.update({
@@ -2128,7 +2569,11 @@ export class ChoreService {
     return this.transformChore(updated);
   }
 
-  async skipOccurrence(userId: string, parentChoreId: string, occurrenceId: string) {
+  async skipOccurrence(
+    userId: string,
+    parentChoreId: string,
+    occurrenceId: string,
+  ) {
     // Verify parent chore exists and user has permission
     const parentChore = await this.prisma.chore.findFirst({
       where: {
@@ -2139,7 +2584,9 @@ export class ChoreService {
     });
 
     if (!parentChore) {
-      throw new NotFoundException('Parent chore not found or you do not have permission');
+      throw new NotFoundException(
+        'Parent chore not found or you do not have permission',
+      );
     }
 
     // Verify occurrence exists and belongs to parent
@@ -2176,7 +2623,11 @@ export class ChoreService {
     return { success: true, message: 'Occurrence skipped' };
   }
 
-  async assignMultipleChore(userId: string, choreId: string, userIds: string[]) {
+  async assignMultipleChore(
+    userId: string,
+    choreId: string,
+    userIds: string[],
+  ) {
     // Verify chore exists and user has permission
     const chore = await this.prisma.chore.findFirst({
       where: {
@@ -2197,7 +2648,9 @@ export class ChoreService {
     });
 
     if (!chore) {
-      throw new NotFoundException('Chore not found or you do not have permission');
+      throw new NotFoundException(
+        'Chore not found or you do not have permission',
+      );
     }
 
     if (chore.status === 'completed') {
@@ -2205,7 +2658,9 @@ export class ChoreService {
     }
 
     if (chore.assignmentType !== 'multiple') {
-      throw new BadRequestException('Chore is not configured for multiple assignments');
+      throw new BadRequestException(
+        'Chore is not configured for multiple assignments',
+      );
     }
 
     if (userIds.length === 0) {
@@ -2233,7 +2688,9 @@ export class ChoreService {
         });
 
         if (!isMember) {
-          throw new BadRequestException(`User ${assigneeId} is not a member of the group`);
+          throw new BadRequestException(
+            `User ${assigneeId} is not a member of the group`,
+          );
         }
       }
 
@@ -2248,13 +2705,15 @@ export class ChoreService {
       });
 
       if (existingAssignment) {
-        throw new BadRequestException(`User ${assigneeId} is already assigned to this chore`);
+        throw new BadRequestException(
+          `User ${assigneeId} is already assigned to this chore`,
+        );
       }
     }
 
     // Create assignments
-    const assignments = await this.prisma.$transaction(async (tx) => {
-      const newAssignments: any[] = [];
+    await this.prisma.$transaction(async (tx) => {
+      const newAssignments: ChoreAssignment[] = [];
       for (const assigneeId of userIds) {
         const assignment = await tx.choreAssignment.create({
           data: {
@@ -2303,18 +2762,19 @@ export class ChoreService {
       },
     });
 
-    const assignerName = creatorName?.UserProfile?.displayName || creatorName?.email || 'Someone';
+    const assignerName =
+      creatorName?.UserProfile?.displayName || creatorName?.email || 'Someone';
 
     for (const assigneeId of userIds) {
       if (assigneeId !== userId) {
-        await this.notificationService.notifyChoreAssigned(
-          assigneeId,
-          choreId,
-          chore.title,
-          assignerName,
-        ).catch(err => {
-          console.error(`Failed to create notification for assigned user ${assigneeId}:`, err);
-        });
+        await this.notificationService
+          .notifyChoreAssigned(assigneeId, choreId, chore.title, assignerName)
+          .catch((err) => {
+            console.error(
+              `Failed to create notification for assigned user ${assigneeId}:`,
+              err,
+            );
+          });
       }
     }
 
@@ -2352,7 +2812,9 @@ export class ChoreService {
     });
 
     if (!chore) {
-      throw new NotFoundException('Chore not found or you do not have permission');
+      throw new NotFoundException(
+        'Chore not found or you do not have permission',
+      );
     }
 
     const assignments = await this.prisma.choreAssignment.findMany({
@@ -2374,7 +2836,7 @@ export class ChoreService {
       orderBy: { assignedAt: 'desc' },
     });
 
-    return assignments.map(assignment => ({
+    return assignments.map((assignment) => ({
       id: assignment.id,
       choreId: assignment.choreId,
       userId: assignment.userId,
@@ -2395,7 +2857,11 @@ export class ChoreService {
     }));
   }
 
-  async completeChoreAssignment(userId: string, choreId: string, assignmentId: string) {
+  async completeChoreAssignment(
+    userId: string,
+    choreId: string,
+    assignmentId: string,
+  ) {
     // Verify assignment exists and belongs to user
     const assignment = await this.prisma.choreAssignment.findFirst({
       where: {
@@ -2420,9 +2886,9 @@ export class ChoreService {
     //   (Rotation members are in ChoreRotation, not ChoreAssignment)
     // - If multiple assignment (no rotation): Divide points among all assignees
     //   (They work together on the same task)
-    
+
     let basePointsPerPerson: number;
-    
+
     if (chore.rotationEnabled) {
       // Rotation task: Each person does it individually, so full points
       basePointsPerPerson = chore.points;
@@ -2433,21 +2899,21 @@ export class ChoreService {
       });
       basePointsPerPerson = Math.round(chore.points / totalAssignments);
     }
-    
+
     // Check if this was an unassigned chore that was grabbed (for bonus)
     const wasUnassigned = chore.assignmentType === 'open';
 
     // Calculate points using enhanced calculation (includes streak, category bonuses, late penalties)
     const completedAt = new Date();
-    const pointsCalculation = await this.chorePointsService.calculatePointsEarned(
-      userId,
-      basePointsPerPerson,
-      chore.category,
-      chore.dueDate ? new Date(chore.dueDate) : null,
-      completedAt,
-      wasUnassigned,
-      chore.groupId || null,
-    );
+    const pointsCalculation =
+      await this.chorePointsService.calculatePointsEarned(
+        userId,
+        basePointsPerPerson,
+        chore.category,
+        chore.dueDate ? new Date(chore.dueDate) : null,
+        completedAt,
+        wasUnassigned,
+      );
 
     const pointsEarned = pointsCalculation.pointsEarned;
 
@@ -2516,7 +2982,7 @@ export class ChoreService {
 
     // Cancel reminders if all assignments are completed
     if (result.allCompleted) {
-      await this.choreReminderService.cancelReminders(choreId).catch(err => {
+      await this.choreReminderService.cancelReminders(choreId).catch((err) => {
         console.error(`Failed to cancel reminders for chore ${choreId}:`, err);
       });
     }
@@ -2538,22 +3004,34 @@ export class ChoreService {
         },
       });
 
-      const completerDisplayName = completerName?.UserProfile?.displayName || completerName?.email || 'Someone';
-      await this.notificationService.notifyChoreCompleted(
-        chore.createdBy,
-        choreId,
-        chore.title,
-        completerDisplayName,
-      ).catch(err => {
-        console.error(`Failed to create notification for chore creator:`, err);
-      });
+      const completerDisplayName =
+        completerName?.UserProfile?.displayName ||
+        completerName?.email ||
+        'Someone';
+      await this.notificationService
+        .notifyChoreCompleted(
+          chore.createdBy,
+          choreId,
+          chore.title,
+          completerDisplayName,
+        )
+        .catch((err) => {
+          console.error(
+            `Failed to create notification for chore creator:`,
+            err,
+          );
+        });
     }
 
     // Return updated chore
     return this.getChoreById(userId, choreId);
   }
 
-  async removeChoreAssignment(userId: string, choreId: string, assignmentId: string) {
+  async removeChoreAssignment(
+    userId: string,
+    choreId: string,
+    assignmentId: string,
+  ) {
     // Verify assignment exists
     const assignment = await this.prisma.choreAssignment.findFirst({
       where: {
@@ -2572,19 +3050,22 @@ export class ChoreService {
     const chore = assignment.Chore;
 
     // Verify user has permission (creator, group admin, or the assigned user themselves)
-    const hasPermission = 
+    const hasPermission =
       chore.createdBy === userId ||
       assignment.userId === userId ||
-      (chore.groupId && await this.prisma.groupMember.findFirst({
-        where: {
-          groupId: chore.groupId,
-          userId,
-          role: 'ADMIN',
-        },
-      }));
+      (chore.groupId &&
+        (await this.prisma.groupMember.findFirst({
+          where: {
+            groupId: chore.groupId,
+            userId,
+            role: 'ADMIN',
+          },
+        })));
 
     if (!hasPermission) {
-      throw new BadRequestException('You do not have permission to remove this assignment');
+      throw new BadRequestException(
+        'You do not have permission to remove this assignment',
+      );
     }
 
     if (assignment.completedAt) {
@@ -2655,7 +3136,9 @@ export class ChoreService {
     });
 
     if (!chore) {
-      throw new NotFoundException('Chore not found or you do not have permission');
+      throw new NotFoundException(
+        'Chore not found or you do not have permission',
+      );
     }
 
     // Get history entries
@@ -2699,7 +3182,7 @@ export class ChoreService {
     });
 
     // Transform user data helper
-    const transformUser = (user: any) => {
+    const transformUser = (user: UserWithProfile | null) => {
       if (!user) return null;
       return {
         id: user.id,
@@ -2724,7 +3207,7 @@ export class ChoreService {
         user: null, // Will be populated below
       },
       // History entries
-      ...history.map(h => ({
+      ...history.map((h) => ({
         id: h.id,
         action: h.action,
         userId: h.userId,
@@ -2734,7 +3217,7 @@ export class ChoreService {
         user: transformUser(h.User),
       })),
       // Completion entries
-      ...completions.map(c => ({
+      ...completions.map((c) => ({
         id: c.id,
         action: 'completed',
         userId: c.userId,
@@ -2761,15 +3244,17 @@ export class ChoreService {
     });
 
     // Update creation entry with creator info
-    const creationEntry = allHistory.find(e => e.id === 'creation');
+    const creationEntry = allHistory.find((e) => e.id === 'creation');
     if (creationEntry) {
       creationEntry.user = transformUser(creator);
     }
 
     // Sort by date (most recent first)
-    allHistory.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    allHistory.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
 
     return allHistory;
   }
 }
-

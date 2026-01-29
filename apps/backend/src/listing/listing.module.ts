@@ -7,10 +7,13 @@ import { TrustScoreModule } from '../trust-score/trust-score.module';
 import { NotificationModule } from '../notification/notification.module';
 
 @Module({
-  imports: [PrismaModule, forwardRef(() => TrustScoreModule), NotificationModule],
+  imports: [
+    PrismaModule,
+    forwardRef(() => TrustScoreModule),
+    NotificationModule,
+  ],
   controllers: [ListingController],
   providers: [ListingService, CategorizationService],
   exports: [ListingService],
 })
 export class ListingModule {}
-

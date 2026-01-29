@@ -1,4 +1,11 @@
-import { IsString, IsNumber, IsOptional, IsEnum, IsDateString, Min } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsEnum,
+  IsDateString,
+  Min,
+} from 'class-validator';
 
 export class CreateGoalDto {
   @IsString()
@@ -33,4 +40,3 @@ export class CreateGoalDto {
   @IsOptional()
   context?: 'local' | 'home';
 }
-

@@ -1,4 +1,4 @@
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsOptional, IsIn } from 'class-validator';
 
 export class UpdateGroupDto {
   @IsOptional()
@@ -12,5 +12,8 @@ export class UpdateGroupDto {
   @IsOptional()
   @IsString()
   avatarUrl?: string;
-}
 
+  @IsOptional()
+  @IsIn(['public', 'private'])
+  visibility?: 'public' | 'private';
+}

@@ -17,4 +17,3 @@ export class CreateAccountDto {
   @IsString()
   accountType?: string;
 }
-

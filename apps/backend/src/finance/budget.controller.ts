@@ -74,4 +74,3 @@ export class BudgetController {
     return this.budgetService.getBudgetTracking(user.userId, id, period);
   }
 }
-

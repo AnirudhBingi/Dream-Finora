@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -8,12 +8,29 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth } from '../auth/authContext';
-import { createRide, CreateRideDto } from '../api/rideApi';
-import { getGroups, Group, getGroupById, GroupMember } from '../api/groupApi';
-import { Header } from '../components/Header';
+  Keyboard,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useAuth } from "../auth/authContext";
+import {
+  createRide,
+  CreateRideDto,
+  createFavoriteRide,
+  CreateRideFavoriteDto,
+} from "../api/rideApi";
+import {
+  ParticipantPicker,
+  SelectedParticipant,
+} from "../components/ParticipantPicker";
+import { DatePicker } from "../components/DatePicker";
+import { Header } from "../components/Header";
+import { Avatar } from "../components/Avatar";
+import { getAvatarUrl } from "../utils/avatar";
+import { getGroupById, Group } from "../api/groupApi";
+import { useDataFetch } from "../hooks/useDataFetch";
+import { useAsyncOperation } from "../hooks/useAsyncOperation";
+import { useTheme } from "../theme";
 
 interface CreateRideScreenProps {
   onBack: () => void;
@@ -32,102 +49,123 @@ export function CreateRideScreen({
   onNavigateToNotifications,
   onNavigateToSettings,
 }: CreateRideScreenProps) {
-  const { token } = useAuth();
-  const [type, setType] = useState<'giveRide' | 'rideshare'>('giveRide');
-  const [origin, setOrigin] = useState('');
-  const [destination, setDestination] = useState('');
-  const [distance, setDistance] = useState('');
-  const [chargePerMile, setChargePerMile] = useState('');
-  const [chargePerRide, setChargePerRide] = useState('');
-  const [selectedGroupId, setSelectedGroupId] = useState<string | undefined>(initialGroupId);
-  const [selectedPassengerIds, setSelectedPassengerIds] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loadingGroups, setLoadingGroups] = useState(false);
-  const [loadingMembers, setLoadingMembers] = useState(false);
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [members, setMembers] = useState<GroupMember[]>([]);
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { token, user } = useAuth();
+  const [type, setType] = useState<"giveRide" | "rideshare">("giveRide");
+  const [origin, setOrigin] = useState("");
+  const [destination, setDestination] = useState("");
+  const [distance, setDistance] = useState("");
+  const [chargePerMile, setChargePerMile] = useState("");
+  const [chargePerRide, setChargePerRide] = useState("");
+  const [rideDate, setRideDate] = useState("");
+  const [selectedGroupId, setSelectedGroupId] = useState<string | undefined>(
+    initialGroupId,
+  );
+  const [selectedPassengers, setSelectedPassengers] = useState<
+    SelectedParticipant[]
+  >([]);
+  const [saveAsFavorite, setSaveAsFavorite] = useState(false);
+  const [favoriteName, setFavoriteName] = useState("");
 
-  useEffect(() => {
-    if (token) {
-      loadGroups();
-    }
-  }, [token]);
+  const originInputRef = useRef<TextInput>(null);
+  const destinationInputRef = useRef<TextInput>(null);
+  const distanceInputRef = useRef<TextInput>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
 
-  useEffect(() => {
-    if (selectedGroupId && token) {
-      loadMembers(selectedGroupId);
-    } else {
-      setMembers([]);
-    }
-  }, [selectedGroupId, token]);
-
-  async function loadGroups() {
-    if (!token) return;
-
-    try {
-      setLoadingGroups(true);
-      const groupsData = await getGroups(token);
-      // Handle both array response and paginated response
-      let groupsList: Group[] = [];
-      if (Array.isArray(groupsData)) {
-        groupsList = groupsData;
-      } else if (groupsData && typeof groupsData === 'object') {
-        groupsList = (groupsData as any).groups || [];
+  // Fetch group info when initialGroupId is provided
+  const { data: group, loading: loadingGroup } = useDataFetch<Group | null>({
+    fetchFn: async () => {
+      if (!token || !initialGroupId) return null;
+      try {
+        return await getGroupById(token, initialGroupId);
+      } catch (err) {
+        console.error("Failed to load group:", err);
+        return null;
       }
-      setGroups(groupsList);
-    } catch (err) {
-      console.error('Failed to load groups:', err);
-      setGroups([]); // Set empty array on error
-    } finally {
-      setLoadingGroups(false);
+    },
+    immediate: !!initialGroupId,
+    deps: [token, initialGroupId],
+  });
+
+  // Auto-focus origin input on mount
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      originInputRef.current?.focus();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Calculate total cost preview
+  function calculateTotalCost(): number {
+    if (chargePerMile && distance) {
+      return parseFloat(chargePerMile) * parseFloat(distance);
+    } else if (chargePerRide) {
+      return parseFloat(chargePerRide);
+    }
+    return 0;
+  }
+
+  // Calculate cost per person preview
+  function getCostPerPersonPreview(): string {
+    const totalCost = calculateTotalCost();
+    if (totalCost <= 0) return "";
+
+    const passengerIds = selectedPassengers.map((p) => p.userId);
+
+    if (type === "giveRide") {
+      // For "Charge Riders": Each passenger pays the FULL amount (driver charges each individually)
+      if (passengerIds.length === 0) {
+        return "Add passengers to see cost per passenger";
+      }
+      return `$${totalCost.toFixed(2)} per passenger (${passengerIds.length} ${passengerIds.length === 1 ? "passenger" : "passengers"} × $${totalCost.toFixed(2)})`;
+    } else {
+      // For "Split Cost": Cost is split equally among all participants including driver
+      const participantCount = passengerIds.length + 1; // +1 for driver
+      if (participantCount === 0) {
+        return "$0.00 each (you + 0 passengers)";
+      }
+      const costPerPerson = totalCost / participantCount;
+      return `$${costPerPerson.toFixed(2)} each (you + ${passengerIds.length} ${passengerIds.length === 1 ? "passenger" : "passengers"})`;
     }
   }
 
-  async function loadMembers(groupId: string) {
-    if (!token) return;
+  const totalCost = calculateTotalCost();
+  const costPreview = getCostPerPersonPreview();
+  const canSubmit = origin.trim() && destination.trim() && totalCost > 0;
 
-    try {
-      setLoadingMembers(true);
-      const groupData = await getGroupById(token, groupId);
-      setMembers(groupData.members || []);
-    } catch (err) {
-      console.error('Failed to load members:', err);
-    } finally {
-      setLoadingMembers(false);
-    }
-  }
+  const { execute: handleSubmit, loading } = useAsyncOperation({
+    operationFn: async () => {
+      if (!origin.trim() || !destination.trim()) {
+        throw new Error("Please enter origin and destination");
+      }
 
-  function togglePassenger(userId: string) {
-    setSelectedPassengerIds((prev) =>
-      prev.includes(userId)
-        ? prev.filter((id) => id !== userId)
-        : [...prev, userId],
-    );
-  }
+      if (!chargePerMile && !chargePerRide) {
+        throw new Error(
+          "Please enter either charge per mile or charge per ride",
+        );
+      }
 
-  async function handleSubmit() {
-    if (!origin.trim() || !destination.trim()) {
-      Alert.alert('Error', 'Please enter origin and destination');
-      return;
-    }
+      if (chargePerMile && !distance) {
+        throw new Error("Please enter distance when using charge per mile");
+      }
 
-    if (!chargePerMile && !chargePerRide) {
-      Alert.alert('Error', 'Please enter either charge per mile or charge per ride');
-      return;
-    }
+      if (!token) {
+        throw new Error("Not authenticated");
+      }
 
-    if (chargePerMile && !distance) {
-      Alert.alert('Error', 'Please enter distance when using charge per mile');
-      return;
-    }
+      // If saving as favorite, validate favorite name (only for Charge Riders)
+      if (saveAsFavorite && type === "giveRide" && !favoriteName.trim()) {
+        throw new Error(
+          "Please enter a favorite name to save this ride as favorite",
+        );
+      }
 
-    if (!token) {
-      Alert.alert('Error', 'Not authenticated');
-      return;
-    }
+      // Filter out current user from passenger IDs (safety check - driver should never be a passenger, especially for Charge Riders)
+      const passengerIds = selectedPassengers
+        .filter((p) => p.userId !== user?.id)
+        .map((p) => p.userId);
 
-    try {
-      setLoading(true);
       const data: CreateRideDto = {
         type,
         origin: origin.trim(),
@@ -136,29 +174,51 @@ export function CreateRideScreen({
         chargePerMile: chargePerMile ? parseFloat(chargePerMile) : undefined,
         chargePerRide: chargePerRide ? parseFloat(chargePerRide) : undefined,
         groupId: selectedGroupId || undefined,
-        passengerIds: selectedPassengerIds.length > 0 ? selectedPassengerIds : undefined,
+        passengerIds: passengerIds.length > 0 ? passengerIds : undefined,
+        date: rideDate || undefined,
       };
 
-      await createRide(token, data);
-      Alert.alert('Success', 'Ride created successfully! Expense automatically added.', [
-        { text: 'OK', onPress: onSuccess },
-      ]);
-    } catch (err) {
-      Alert.alert(
-        'Error',
-        err instanceof Error ? err.message : 'Failed to create ride',
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+      const ride = await createRide(token, data);
 
-  function getUserDisplayName(member: GroupMember): string {
-    return member?.user?.profile?.displayName || member?.user?.email || 'Unknown';
-  }
+      // If saving as favorite and this is a Charge Riders ride, create the favorite template
+      if (saveAsFavorite && type === "giveRide" && favoriteName.trim()) {
+        try {
+          const favoriteData: CreateRideFavoriteDto = {
+            name: favoriteName.trim(),
+            passengerIds,
+            chargePerMile: chargePerMile
+              ? parseFloat(chargePerMile)
+              : undefined,
+            chargePerRide: chargePerRide
+              ? parseFloat(chargePerRide)
+              : undefined,
+            origin: origin.trim() || undefined,
+            destination: destination.trim() || undefined,
+            groupId: selectedGroupId || undefined,
+          };
+          await createFavoriteRide(token, favoriteData);
+        } catch (err) {
+          // Don't fail ride creation if favorite creation fails, just log it
+          console.error("Failed to save favorite ride:", err);
+        }
+      }
+
+      return ride;
+    },
+    onSuccess: () => {
+      const message =
+        saveAsFavorite && type === "giveRide"
+          ? "Ride created and saved as favorite! Expense automatically added to Billchop."
+          : "Ride created successfully! Expense automatically added to Billchop.";
+      Alert.alert("Success", message, [{ text: "OK", onPress: onSuccess }]);
+    },
+    onError: (errorMessage) => {
+      Alert.alert("Error", errorMessage);
+    },
+  });
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <Header
         title="Create Ride"
         onBack={onBack}
@@ -167,388 +227,687 @@ export function CreateRideScreen({
         onNavigateToSettings={onNavigateToSettings}
       />
       <ScrollView
+        ref={scrollViewRef}
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.content}>
-
-          <View style={styles.form}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Ride Type *</Text>
-              <View style={styles.typeButtons}>
-                <TouchableOpacity
-                  style={[
-                    styles.typeButton,
-                    type === 'giveRide' && styles.typeButtonSelected,
-                  ]}
-                  onPress={() => setType('giveRide')}
-                >
-                  <Text
-                    style={[
-                      styles.typeButtonText,
-                      type === 'giveRide' && styles.typeButtonTextSelected,
-                    ]}
-                  >
-                    Give Ride
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.typeButton,
-                    type === 'rideshare' && styles.typeButtonSelected,
-                  ]}
-                  onPress={() => setType('rideshare')}
-                >
-                  <Text
-                    style={[
-                      styles.typeButtonText,
-                      type === 'rideshare' && styles.typeButtonTextSelected,
-                    ]}
-                  >
-                    Rideshare
-                  </Text>
-                </TouchableOpacity>
+          {/* Group Context Card */}
+          {group && (
+            <View style={styles.groupContextCard}>
+              <Avatar
+                avatarUrl={getAvatarUrl(group.avatarUrl || null)}
+                displayName={group.name}
+                size={48}
+              />
+              <View style={styles.groupContextInfo}>
+                <Text style={styles.groupContextLabel}>Creating ride for</Text>
+                <Text style={styles.groupContextName}>{group.name}</Text>
               </View>
+            </View>
+          )}
+
+          {/* Hero Total Cost Section */}
+          {totalCost > 0 && (
+            <View style={styles.heroSection}>
+              <Text style={styles.heroLabel}>Total Cost</Text>
+              <View style={styles.amountContainer}>
+                <Text style={styles.currencySymbolLarge}>$</Text>
+                <Text style={styles.amountDisplay}>{totalCost.toFixed(2)}</Text>
+              </View>
+              {costPreview && (
+                <Text style={styles.costPreview}>{costPreview}</Text>
+              )}
+            </View>
+          )}
+
+          {/* Ride Type Card */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Ride Type</Text>
+            <View style={styles.typeButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.typeButton,
+                  type === "giveRide" && styles.typeButtonSelected,
+                ]}
+                onPress={() => setType("giveRide")}
+                activeOpacity={0.7}
+              >
+                <MaterialIcons
+                  name="drive-eta"
+                  size={20}
+                  color={
+                    type === "giveRide"
+                      ? theme.colors.white
+                      : theme.colors.textSecondary
+                  }
+                />
+                <Text
+                  style={[
+                    styles.typeButtonText,
+                    type === "giveRide" && styles.typeButtonTextSelected,
+                  ]}
+                >
+                  Charge Riders
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.typeButton,
+                  type === "rideshare" && styles.typeButtonSelected,
+                ]}
+                onPress={() => setType("rideshare")}
+                activeOpacity={0.7}
+              >
+                <MaterialIcons
+                  name="share"
+                  size={20}
+                  color={
+                    type === "rideshare"
+                      ? theme.colors.white
+                      : theme.colors.textSecondary
+                  }
+                />
+                <Text
+                  style={[
+                    styles.typeButtonText,
+                    type === "rideshare" && styles.typeButtonTextSelected,
+                  ]}
+                >
+                  Split Cost
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.helperBox}>
+              <MaterialIcons
+                name="info-outline"
+                size={16}
+                color={theme.colors.primary}
+              />
               <Text style={styles.helperText}>
-                {type === 'giveRide'
-                  ? 'Driver charges passengers'
-                  : 'Cost is split among all participants'}
+                {type === "giveRide"
+                  ? "You charge passengers - you don't pay"
+                  : "Everyone splits the cost, including you"}
               </Text>
             </View>
+          </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Origin *</Text>
+          {/* Route Card */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Route</Text>
+            <View style={styles.inputRow}>
+              <MaterialIcons
+                name="place"
+                size={20}
+                color={theme.colors.success}
+                style={styles.inputIcon}
+              />
               <TextInput
+                ref={originInputRef}
                 style={styles.input}
                 value={origin}
                 onChangeText={setOrigin}
-                placeholder="e.g., 123 Main St"
-                placeholderTextColor="#9CA3AF"
+                placeholder="Origin (e.g., 123 Main St)"
+                placeholderTextColor={theme.colors.textTertiary}
                 autoCapitalize="words"
+                returnKeyType="next"
+                onSubmitEditing={() => destinationInputRef.current?.focus()}
               />
             </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Destination *</Text>
+            <View style={styles.inputRow}>
+              <MaterialIcons
+                name="place"
+                size={20}
+                color={theme.colors.error}
+                style={styles.inputIcon}
+              />
               <TextInput
+                ref={destinationInputRef}
                 style={styles.input}
                 value={destination}
                 onChangeText={setDestination}
-                placeholder="e.g., 456 Oak Ave"
-                placeholderTextColor="#9CA3AF"
+                placeholder="Destination (e.g., 456 Oak Ave)"
+                placeholderTextColor={theme.colors.textTertiary}
                 autoCapitalize="words"
+                returnKeyType="next"
+                onSubmitEditing={() => distanceInputRef.current?.focus()}
               />
             </View>
+          </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Distance (miles)</Text>
-              <TextInput
-                style={styles.input}
-                value={distance}
-                onChangeText={setDistance}
-                placeholder="e.g., 10.5"
-                placeholderTextColor="#9CA3AF"
-                keyboardType="decimal-pad"
-              />
-              <Text style={styles.helperText}>
-                Required if using charge per mile
-              </Text>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Charge Per Mile ($)</Text>
-              <TextInput
-                style={styles.input}
-                value={chargePerMile}
-                onChangeText={setChargePerMile}
-                placeholder="e.g., 0.50"
-                placeholderTextColor="#9CA3AF"
-                keyboardType="decimal-pad"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Charge Per Ride ($)</Text>
-              <TextInput
-                style={styles.input}
-                value={chargePerRide}
-                onChangeText={setChargePerRide}
-                placeholder="e.g., 10.00"
-                placeholderTextColor="#9CA3AF"
-                keyboardType="decimal-pad"
-              />
-              <Text style={styles.helperText}>
-                Use either charge per mile or charge per ride
-              </Text>
-            </View>
-
-            {groups.length > 0 && (
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Group (Optional)</Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={styles.groupScroll}
-                >
-                  <TouchableOpacity
-                    style={[
-                      styles.groupChip,
-                      !selectedGroupId && styles.groupChipSelected,
-                    ]}
-                    onPress={() => {
-                      setSelectedGroupId(undefined);
-                      setSelectedPassengerIds([]);
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.groupChipText,
-                        !selectedGroupId && styles.groupChipTextSelected,
-                      ]}
-                    >
-                      None
-                    </Text>
-                  </TouchableOpacity>
-                  {groups && Array.isArray(groups) && groups.map((group) => (
-                    <TouchableOpacity
-                      key={group.id}
-                      style={[
-                        styles.groupChip,
-                        selectedGroupId === group.id && styles.groupChipSelected,
-                      ]}
-                      onPress={() => {
-                        setSelectedGroupId(group.id);
-                        setSelectedPassengerIds([]);
-                      }}
-                    >
-                      <Text
-                        style={[
-                          styles.groupChipText,
-                          selectedGroupId === group.id && styles.groupChipTextSelected,
-                        ]}
-                      >
-                        {group.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
-
-            {selectedGroupId && members.length > 0 && (
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Passengers (Optional)</Text>
-                <Text style={styles.helperText}>
-                  Select passengers to add now, or add them later
-                </Text>
-                <View style={styles.passengerList}>
-                  {members.map((member) => (
-                    <TouchableOpacity
-                      key={member?.user?.id}
-                      style={[
-                        styles.passengerChip,
-                        selectedPassengerIds.includes(member?.user?.id || '') &&
-                          styles.passengerChipSelected,
-                      ]}
-                      onPress={() => togglePassenger(member?.user?.id || '')}
-                    >
-                      <Text
-                        style={[
-                          styles.passengerChipText,
-                          selectedPassengerIds.includes(member?.user?.id || '') &&
-                            styles.passengerChipTextSelected,
-                        ]}
-                      >
-                        {getUserDisplayName(member)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+          {/* Pricing Card */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Pricing</Text>
+            <View style={styles.pricingRow}>
+              <View style={styles.pricingOption}>
+                <View style={styles.inputRow}>
+                  <MaterialIcons
+                    name="straighten"
+                    size={20}
+                    color={theme.colors.primary}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    ref={distanceInputRef}
+                    style={styles.input}
+                    value={distance}
+                    onChangeText={setDistance}
+                    placeholder="Distance (miles)"
+                    placeholderTextColor={theme.colors.textTertiary}
+                    keyboardType="decimal-pad"
+                    returnKeyType="next"
+                  />
                 </View>
+                <View style={styles.inputRow}>
+                  <MaterialIcons
+                    name="attach-money"
+                    size={20}
+                    color={theme.colors.primary}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    value={chargePerMile}
+                    onChangeText={setChargePerMile}
+                    placeholder="Per mile (e.g., 0.50)"
+                    placeholderTextColor={theme.colors.textTertiary}
+                    keyboardType="decimal-pad"
+                    returnKeyType="next"
+                  />
+                </View>
+                {chargePerMile && distance && (
+                  <View style={styles.calculatedPreview}>
+                    <MaterialIcons
+                      name="calculate"
+                      size={16}
+                      color={theme.colors.success}
+                    />
+                    <Text style={styles.calculatedText}>
+                      $
+                      {(
+                        parseFloat(chargePerMile || "0") *
+                        parseFloat(distance || "0")
+                      ).toFixed(2)}{" "}
+                      total
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.pricingDivider}>
+                <View
+                  style={{
+                    flex: 1,
+                    height: 1,
+                    backgroundColor: theme.colors.border,
+                  }}
+                />
+                <Text style={styles.dividerText}>OR</Text>
+                <View
+                  style={{
+                    flex: 1,
+                    height: 1,
+                    backgroundColor: theme.colors.border,
+                  }}
+                />
+              </View>
+
+              <View style={styles.pricingOption}>
+                <View style={styles.inputRow}>
+                  <MaterialIcons
+                    name="money"
+                    size={20}
+                    color={theme.colors.primary}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    value={chargePerRide}
+                    onChangeText={setChargePerRide}
+                    placeholder="Flat rate (e.g., 10.00)"
+                    placeholderTextColor={theme.colors.textTertiary}
+                    keyboardType="decimal-pad"
+                    returnKeyType="done"
+                    onSubmitEditing={Keyboard.dismiss}
+                  />
+                </View>
+              </View>
+            </View>
+            <Text style={styles.helperTextSmall}>
+              Use either distance-based or flat rate pricing
+            </Text>
+          </View>
+
+          {/* Date Card */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Date (Optional)</Text>
+            <DatePicker
+              value={rideDate}
+              onChange={setRideDate}
+              placeholder="Select ride date"
+            />
+          </View>
+
+          {/* Passengers Card */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Passengers (Optional)</Text>
+            <Text style={styles.helperTextSmall}>
+              Select passengers from a group, or add them later
+            </Text>
+            <ParticipantPicker
+              selectedParticipants={selectedPassengers}
+              onSelectionChange={(participants) => {
+                setSelectedPassengers(participants);
+              }}
+              allowMultiple={true}
+              showGroups={true}
+              showFriends={false}
+              initialGroupId={selectedGroupId || null}
+              onGroupChange={(groupId) => {
+                setSelectedGroupId(groupId || undefined);
+              }}
+              excludeCurrentUser={type === "giveRide"} // For Charge Riders, driver (current user) cannot be a passenger
+            />
+            {costPreview && (
+              <View style={styles.costPreviewBox}>
+                <MaterialIcons
+                  name="info-outline"
+                  size={16}
+                  color={theme.colors.primary}
+                />
+                <Text style={styles.costPreviewText}>{costPreview}</Text>
               </View>
             )}
           </View>
 
-          <TouchableOpacity
-            style={[styles.submitButton, loading && styles.submitButtonDisabled]}
-            onPress={handleSubmit}
-            disabled={loading}
-            activeOpacity={0.7}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.submitButtonText}>Create Ride</Text>
-            )}
-          </TouchableOpacity>
+          {/* Save as Favorite - Only for Charge Riders */}
+          {type === "giveRide" && (
+            <View style={styles.card}>
+              <View style={styles.favoriteSection}>
+                <TouchableOpacity
+                  style={styles.favoriteCheckboxRow}
+                  onPress={() => setSaveAsFavorite(!saveAsFavorite)}
+                  activeOpacity={0.7}
+                >
+                  <View
+                    style={[
+                      styles.checkbox,
+                      saveAsFavorite && styles.checkboxChecked,
+                    ]}
+                  >
+                    {saveAsFavorite && (
+                      <MaterialIcons
+                        name="check"
+                        size={18}
+                        color={theme.colors.white}
+                      />
+                    )}
+                  </View>
+                  <View style={styles.favoriteCheckboxContent}>
+                    <Text style={styles.favoriteCheckboxLabel}>
+                      Save as Favorite
+                    </Text>
+                    <Text style={styles.favoriteCheckboxSubtext}>
+                      Quick create this ride later with one tap
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {saveAsFavorite && (
+                  <View style={styles.favoriteNameInput}>
+                    <MaterialIcons
+                      name="label"
+                      size={20}
+                      color={theme.colors.textSecondary}
+                      style={styles.inputIcon}
+                    />
+                    <TextInput
+                      style={styles.input}
+                      value={favoriteName}
+                      onChangeText={setFavoriteName}
+                      placeholder="Favorite name (e.g., School run with John)"
+                      placeholderTextColor={theme.colors.textTertiary}
+                      autoCapitalize="words"
+                      returnKeyType="done"
+                    />
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* Bottom spacing for floating button */}
+          <View style={styles.bottomSpacer} />
         </View>
       </ScrollView>
+
+      {/* Floating Action Button */}
+      <View style={styles.fabContainer}>
+        <TouchableOpacity
+          style={[
+            styles.fab,
+            !canSubmit && styles.fabDisabled,
+            loading && styles.fabDisabled,
+          ]}
+          onPress={() => handleSubmit()}
+          disabled={!canSubmit || loading}
+          activeOpacity={0.8}
+        >
+          {loading ? (
+            <ActivityIndicator color={theme.colors.white} />
+          ) : (
+            <>
+              <Text style={styles.fabText}>Create Ride</Text>
+              {totalCost > 0 && (
+                <Text style={styles.fabSubtext}>
+                  ${totalCost.toFixed(2)} total
+                </Text>
+              )}
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollContent: {
-    paddingBottom: 24, // lg: 24px
-  },
-  content: {
-    paddingHorizontal: 24, // lg: 24px
-    // No paddingTop - SafeAreaView handles top spacing
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24, // lg: 24px
-  },
-  backButton: {
-    paddingVertical: 8, // sm: 8px
-    paddingHorizontal: 4, // xs: 4px
-    minHeight: 44, // Touch target
-  },
-  backButtonText: {
-    fontSize: 16, // Body: 16px
-    color: '#2563EB', // Primary Blue
-    fontWeight: '500', // Medium
-  },
-  title: {
-    fontSize: 24, // H2: 24px
-    fontWeight: '600', // Semi-bold
-    color: '#111827', // Gray-900
-  },
-  placeholder: {
-    width: 60, // Balance header
-  },
-  form: {
-    marginBottom: 24, // lg: 24px
-  },
-  inputGroup: {
-    marginBottom: 20, // md: 20px
-  },
-  label: {
-    fontSize: 14, // Body: 14px
-    fontWeight: '500', // Medium
-    color: '#374151', // Gray-700
-    marginBottom: 8, // sm: 8px
-  },
-  input: {
-    backgroundColor: '#F9FAFB', // Gray-50
-    borderRadius: 8, // Button: 8px
-    paddingVertical: 12, // Button: 12px vertical
-    paddingHorizontal: 16, // md: 16px
-    fontSize: 16, // Body: 16px
-    color: '#111827', // Gray-900
-    borderWidth: 1,
-    borderColor: '#E5E7EB', // Gray-200
-    minHeight: 44, // Touch target
-  },
-  helperText: {
-    fontSize: 12, // Small: 12px
-    color: '#6B7280', // Gray-500
-    marginTop: 4, // xs: 4px
-  },
-  typeButtons: {
-    flexDirection: 'row',
-    gap: 12, // md: 12px
-  },
-  typeButton: {
-    flex: 1,
-    backgroundColor: '#F3F4F6', // Gray-100
-    borderRadius: 8, // Button: 8px
-    paddingVertical: 12, // Button: 12px vertical
-    paddingHorizontal: 16, // md: 16px
-    minHeight: 44, // Button: 44px touch target
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB', // Gray-200
-  },
-  typeButtonSelected: {
-    backgroundColor: '#2563EB', // Primary Blue
-    borderColor: '#2563EB', // Primary Blue
-  },
-  typeButtonText: {
-    fontSize: 16, // Body: 16px
-    color: '#374151', // Gray-700
-    fontWeight: '500', // Medium
-  },
-  typeButtonTextSelected: {
-    color: '#fff',
-  },
-  groupScroll: {
-    marginTop: 8, // sm: 8px
-  },
-  groupChip: {
-    paddingVertical: 8, // sm: 8px
-    paddingHorizontal: 16, // md: 16px
-    borderRadius: 8, // Button: 8px
-    backgroundColor: '#F3F4F6', // Gray-100
-    marginRight: 8, // sm: 8px
-    borderWidth: 1,
-    borderColor: '#E5E7EB', // Gray-200
-  },
-  groupChipSelected: {
-    backgroundColor: '#2563EB', // Primary Blue
-    borderColor: '#2563EB', // Primary Blue
-  },
-  groupChipText: {
-    fontSize: 14, // Body: 14px
-    color: '#374151', // Gray-700
-    fontWeight: '500', // Medium
-  },
-  groupChipTextSelected: {
-    color: '#fff',
-  },
-  passengerList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8, // sm: 8px
-    marginTop: 8, // sm: 8px
-  },
-  passengerChip: {
-    paddingVertical: 8, // sm: 8px
-    paddingHorizontal: 16, // md: 16px
-    borderRadius: 8, // Button: 8px
-    backgroundColor: '#F3F4F6', // Gray-100
-    borderWidth: 1,
-    borderColor: '#E5E7EB', // Gray-200
-  },
-  passengerChipSelected: {
-    backgroundColor: '#2563EB', // Primary Blue
-    borderColor: '#2563EB', // Primary Blue
-  },
-  passengerChipText: {
-    fontSize: 14, // Body: 14px
-    color: '#374151', // Gray-700
-    fontWeight: '500', // Medium
-  },
-  passengerChipTextSelected: {
-    color: '#fff',
-  },
-  submitButton: {
-    backgroundColor: '#2563EB', // Primary Blue
-    borderRadius: 8, // Button: 8px
-    paddingVertical: 12, // Button: 12px vertical
-    paddingHorizontal: 24, // Button: 24px horizontal
-    minHeight: 44, // Button: 44px touch target
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24, // lg: 24px
-  },
-  submitButtonDisabled: {
-    opacity: 0.6,
-  },
-  submitButtonText: {
-    color: '#fff',
-    fontSize: 16, // Button: 16px
-    fontWeight: '500', // Medium
-  },
-});
-
+function createStyles(theme: ReturnType<typeof useTheme>["theme"]) {
+  return StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.backgroundSecondary,
+    },
+    container: {
+      flex: 1,
+    },
+    scrollContent: {
+      paddingBottom: 100, // Space for floating button
+    },
+    content: {
+      paddingHorizontal: theme.spacing.base,
+      paddingTop: theme.spacing.base,
+    },
+    groupContextCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.md,
+      backgroundColor: theme.colors.background,
+      borderRadius: 16,
+      padding: theme.spacing.base,
+      marginBottom: theme.spacing.base,
+      ...theme.shadows.sm,
+    },
+    groupContextInfo: {
+      flex: 1,
+    },
+    groupContextLabel: {
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.textSecondary,
+      marginBottom: theme.spacing.xs / 2,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    groupContextName: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+    },
+    heroSection: {
+      alignItems: "center",
+      marginBottom: theme.spacing["2xl"],
+      paddingTop: theme.spacing.sm,
+    },
+    heroLabel: {
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.textSecondary,
+      marginBottom: theme.spacing.xs,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    amountContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: theme.spacing.sm,
+    },
+    currencySymbolLarge: {
+      fontSize: 48,
+      fontWeight: theme.typography.fontWeight.bold,
+      color: theme.colors.textPrimary,
+      marginRight: theme.spacing.xs,
+    },
+    amountDisplay: {
+      fontSize: 48,
+      fontWeight: theme.typography.fontWeight.bold,
+      color: theme.colors.textPrimary,
+    },
+    costPreview: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+      textAlign: "center",
+    },
+    card: {
+      backgroundColor: theme.colors.background,
+      borderRadius: 16,
+      padding: theme.spacing.base,
+      marginBottom: theme.spacing.base,
+      ...theme.shadows.sm,
+    },
+    cardTitle: {
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.gray700,
+      marginBottom: theme.spacing.base,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    typeButtons: {
+      flexDirection: "row",
+      gap: theme.spacing.md,
+      marginBottom: theme.spacing.md,
+    },
+    typeButton: {
+      flex: 1,
+      backgroundColor: theme.colors.backgroundTertiary,
+      borderRadius: theme.spacing.sm,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.base,
+      minHeight: 44,
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "row",
+      gap: theme.spacing.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    typeButtonSelected: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    typeButtonText: {
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.gray700,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    typeButtonTextSelected: {
+      color: theme.colors.white,
+    },
+    helperBox: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: theme.spacing.sm,
+      padding: theme.spacing.md,
+      backgroundColor: theme.colors.blueLight,
+      borderRadius: theme.spacing.sm,
+    },
+    helperText: {
+      flex: 1,
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textPrimary,
+      lineHeight: 20,
+    },
+    helperTextSmall: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.textTertiary,
+      marginTop: theme.spacing.xs,
+      marginBottom: theme.spacing.sm,
+    },
+    inputRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderWidth: 2,
+      borderColor: theme.colors.border,
+      borderRadius: 12,
+      paddingHorizontal: theme.spacing.base,
+      paddingVertical: theme.spacing.sm,
+      marginBottom: theme.spacing.md,
+      backgroundColor: theme.colors.backgroundSecondary,
+    },
+    inputIcon: {
+      marginRight: theme.spacing.sm,
+    },
+    input: {
+      flex: 1,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textPrimary,
+      padding: 0,
+      minHeight: 20,
+    },
+    pricingRow: {
+      gap: theme.spacing.md,
+    },
+    pricingOption: {
+      gap: theme.spacing.md,
+    },
+    pricingDivider: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginVertical: theme.spacing.sm,
+      gap: theme.spacing.sm,
+    },
+    dividerText: {
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.textTertiary,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    calculatedPreview: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.xs,
+      padding: theme.spacing.sm,
+      backgroundColor: theme.colors.successBackground,
+      borderRadius: theme.spacing.sm,
+      marginTop: -theme.spacing.sm,
+    },
+    calculatedText: {
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.success,
+    },
+    costPreviewBox: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: theme.spacing.sm,
+      padding: theme.spacing.md,
+      backgroundColor: theme.colors.blueLight,
+      borderRadius: theme.spacing.sm,
+      marginTop: theme.spacing.md,
+    },
+    costPreviewText: {
+      flex: 1,
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textPrimary,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    bottomSpacer: {
+      height: theme.spacing.xl,
+    },
+    fabContainer: {
+      position: "absolute",
+      bottom: 0,
+      left: 0,
+      right: 0,
+      padding: theme.spacing.base,
+      backgroundColor: theme.colors.background,
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.border,
+      ...theme.shadows.md,
+    },
+    fab: {
+      backgroundColor: theme.colors.blue,
+      borderRadius: theme.spacing.md,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.xl,
+      minHeight: 56,
+      alignItems: "center",
+      justifyContent: "center",
+      ...theme.shadows.md,
+    },
+    fabDisabled: {
+      opacity: 0.6,
+    },
+    fabText: {
+      color: theme.colors.white,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    fabSubtext: {
+      color: theme.colors.white,
+      fontSize: theme.typography.fontSize.xs,
+      opacity: 0.9,
+      marginTop: 2,
+    },
+    favoriteSection: {
+      gap: theme.spacing.md,
+    },
+    favoriteCheckboxRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: theme.spacing.md,
+    },
+    checkbox: {
+      width: 24,
+      height: 24,
+      borderRadius: 6,
+      borderWidth: 2,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.background,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: 2,
+    },
+    checkboxChecked: {
+      backgroundColor: theme.colors.primary,
+      borderColor: theme.colors.primary,
+    },
+    favoriteCheckboxContent: {
+      flex: 1,
+      gap: theme.spacing.xs / 2,
+    },
+    favoriteCheckboxLabel: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+    },
+    favoriteCheckboxSubtext: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+    },
+    favoriteNameInput: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.sm,
+      marginTop: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: theme.spacing.xs,
+      backgroundColor: theme.colors.backgroundSecondary,
+      borderRadius: theme.spacing.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+  });
+}

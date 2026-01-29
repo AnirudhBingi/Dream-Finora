@@ -15,8 +15,22 @@ import { ScheduleModule } from '@nestjs/schedule';
 @Module({
   imports: [PrismaModule, TrustScoreModule, NotificationModule, ScheduleModule],
   controllers: [ChoreController],
-  providers: [ChoreService, ChoreStatsService, ChoreReminderService, ChorePointsService, RecurringChoreService, RecurringChoreScheduler, ChoreRotationService],
-  exports: [ChoreService, ChoreStatsService, ChoreReminderService, ChorePointsService, RecurringChoreService, ChoreRotationService],
+  providers: [
+    ChoreService,
+    ChoreStatsService,
+    ChoreReminderService,
+    ChorePointsService,
+    RecurringChoreService,
+    RecurringChoreScheduler,
+    ChoreRotationService,
+  ],
+  exports: [
+    ChoreService,
+    ChoreStatsService,
+    ChoreReminderService,
+    ChorePointsService,
+    RecurringChoreService,
+    ChoreRotationService,
+  ],
 })
 export class ChoreModule {}
-

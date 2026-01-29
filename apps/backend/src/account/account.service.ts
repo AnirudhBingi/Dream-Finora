@@ -30,7 +30,10 @@ export class AccountService {
     }
 
     // Verify current password
-    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    const isPasswordValid = await bcrypt.compare(
+      currentPassword,
+      user.password,
+    );
     if (!isPasswordValid) {
       throw new UnauthorizedException('Current password is incorrect');
     }
@@ -83,7 +86,10 @@ export class AccountService {
     // In production, this should be sent via email
     if (process.env.NODE_ENV === 'development') {
       console.log('Password reset token:', resetToken);
-      console.log('Reset link:', `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`);
+      console.log(
+        'Reset link:',
+        `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`,
+      );
     }
 
     return {
@@ -207,4 +213,3 @@ export class AccountService {
     return { message: 'Account deleted successfully' };
   }
 }
-

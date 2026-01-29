@@ -68,7 +68,11 @@ export class AnalyticsController {
     const start = startDate ? new Date(startDate) : undefined;
     const end = endDate ? new Date(endDate) : undefined;
 
-    return this.analyticsService.getExpenseSpendingByCategory(user.userId, start, end);
+    return this.analyticsService.getExpenseSpendingByCategory(
+      user.userId,
+      start,
+      end,
+    );
   }
 
   /**
@@ -82,7 +86,10 @@ export class AnalyticsController {
     @Query('months') months?: string,
   ) {
     const monthsCount = months ? parseInt(months, 10) : 6;
-    return this.analyticsService.getExpenseMonthlyTrends(user.userId, monthsCount);
+    return this.analyticsService.getExpenseMonthlyTrends(
+      user.userId,
+      monthsCount,
+    );
   }
 
   /**
@@ -99,5 +106,27 @@ export class AnalyticsController {
     const limitCount = limit ? parseInt(limit, 10) : 10;
     return this.analyticsService.getTopSpendersInGroup(groupId, limitCount);
   }
-}
 
+  /**
+   * GET /analytics/rides
+   * Get personal ride analytics (trends, top routes, top companions, spending breakdown)
+   * Optional query params: months (default: 6), startDate, endDate (ISO date strings)
+   */
+  @Get('rides')
+  async getRideAnalytics(
+    @CurrentUser() user: { userId: string },
+    @Query('months') months?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const monthsCount = months ? parseInt(months, 10) : 6;
+    const start = startDate ? new Date(startDate) : undefined;
+    const end = endDate ? new Date(endDate) : undefined;
+    return this.analyticsService.getRideAnalytics(
+      user.userId,
+      monthsCount,
+      start,
+      end,
+    );
+  }
+}

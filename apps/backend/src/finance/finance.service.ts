@@ -1,4 +1,11 @@
-import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
@@ -38,7 +45,7 @@ export class FinanceService {
   }
 
   async getAccounts(userId: string, context?: 'local' | 'home') {
-    const where: any = { userId };
+    const where: Prisma.FinanceAccountWhereInput = { userId };
     if (context) {
       where.context = context; // Filter by context if provided
     }
@@ -66,7 +73,11 @@ export class FinanceService {
     return account;
   }
 
-  async updateAccount(userId: string, accountId: string, updateDto: UpdateAccountDto) {
+  async updateAccount(
+    userId: string,
+    accountId: string,
+    updateDto: UpdateAccountDto,
+  ) {
     // Verify account belongs to user
     const account = await this.prisma.financeAccount.findFirst({
       where: {
@@ -80,13 +91,17 @@ export class FinanceService {
     }
 
     // Prepare update data
-    const updateData: any = {};
+    const updateData: Prisma.FinanceAccountUpdateInput = {};
     if (updateDto.name !== undefined) updateData.name = updateDto.name;
     if (updateDto.context !== undefined) updateData.context = updateDto.context;
-    if (updateDto.accountType !== undefined) updateData.accountType = updateDto.accountType;
+    if (updateDto.accountType !== undefined)
+      updateData.accountType = updateDto.accountType;
 
     // Handle currency change with conversion
-    if (updateDto.currency !== undefined && updateDto.currency !== account.currency) {
+    if (
+      updateDto.currency !== undefined &&
+      updateDto.currency !== account.currency
+    ) {
       // If account has a balance and currency is changing, convert the balance
       if (account.balance !== 0) {
         try {
@@ -98,7 +113,10 @@ export class FinanceService {
           updateData.balance = convertedBalance;
         } catch (err) {
           // If conversion fails, keep the old balance (user should be warned in UI)
-          console.error('[FinanceService] Failed to convert account balance:', err);
+          console.error(
+            '[FinanceService] Failed to convert account balance:',
+            err,
+          );
         }
       }
       updateData.currency = updateDto.currency;
@@ -147,10 +165,17 @@ export class FinanceService {
     return { success: true };
   }
 
-  async createTransaction(userId: string, createTransactionDto: CreateTransactionDto) {
+  async createTransaction(
+    userId: string,
+    createTransactionDto: CreateTransactionDto,
+  ) {
     // Auto-populate category for expenses if not provided
     let category = createTransactionDto.category;
-    if (createTransactionDto.type === 'expense' && !category && createTransactionDto.description) {
+    if (
+      createTransactionDto.type === 'expense' &&
+      !category &&
+      createTransactionDto.description
+    ) {
       const categoryMatch = this.categorizationService.categorizeFinance(
         createTransactionDto.description,
         'expense',
@@ -168,7 +193,7 @@ export class FinanceService {
         transactionDate = createTransactionDto.date;
       } else {
         // Handle date-only strings (YYYY-MM-DD) by appending time to make it a valid DateTime
-        const dateStr = createTransactionDto.date as string;
+        const dateStr = createTransactionDto.date;
         // If it's just a date (YYYY-MM-DD), append time to make it a valid DateTime
         if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
           // Append midnight UTC time to make it a valid ISO-8601 DateTime
@@ -213,7 +238,10 @@ export class FinanceService {
           date: transaction.date,
         })
         .catch((err) => {
-          console.error('[FinanceService] Failed to update budget tracking:', err);
+          console.error(
+            '[FinanceService] Failed to update budget tracking:',
+            err,
+          );
         });
     }
 
@@ -223,12 +251,15 @@ export class FinanceService {
   async getTransactions(
     userId: string,
     context?: 'local' | 'home',
-    includeBillchop?: boolean,
+    includeBillchop: boolean = true,
   ) {
-    const where: any = { userId };
+    const where: Prisma.FinanceTransactionWhereInput = { userId };
 
     if (context) {
       where.context = context; // Filter by context
+    }
+    if (!includeBillchop) {
+      where.expenseSplitId = null;
     }
 
     const transactions = await this.prisma.financeTransaction.findMany({
@@ -284,7 +315,12 @@ export class FinanceService {
     return transaction;
   }
 
-  async getBalance(userId: string, context?: 'local' | 'home', includeBillchop: boolean = true, primaryCurrency: string = 'USD') {
+  async getBalance(
+    userId: string,
+    context?: 'local' | 'home',
+    includeBillchop: boolean = true,
+    primaryCurrency: string = 'USD',
+  ) {
     // Get user profile to determine currencies
     const profile = await this.prisma.userProfile.findUnique({
       where: { userId },
@@ -295,7 +331,7 @@ export class FinanceService {
     const homeCurrency = profile?.homeCountryCurrency || 'USD';
 
     // Calculate balance from transactions (no accounts needed)
-    const where: any = { userId };
+    const where: Prisma.FinanceTransactionWhereInput = { userId };
     if (context) {
       where.context = context;
     }
@@ -310,10 +346,16 @@ export class FinanceService {
     });
 
     // Calculate balance by context
-    const balancesByContext: { local: number; home: number } = { local: 0, home: 0 };
-    
+    const balancesByContext: { local: number; home: number } = {
+      local: 0,
+      home: 0,
+    };
+
     transactions.forEach((transaction) => {
-      const amount = transaction.type === 'income' ? transaction.amount : -transaction.amount;
+      const amount =
+        transaction.type === 'income'
+          ? transaction.amount
+          : -transaction.amount;
       if (transaction.context === 'local') {
         balancesByContext.local += amount;
       } else {
@@ -331,11 +373,14 @@ export class FinanceService {
       // Billchop only applies to local context
       try {
         // Get Billchop balance (money owed to user)
-        const billchopBalances = await this.expenseService.getBalances(userId, primaryCurrency);
-        
+        const billchopBalances = await this.expenseService.getBalances(
+          userId,
+          primaryCurrency,
+        );
+
         // totalOwedToUser = money others owe to user (positive = available)
         billchopOwedToUser = billchopBalances.totalOwedToUser || 0;
-        
+
         // Only positive balances count as available (owed to user)
         billchopBalance = billchopOwedToUser > 0 ? billchopOwedToUser : 0;
       } catch (err) {
@@ -345,9 +390,7 @@ export class FinanceService {
     }
 
     // Calculate context-specific balance
-    const contextBalance = context 
-      ? balancesByContext[context] 
-      : totalBalance;
+    const contextBalance = context ? balancesByContext[context] : totalBalance;
 
     return {
       totalBalance: contextBalance,
@@ -369,24 +412,41 @@ export class FinanceService {
 
     const localCurrency = profile?.primaryCurrency || 'USD';
     const homeCurrency = profile?.homeCountryCurrency || 'USD';
+    const targetCurrency = primaryCurrency || localCurrency;
 
     // Get balances for both contexts
     const [localBalanceData, homeBalanceData] = await Promise.all([
-      this.getBalance(userId, 'local', true, localCurrency),
+      this.getBalance(userId, 'local', true, targetCurrency),
       this.getBalance(userId, 'home', false, homeCurrency),
     ]);
 
-    const localBalance = localBalanceData.totalAvailableBalance || localBalanceData.totalBalance || 0;
+    const localBalance =
+      localBalanceData.totalAvailableBalance ||
+      localBalanceData.totalBalance ||
+      0;
     const homeBalance = homeBalanceData.totalBalance || 0;
 
-    // Convert home balance to primary currency (local currency)
+    // Convert balances to target currency
+    let localBalanceConverted = localBalance;
+    if (localCurrency !== targetCurrency) {
+      try {
+        localBalanceConverted = await this.currencyService.convertAmount(
+          localBalance,
+          localCurrency,
+          targetCurrency,
+        );
+      } catch (err) {
+        console.error('[FinanceService] Failed to convert local balance:', err);
+      }
+    }
+
     let homeBalanceConverted = homeBalance;
-    if (homeCurrency !== localCurrency) {
+    if (homeCurrency !== targetCurrency) {
       try {
         homeBalanceConverted = await this.currencyService.convertAmount(
           homeBalance,
           homeCurrency,
-          localCurrency,
+          targetCurrency,
         );
       } catch (err) {
         console.error('[FinanceService] Failed to convert home balance:', err);
@@ -395,34 +455,31 @@ export class FinanceService {
     }
 
     // Calculate combined total in primary currency
-    const combinedTotal = localBalance + homeBalanceConverted;
+    const combinedTotal = localBalanceConverted + homeBalanceConverted;
 
     return {
       combinedTotal,
       localBalance: {
-        amount: localBalance,
-        currency: localCurrency,
+        amount: localBalanceConverted,
+        currency: targetCurrency,
+        originalAmount: localBalance,
+        originalCurrency: localCurrency,
       },
       homeBalance: {
         amount: homeBalance,
         currency: homeCurrency,
         convertedAmount: homeBalanceConverted,
-        convertedCurrency: localCurrency,
+        convertedCurrency: targetCurrency,
       },
       billchopBalance: localBalanceData.billchopBalance || 0,
+      primaryCurrency: targetCurrency,
     };
   }
 
-  async getCategories() {
+  getCategories() {
     // Return predefined categories for MVP
     return {
-      income: [
-        'Salary',
-        'Freelance',
-        'Investment',
-        'Gift',
-        'Other Income',
-      ],
+      income: ['Salary', 'Freelance', 'Investment', 'Gift', 'Other Income'],
       expense: [
         // Food & Dining
         'Groceries',
@@ -485,7 +542,11 @@ export class FinanceService {
     };
   }
 
-  async updateTransaction(userId: string, transactionId: string, updateDto: UpdateTransactionDto) {
+  async updateTransaction(
+    userId: string,
+    transactionId: string,
+    updateDto: UpdateTransactionDto,
+  ) {
     // Verify transaction belongs to user
     const transaction = await this.prisma.financeTransaction.findFirst({
       where: {
@@ -498,16 +559,6 @@ export class FinanceService {
       throw new NotFoundException('Transaction not found');
     }
 
-    // Store old transaction data for budget update
-    const oldTransactionData = {
-      type: transaction.type,
-      amount: transaction.amount,
-      category: transaction.category || undefined,
-      context: transaction.context,
-      accountId: transaction.accountId || undefined,
-      date: transaction.date,
-    };
-
     // Auto-populate category for expenses if description is provided and category not set
     let category = updateDto.category;
     if (
@@ -516,7 +567,10 @@ export class FinanceService {
       updateDto.description &&
       updateDto.description !== transaction.description
     ) {
-      const categoryMatch = this.categorizationService.categorizeFinance(updateDto.description, 'expense');
+      const categoryMatch = this.categorizationService.categorizeFinance(
+        updateDto.description,
+        'expense',
+      );
       if (categoryMatch) {
         category = categoryMatch.category;
       }
@@ -528,7 +582,7 @@ export class FinanceService {
       if (updateDto.date instanceof Date) {
         transactionDate = updateDto.date;
       } else {
-        const dateStr = updateDto.date as string;
+        const dateStr = updateDto.date;
         if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
           transactionDate = new Date(dateStr + 'T00:00:00.000Z');
         } else {
@@ -541,12 +595,13 @@ export class FinanceService {
     }
 
     // Prepare update data
-    const updateData: any = {};
+    const updateData: Prisma.FinanceTransactionUpdateInput = {};
     if (updateDto.amount !== undefined) updateData.amount = updateDto.amount;
     if (updateDto.context !== undefined) updateData.context = updateDto.context;
     if (updateDto.source !== undefined) updateData.source = updateDto.source;
     if (category !== undefined) updateData.category = category;
-    if (updateDto.description !== undefined) updateData.description = updateDto.description;
+    if (updateDto.description !== undefined)
+      updateData.description = updateDto.description;
     if (transactionDate !== undefined) updateData.date = transactionDate;
 
     // Update transaction
@@ -567,7 +622,10 @@ export class FinanceService {
           date: updatedTransaction.date,
         })
         .catch((err) => {
-          console.error('[FinanceService] Failed to update budget tracking after update:', err);
+          console.error(
+            '[FinanceService] Failed to update budget tracking after update:',
+            err,
+          );
         });
     }
 
@@ -608,7 +666,10 @@ export class FinanceService {
       this.budgetService
         .updateBudgetsForTransaction(userId, transactionData)
         .catch((err) => {
-          console.error('[FinanceService] Failed to update budget tracking after delete:', err);
+          console.error(
+            '[FinanceService] Failed to update budget tracking after delete:',
+            err,
+          );
         });
     }
 
@@ -622,7 +683,13 @@ export class FinanceService {
   async syncExpenseSplitToFinance(
     splitId: string,
     userId: string,
-    expenseData: { amount: number; category: string; description: string; date: Date; currency: string },
+    expenseData: {
+      amount: number;
+      category: string;
+      description: string;
+      date: Date;
+      currency: string;
+    },
   ) {
     // Auto-populate category if not provided
     let category = expenseData.category;
@@ -666,7 +733,10 @@ export class FinanceService {
           date: updated.date,
         })
         .catch((err) => {
-          console.error('[FinanceService] Failed to update budget tracking after update:', err);
+          console.error(
+            '[FinanceService] Failed to update budget tracking after update:',
+            err,
+          );
         });
 
       return updated;
@@ -697,7 +767,10 @@ export class FinanceService {
           date: transaction.date,
         })
         .catch((err) => {
-          console.error('[FinanceService] Failed to update budget tracking after sync:', err);
+          console.error(
+            '[FinanceService] Failed to update budget tracking after sync:',
+            err,
+          );
         });
 
       return transaction;
@@ -737,7 +810,10 @@ export class FinanceService {
       this.budgetService
         .updateBudgetsForTransaction(transaction.userId, transactionData)
         .catch((err) => {
-          console.error('[FinanceService] Failed to update budget tracking after split delete:', err);
+          console.error(
+            '[FinanceService] Failed to update budget tracking after split delete:',
+            err,
+          );
         });
     }
   }
@@ -753,7 +829,7 @@ export class FinanceService {
     offset: number = 0,
   ) {
     // Build where clause
-    const where: any = { userId };
+    const where: Prisma.FinanceTransactionWhereInput = { userId };
     if (context) {
       where.context = context;
     }
@@ -786,11 +862,11 @@ export class FinanceService {
     const totalCount = await this.prisma.financeTransaction.count({ where });
 
     // Get accounts with their creation/update timestamps
-    const accountsWhere: any = { userId };
+    const accountsWhere: Prisma.FinanceAccountWhereInput = { userId };
     if (context) {
       accountsWhere.context = context;
     }
-    
+
     const accounts = await this.prisma.financeAccount.findMany({
       where: accountsWhere,
       select: {
@@ -818,4 +894,3 @@ export class FinanceService {
     };
   }
 }
-

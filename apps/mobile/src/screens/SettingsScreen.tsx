@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,77 +9,82 @@ import {
   TextInput,
   Modal,
   TouchableOpacity,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth } from '../auth/authContext';
-import { getProfile, updateProfile, Profile } from '../api/profileApi';
-import { useDataFetch } from '../hooks/useDataFetch';
-import { useAsyncOperation } from '../hooks/useAsyncOperation';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useAuth } from "../auth/authContext";
+import { getProfile, updateProfile, Profile } from "../api/profileApi";
+import { useDataFetch } from "../hooks/useDataFetch";
+import { useAsyncOperation } from "../hooks/useAsyncOperation";
 import {
   exportExpensesCSV,
   exportTransactionsCSV,
   exportAllDataJSON,
   saveAndShareCSV,
   saveAndShareJSON,
-} from '../api/exportApi';
-import { inviteUserToApp } from '../api/friendApi';
-import { MaterialIcons } from '@expo/vector-icons';
-import { Header } from '../components/Header';
-import { SettingsSection } from '../components/SettingsSection';
-import { SettingsToggle } from '../components/SettingsToggle';
-import { SettingsPicker, type SettingsPickerOption } from '../components/SettingsPicker';
-import { SettingsButton } from '../components/SettingsButton';
-import { SettingsDivider } from '../components/SettingsDivider';
-import { ErrorState } from '../components/ErrorState';
-import { theme } from '../theme';
-import { useBottomNavPadding } from '../hooks/useBottomNavPadding';
+} from "../api/exportApi";
+import { inviteUserToApp } from "../api/friendApi";
+import { MaterialIcons } from "@expo/vector-icons";
+import { Header } from "../components/Header";
+import { SettingsSection } from "../components/SettingsSection";
+import { SettingsToggle } from "../components/SettingsToggle";
+import {
+  SettingsPicker,
+  type SettingsPickerOption,
+} from "../components/SettingsPicker";
+import { SettingsButton } from "../components/SettingsButton";
+import { ErrorState } from "../components/ErrorState";
+import { useTheme, type ThemeMode } from "../theme";
+import { useBottomNavPadding } from "../hooks/useBottomNavPadding";
 
 interface SettingsScreenProps {
   onBack: () => void;
-  onNavigateToProfile?: () => void;
+  onNavigateToEditProfile?: () => void;
+  onNavigateToAccountSettings?: () => void;
 }
 
 const CURRENCY_OPTIONS: SettingsPickerOption[] = [
-  { label: 'US Dollar (USD)', value: 'USD' },
-  { label: 'Euro (EUR)', value: 'EUR' },
-  { label: 'British Pound (GBP)', value: 'GBP' },
-  { label: 'Indian Rupee (INR)', value: 'INR' },
-  { label: 'Canadian Dollar (CAD)', value: 'CAD' },
-  { label: 'Australian Dollar (AUD)', value: 'AUD' },
-  { label: 'Japanese Yen (JPY)', value: 'JPY' },
+  { label: "US Dollar (USD)", value: "USD" },
+  { label: "Euro (EUR)", value: "EUR" },
+  { label: "British Pound (GBP)", value: "GBP" },
+  { label: "Indian Rupee (INR)", value: "INR" },
+  { label: "Canadian Dollar (CAD)", value: "CAD" },
+  { label: "Australian Dollar (AUD)", value: "AUD" },
+  { label: "Japanese Yen (JPY)", value: "JPY" },
 ];
 
 const THEME_OPTIONS: SettingsPickerOption[] = [
-  { label: 'Light', value: 'light' },
-  { label: 'Dark', value: 'dark' },
-  { label: 'System', value: 'system' },
+  { label: "Light", value: "light" },
+  { label: "Dark", value: "dark" },
+  { label: "System", value: "system" },
 ];
 
 const FONT_SIZE_OPTIONS: SettingsPickerOption[] = [
-  { label: 'Small', value: 'small' },
-  { label: 'Medium', value: 'medium' },
-  { label: 'Large', value: 'large' },
+  { label: "Small", value: "small" },
+  { label: "Medium", value: "medium" },
+  { label: "Large", value: "large" },
 ];
 
 const VISIBILITY_OPTIONS: SettingsPickerOption[] = [
-  { label: 'Public', value: 'public' },
-  { label: 'Friends Only', value: 'friends' },
-  { label: 'Private', value: 'private' },
+  { label: "Public", value: "public" },
+  { label: "Friends Only", value: "friends" },
+  { label: "Private", value: "private" },
 ];
 
 export function SettingsScreen({
   onBack,
-  onNavigateToProfile,
+  onNavigateToEditProfile,
+  onNavigateToAccountSettings,
 }: SettingsScreenProps) {
-  const { token, user, logout } = useAuth();
+  const { theme, mode: themeMode, setMode: setThemeMode } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { token, logout } = useAuth();
   const bottomPadding = useBottomNavPadding();
 
   // State for all settings
-  const [theme_, setTheme] = useState('system');
-  const [fontSize, setFontSize] = useState('medium');
+  const [fontSize, setFontSize] = useState("medium");
   const [highContrast, setHighContrast] = useState(false);
-  const [primaryCurrency, setPrimaryCurrency] = useState('USD');
-  const [homeCountryCurrency, setHomeCountryCurrency] = useState('USD');
+  const [primaryCurrency, setPrimaryCurrency] = useState("USD");
+  const [homeCountryCurrency, setHomeCountryCurrency] = useState("USD");
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(true);
@@ -89,28 +94,42 @@ export function SettingsScreen({
   const [messageNotifications, setMessageNotifications] = useState(true);
   const [listingNotifications, setListingNotifications] = useState(true);
 
-  const [profileVisibility, setProfileVisibility] = useState<'public' | 'friends' | 'private'>('public');
-  const [trustScoreVisibility, setTrustScoreVisibility] = useState<'public' | 'friends' | 'private'>('public');
+  const [profileVisibility, setProfileVisibility] = useState<
+    "public" | "friends" | "private"
+  >("public");
+  const [trustScoreVisibility, setTrustScoreVisibility] = useState<
+    "public" | "friends" | "private"
+  >("public");
 
   const [showInviteForm, setShowInviteForm] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteMobile, setInviteMobile] = useState('');
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteMobile, setInviteMobile] = useState("");
 
   // Fetch profile
-  const { data: profile, loading, error } = useDataFetch<Profile>({
+  const {
+    data: profile,
+    loading,
+    error,
+  } = useDataFetch<Profile>({
     fetchFn: async () => {
-      if (!token) throw new Error('No authentication token');
+      if (!token) throw new Error("No authentication token");
       return getProfile(token);
     },
     immediate: true,
     deps: [token],
     transform: (data: Profile) => {
       if (data) {
-        setTheme(data.theme || 'system');
-        setFontSize(data.fontSize || 'medium');
+        const nextTheme =
+          data.theme === "light" ||
+          data.theme === "dark" ||
+          data.theme === "system"
+            ? (data.theme as ThemeMode)
+            : "system";
+        void setThemeMode(nextTheme);
+        setFontSize(data.fontSize || "medium");
         setHighContrast(data.highContrast ?? false);
-        setPrimaryCurrency(data.primaryCurrency || 'USD');
-        setHomeCountryCurrency(data.homeCountryCurrency || 'USD');
+        setPrimaryCurrency(data.primaryCurrency || "USD");
+        setHomeCountryCurrency(data.homeCountryCurrency || "USD");
         setNotificationsEnabled(data.notificationsEnabled ?? true);
         setEmailNotifications(data.emailNotifications ?? true);
         setPushNotifications(data.pushNotifications ?? true);
@@ -118,8 +137,8 @@ export function SettingsScreen({
         setChoreReminders(data.choreReminders ?? true);
         setMessageNotifications(data.messageNotifications ?? true);
         setListingNotifications(data.listingNotifications ?? true);
-        setProfileVisibility((data.profileVisibility as any) || 'public');
-        setTrustScoreVisibility((data.trustScoreVisibility as any) || 'public');
+        setProfileVisibility((data.profileVisibility as any) || "public");
+        setTrustScoreVisibility((data.trustScoreVisibility as any) || "public");
       }
       return data;
     },
@@ -128,9 +147,9 @@ export function SettingsScreen({
   // Save settings
   const { execute: saveSettings, loading: savingSettings } = useAsyncOperation({
     operationFn: async () => {
-      if (!token) throw new Error('No authentication token');
+      if (!token) throw new Error("No authentication token");
       return updateProfile(token, {
-        theme: theme_,
+        theme: themeMode,
         fontSize,
         highContrast,
         primaryCurrency,
@@ -147,63 +166,66 @@ export function SettingsScreen({
       });
     },
     onSuccess: () => {
-      Alert.alert('Success', 'Settings saved successfully');
+      Alert.alert("Success", "Settings saved successfully");
     },
   });
 
   // Save notification preferences
-  const { execute: saveNotifications, loading: savingNotifications } = useAsyncOperation({
-    operationFn: async () => {
-      if (!token) throw new Error('No authentication token');
-      return updateProfile(token, {
-        notificationsEnabled,
-        emailNotifications,
-        pushNotifications,
-        expenseReminders,
-        choreReminders,
-        messageNotifications,
-        listingNotifications,
-      });
-    },
-    onSuccess: () => {
-      Alert.alert('Success', 'Notification preferences saved');
-    },
-  });
+  const { execute: saveNotifications, loading: savingNotifications } =
+    useAsyncOperation({
+      operationFn: async () => {
+        if (!token) throw new Error("No authentication token");
+        return updateProfile(token, {
+          notificationsEnabled,
+          emailNotifications,
+          pushNotifications,
+          expenseReminders,
+          choreReminders,
+          messageNotifications,
+          listingNotifications,
+        });
+      },
+      onSuccess: () => {
+        Alert.alert("Success", "Notification preferences saved");
+      },
+    });
 
   // Export data
-  const { execute: exportExpenses, loading: exportingExpenses } = useAsyncOperation({
-    operationFn: async () => {
-      if (!token) throw new Error('No authentication token');
-      const csv = await exportExpensesCSV(token);
-      const filename = `expenses_${new Date().toISOString().split('T')[0]}.csv`;
-      await saveAndShareCSV(csv, filename);
-    },
-    onSuccess: () => {
-      Alert.alert('Success', 'Expenses exported');
-    },
-  });
+  const { execute: exportExpenses, loading: exportingExpenses } =
+    useAsyncOperation({
+      operationFn: async () => {
+        if (!token) throw new Error("No authentication token");
+        const csv = await exportExpensesCSV(token);
+        const filename = `expenses_${new Date().toISOString().split("T")[0]}.csv`;
+        await saveAndShareCSV(csv, filename);
+      },
+      onSuccess: () => {
+        Alert.alert("Success", "Expenses exported");
+      },
+    });
 
-  const { execute: exportTransactions, loading: exportingTransactions } = useAsyncOperation({
-    operationFn: async () => {
-      if (!token) throw new Error('No authentication token');
-      const csv = await exportTransactionsCSV(token);
-      const filename = `transactions_${new Date().toISOString().split('T')[0]}.csv`;
-      await saveAndShareCSV(csv, filename);
-    },
-    onSuccess: () => {
-      Alert.alert('Success', 'Transactions exported');
-    },
-  });
+  const { execute: exportTransactions, loading: exportingTransactions } =
+    useAsyncOperation({
+      operationFn: async () => {
+        if (!token) throw new Error("No authentication token");
+        const csv = await exportTransactionsCSV(token);
+        const filename = `transactions_${new Date().toISOString().split("T")[0]}.csv`;
+        await saveAndShareCSV(csv, filename);
+      },
+      onSuccess: () => {
+        Alert.alert("Success", "Transactions exported");
+      },
+    });
 
   const { execute: exportAll, loading: exportingAll } = useAsyncOperation({
     operationFn: async () => {
-      if (!token) throw new Error('No authentication token');
+      if (!token) throw new Error("No authentication token");
       const data = await exportAllDataJSON(token);
-      const filename = `dreamfinora_export_${new Date().toISOString().split('T')[0]}.json`;
+      const filename = `dreamfinora_export_${new Date().toISOString().split("T")[0]}.json`;
       await saveAndShareJSON(data, filename);
     },
     onSuccess: () => {
-      Alert.alert('Success', 'All data exported');
+      Alert.alert("Success", "All data exported");
     },
   });
 
@@ -211,7 +233,7 @@ export function SettingsScreen({
   const { execute: handleInvite, loading: inviting } = useAsyncOperation({
     operationFn: async () => {
       if (!inviteEmail && !inviteMobile) {
-        throw new Error('Please enter email or mobile number');
+        throw new Error("Please enter email or mobile number");
       }
       return inviteUserToApp(token!, {
         email: inviteEmail || undefined,
@@ -219,20 +241,20 @@ export function SettingsScreen({
       });
     },
     onSuccess: () => {
-      Alert.alert('Success', 'Invitation sent');
-      setInviteEmail('');
-      setInviteMobile('');
+      Alert.alert("Success", "Invitation sent");
+      setInviteEmail("");
+      setInviteMobile("");
       setShowInviteForm(false);
     },
   });
 
   const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
-      { text: 'Cancel', onPress: () => {} },
+    Alert.alert("Logout", "Are you sure you want to logout?", [
+      { text: "Cancel", onPress: () => {} },
       {
-        text: 'Logout',
+        text: "Logout",
         onPress: () => logout(),
-        style: 'destructive',
+        style: "destructive",
       },
     ]);
   };
@@ -261,12 +283,19 @@ export function SettingsScreen({
     <SafeAreaView style={styles.container}>
       <Header title="Settings" onBack={onBack} />
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Account & Profile Section */}
         <SettingsSection title="Account & Profile" defaultExpanded={true}>
           <TouchableOpacity
-            style={styles.settingRow}
-            onPress={onNavigateToProfile}
+            style={[
+              styles.settingRow,
+              !onNavigateToEditProfile && styles.settingRowDisabled,
+            ]}
+            onPress={onNavigateToEditProfile}
+            disabled={!onNavigateToEditProfile}
             activeOpacity={0.7}
           >
             <Text style={styles.settingLabel}>Edit Profile</Text>
@@ -277,7 +306,22 @@ export function SettingsScreen({
             />
           </TouchableOpacity>
 
-          <SettingsDivider />
+          <TouchableOpacity
+            style={[
+              styles.settingRow,
+              !onNavigateToAccountSettings && styles.settingRowDisabled,
+            ]}
+            onPress={onNavigateToAccountSettings}
+            disabled={!onNavigateToAccountSettings}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.settingLabel}>Account & Security</Text>
+            <MaterialIcons
+              name="arrow-forward"
+              size={20}
+              color={theme.colors.textSecondary}
+            />
+          </TouchableOpacity>
 
           <SettingsPicker
             label="Profile Visibility"
@@ -295,8 +339,6 @@ export function SettingsScreen({
             description="Who can see your trust score"
           />
 
-          <SettingsDivider />
-
           <SettingsButton
             label="Save Privacy Settings"
             onPress={() => saveSettings()}
@@ -308,8 +350,8 @@ export function SettingsScreen({
         <SettingsSection title="Preferences">
           <SettingsPicker
             label="Theme"
-            value={theme_}
-            onChange={setTheme}
+            value={themeMode}
+            onChange={(value) => void setThemeMode(value as ThemeMode)}
             options={THEME_OPTIONS}
             description="Choose your preferred theme"
           />
@@ -329,8 +371,6 @@ export function SettingsScreen({
             description="Increase visual contrast for accessibility"
           />
 
-          <SettingsDivider />
-
           <SettingsPicker
             label="Primary Currency"
             value={primaryCurrency}
@@ -346,8 +386,6 @@ export function SettingsScreen({
             options={CURRENCY_OPTIONS}
             description="Your home currency for reference"
           />
-
-          <SettingsDivider />
 
           <SettingsButton
             label="Save Preferences"
@@ -365,8 +403,6 @@ export function SettingsScreen({
             description="Enable or disable all notifications"
           />
 
-          <SettingsDivider />
-
           <SettingsToggle
             label="Email Notifications"
             value={emailNotifications}
@@ -382,8 +418,6 @@ export function SettingsScreen({
             description="Receive push notifications on device"
             disabled={!notificationsEnabled}
           />
-
-          <SettingsDivider />
 
           <SettingsToggle
             label="Expense Reminders"
@@ -417,8 +451,6 @@ export function SettingsScreen({
             disabled={!notificationsEnabled}
           />
 
-          <SettingsDivider />
-
           <SettingsButton
             label="Save Notification Settings"
             onPress={() => saveNotifications()}
@@ -450,13 +482,6 @@ export function SettingsScreen({
 
         {/* Support & About Section */}
         <SettingsSection title="Support & About">
-          <SettingsButton
-            label="Account & Security"
-            onPress={() => {/* TODO: Navigate to account security when integrated */}}
-            variant="secondary"
-            disabled
-          />
-
           <SettingsButton
             label="Invite User to App"
             onPress={() => setShowInviteForm(true)}
@@ -526,67 +551,75 @@ export function SettingsScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.white,
-  },
-  scrollView: {
-    flex: 1,
-    backgroundColor: theme.colors.backgroundSecondary,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  settingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: theme.spacing.md,
-    paddingHorizontal: theme.spacing.base,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.backgroundSecondary,
-  },
-  settingLabel: {
-    fontSize: theme.typography.fontSize.base,
-    fontWeight: theme.typography.fontWeight.medium,
-    color: theme.colors.textPrimary,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: theme.colors.white,
-    borderRadius: 12,
-    padding: theme.spacing.lg,
-    width: '85%',
-    maxWidth: 400,
-  },
-  modalTitle: {
-    fontSize: theme.typography.fontSize.lg,
-    fontWeight: theme.typography.fontWeight.semibold,
-    color: theme.colors.textPrimary,
-    marginBottom: theme.spacing.lg,
-    textAlign: 'center',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 8,
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.md,
-    fontSize: theme.typography.fontSize.base,
-    color: theme.colors.textPrimary,
-  },
-  orText: {
-    textAlign: 'center',
-    color: theme.colors.textTertiary,
-    marginBottom: theme.spacing.md,
-    fontSize: theme.typography.fontSize.sm,
-  },
-});
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    scrollView: {
+      flex: 1,
+      backgroundColor: theme.colors.backgroundSecondary,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    settingRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.base,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.borderLight,
+    },
+    settingRowDisabled: {
+      opacity: 0.5,
+    },
+    settingLabel: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.textPrimary,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: theme.colors.overlay,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    modalContent: {
+      backgroundColor: theme.colors.background,
+      borderRadius: 12,
+      padding: theme.spacing.lg,
+      width: "85%",
+      maxWidth: 400,
+      borderWidth: 1,
+      borderColor: theme.colors.borderLight,
+      ...(theme.shadows.md || {}),
+    },
+    modalTitle: {
+      fontSize: theme.typography.fontSize.lg,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+      marginBottom: theme.spacing.lg,
+      textAlign: "center",
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: 8,
+      padding: theme.spacing.md,
+      marginBottom: theme.spacing.md,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textPrimary,
+      backgroundColor: theme.colors.background,
+    },
+    orText: {
+      textAlign: "center",
+      color: theme.colors.textTertiary,
+      marginBottom: theme.spacing.md,
+      fontSize: theme.typography.fontSize.sm,
+    },
+  });

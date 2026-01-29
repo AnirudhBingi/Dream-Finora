@@ -1,5 +1,5 @@
-import React from 'react';
-import { Path, Circle, G, Rect } from 'react-native-svg';
+import React from "react";
+import { Path, Circle, G, Rect } from "react-native-svg";
 
 /**
  * Navigation icon component props
@@ -12,19 +12,19 @@ interface IconComponentProps {
  * Type for navigation icon names
  */
 export type NavigationIconName =
-  | 'notifications'
-  | 'settings'
-  | 'friends'
-  | 'groups'
-  | 'messages'
-  | 'activity'
-  | 'finance'
-  | 'analytics'
-  | 'arrow-down'
-  | 'arrow-up'
-  | 'expenses'
-  | 'chevron-right'
-  | 'logout';
+  | "notifications"
+  | "settings"
+  | "friends"
+  | "groups"
+  | "messages"
+  | "activity"
+  | "finance"
+  | "analytics"
+  | "arrow-down"
+  | "arrow-up"
+  | "expenses"
+  | "chevron-right"
+  | "logout";
 
 /**
  * Custom SVG icons for navigation and features
@@ -56,7 +56,10 @@ export const FriendsIcon = ({ color }: IconComponentProps) => (
     <Path d="M8 12c-2.21 0-4 1.34-4 3v2h8v-2c0-1.66-1.79-3-4-3z" fill={color} />
     {/* Right person */}
     <Circle cx="16" cy="6" r="3" fill={color} />
-    <Path d="M16 12c-2.21 0-4 1.34-4 3v2h8v-2c0-1.66-1.79-3-4-3z" fill={color} />
+    <Path
+      d="M16 12c-2.21 0-4 1.34-4 3v2h8v-2c0-1.66-1.79-3-4-3z"
+      fill={color}
+    />
   </G>
 );
 
@@ -64,13 +67,22 @@ export const GroupsIcon = ({ color }: IconComponentProps) => (
   <G>
     {/* Left person */}
     <Circle cx="7" cy="6" r="2.5" fill={color} />
-    <Path d="M7 11.5c-1.66 0-3 1-3 2.25v2h6v-2c0-1.25-1.34-2.25-3-2.25z" fill={color} />
+    <Path
+      d="M7 11.5c-1.66 0-3 1-3 2.25v2h6v-2c0-1.25-1.34-2.25-3-2.25z"
+      fill={color}
+    />
     {/* Center person */}
     <Circle cx="12" cy="6" r="2.5" fill={color} />
-    <Path d="M12 11.5c-1.66 0-3 1-3 2.25v2h6v-2c0-1.25-1.34-2.25-3-2.25z" fill={color} />
+    <Path
+      d="M12 11.5c-1.66 0-3 1-3 2.25v2h6v-2c0-1.25-1.34-2.25-3-2.25z"
+      fill={color}
+    />
     {/* Right person */}
     <Circle cx="17" cy="6" r="2.5" fill={color} />
-    <Path d="M17 11.5c-1.66 0-3 1-3 2.25v2h6v-2c0-1.25-1.34-2.25-3-2.25z" fill={color} />
+    <Path
+      d="M17 11.5c-1.66 0-3 1-3 2.25v2h6v-2c0-1.25-1.34-2.25-3-2.25z"
+      fill={color}
+    />
   </G>
 );
 
@@ -82,7 +94,10 @@ export const MessagesIcon = ({ color }: IconComponentProps) => (
     />
     <Circle cx="9" cy="10" r="1.5" fill={color} />
     <Circle cx="15" cy="10" r="1.5" fill={color} />
-    <Path d="M12 13c1.33 0 2.53-.47 3.5-1.25-.97-.78-2.17-1.25-3.5-1.25s-2.53.47-3.5 1.25C9.47 12.53 10.67 13 12 13z" fill={color} />
+    <Path
+      d="M12 13c1.33 0 2.53-.47 3.5-1.25-.97-.78-2.17-1.25-3.5-1.25s-2.53.47-3.5 1.25C9.47 12.53 10.67 13 12 13z"
+      fill={color}
+    />
   </G>
 );
 
@@ -116,13 +131,19 @@ export const AnalyticsIcon = ({ color }: IconComponentProps) => (
 
 export const ArrowDownIcon = ({ color }: IconComponentProps) => (
   <G>
-    <Path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z" fill={color} />
+    <Path
+      d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"
+      fill={color}
+    />
   </G>
 );
 
 export const ArrowUpIcon = ({ color }: IconComponentProps) => (
   <G>
-    <Path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6 1.41 1.41z" fill={color} />
+    <Path
+      d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6 1.41 1.41z"
+      fill={color}
+    />
   </G>
 );
 
@@ -137,32 +158,40 @@ export const ExpensesIcon = ({ color }: IconComponentProps) => (
 
 export const ChevronRightIcon = ({ color }: IconComponentProps) => (
   <G>
-    <Path d="M9.29 6.71a.996.996 0 0 0 0 1.41L13.17 12l-3.88 3.88a.996.996 0 1 0 1.41 1.41l4.59-4.59a.996.996 0 0 0 0-1.41L10.7 6.7c-.38-.38-1.02-.38-1.41.01z" fill={color} />
+    <Path
+      d="M9.29 6.71a.996.996 0 0 0 0 1.41L13.17 12l-3.88 3.88a.996.996 0 1 0 1.41 1.41l4.59-4.59a.996.996 0 0 0 0-1.41L10.7 6.7c-.38-.38-1.02-.38-1.41.01z"
+      fill={color}
+    />
   </G>
 );
 
 export const LogoutIcon = ({ color }: IconComponentProps) => (
   <G>
-    <Path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.59L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z" fill={color} />
+    <Path
+      d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.59L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"
+      fill={color}
+    />
   </G>
 );
 
 /**
  * Map of navigation icon names to icon components
  */
-export const navigationIconMap: Record<NavigationIconName, React.FC<IconComponentProps>> = {
-  'notifications': NotificationsIcon,
-  'settings': SettingsIcon,
-  'friends': FriendsIcon,
-  'groups': GroupsIcon,
-  'messages': MessagesIcon,
-  'activity': ActivityIcon,
-  'finance': FinanceIcon,
-  'analytics': AnalyticsIcon,
-  'arrow-down': ArrowDownIcon,
-  'arrow-up': ArrowUpIcon,
-  'expenses': ExpensesIcon,
-  'chevron-right': ChevronRightIcon,
-  'logout': LogoutIcon,
+export const navigationIconMap: Record<
+  NavigationIconName,
+  React.FC<IconComponentProps>
+> = {
+  notifications: NotificationsIcon,
+  settings: SettingsIcon,
+  friends: FriendsIcon,
+  groups: GroupsIcon,
+  messages: MessagesIcon,
+  activity: ActivityIcon,
+  finance: FinanceIcon,
+  analytics: AnalyticsIcon,
+  "arrow-down": ArrowDownIcon,
+  "arrow-up": ArrowUpIcon,
+  expenses: ExpensesIcon,
+  "chevron-right": ChevronRightIcon,
+  logout: LogoutIcon,
 };
-

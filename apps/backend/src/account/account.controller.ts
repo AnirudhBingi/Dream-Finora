@@ -67,7 +67,9 @@ export class AccountController {
     @CurrentUser() user: { userId: string },
     @Body() deleteAccountDto: DeleteAccountDto,
   ) {
-    return this.accountService.deleteAccount(user.userId, deleteAccountDto.password);
+    return this.accountService.deleteAccount(
+      user.userId,
+      deleteAccountDto.password,
+    );
   }
 }
-

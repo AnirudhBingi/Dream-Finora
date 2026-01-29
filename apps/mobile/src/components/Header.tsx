@@ -1,12 +1,21 @@
-import React, { useEffect, useState, useRef, ReactNode } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, Platform, Modal } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
-import { useAuth } from '../auth/authContext';
-import { getProfile, Profile } from '../api/profileApi';
-import { getUnreadCount } from '../api/notificationApi';
-import { getAvatarUrl } from '../utils/avatar';
-import { Icon } from './Icon';
+import React, { useEffect, useMemo, useState, useRef, ReactNode } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Image,
+  Platform,
+  Modal,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useAuth } from "../auth/authContext";
+import { getProfile, Profile } from "../api/profileApi";
+import { getUnreadCount } from "../api/notificationApi";
+import { getAvatarUrl } from "../utils/avatar";
+import { Icon } from "./Icon";
+import { useTheme } from "../theme";
 
 export interface HeaderOption {
   label: string;
@@ -20,16 +29,16 @@ interface HeaderProps {
   onNavigateToProfile?: () => void;
   onNavigateToNotifications?: () => void;
   onNavigateToSettings?: () => void;
-  
+
   // Detail/Edit screen props
   title?: string; // Screen title (centered)
   onBack?: () => void; // Back button handler
   rightActions?: ReactNode; // Custom actions (Edit, Delete, etc.)
-  
+
   // Options menu (for non-main screens)
   options?: HeaderOption[]; // Screen-specific options (Edit, Delete, etc.)
   onNavigateToMessages?: () => void; // Messages option
-  
+
   // Visibility toggles
   showProfile?: boolean; // Show/hide profile button (default: true if onNavigateToProfile provided)
   showNotifications?: boolean; // Show/hide notifications (default: true if onNavigateToNotifications provided)
@@ -42,6 +51,12 @@ let profileCache: Profile | null = null;
 let profileCacheToken: string | null = null;
 let unreadCountCache: number = 0;
 let unreadCountCacheToken: string | null = null;
+
+// Export function to invalidate profile cache (call after profile updates)
+export function invalidateProfileCache() {
+  profileCache = null;
+  profileCacheToken = null;
+}
 
 function Header({
   onNavigateToProfile,
@@ -57,6 +72,8 @@ function Header({
   showSettings = !!onNavigateToSettings,
   useOptionsMenu = false,
 }: HeaderProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { token, user } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(() => {
     // Initialize from cache if available
@@ -64,14 +81,19 @@ function Header({
   });
   const [unreadCount, setUnreadCount] = useState(() => {
     // Initialize from cache if available
-    return unreadCountCache && unreadCountCacheToken === token ? unreadCountCache : 0;
+    return unreadCountCache && unreadCountCacheToken === token
+      ? unreadCountCache
+      : 0;
   });
   const isLoadingProfile = useRef(false);
 
   useEffect(() => {
     if (token) {
       // Only load profile if we don't have cached data for this token and not already loading
-      if ((!profileCache || profileCacheToken !== token) && !isLoadingProfile.current) {
+      if (
+        (!profileCache || profileCacheToken !== token) &&
+        !isLoadingProfile.current
+      ) {
         isLoadingProfile.current = true;
         loadProfile();
       } else if (profileCache && profileCacheToken === token) {
@@ -81,7 +103,7 @@ function Header({
         // No cache available, set to null
         setProfile(null);
       }
-      
+
       // Use cached unread count if available, then refresh
       if (unreadCountCache && unreadCountCacheToken === token) {
         setUnreadCount(unreadCountCache);
@@ -125,7 +147,7 @@ function Header({
         setProfile(null);
       }
     } catch (err) {
-      console.error('[Header] Failed to load profile:', err);
+      console.error("[Header] Failed to load profile:", err);
       // On error, clear cache and set profile to null
       profileCache = null;
       profileCacheToken = null;
@@ -143,8 +165,18 @@ function Header({
       unreadCountCache = count;
       unreadCountCacheToken = token;
       setUnreadCount(count);
-    } catch (err) {
-      console.error('[Header] Failed to load unread count:', err);
+    } catch (err: any) {
+      // Only log non-timeout errors to avoid console spam
+      // Timeouts are expected when backend is unavailable
+      if (
+        err?.message &&
+        !err.message.includes("timeout") &&
+        !err.message.includes("timed out")
+      ) {
+        console.error("[Header] Failed to load unread count:", err);
+      }
+      // Keep the cached value on error, don't reset to 0
+      // This prevents the badge from disappearing during temporary network issues
     }
   }
 
@@ -157,42 +189,54 @@ function Header({
   const hasBackButton = !!onBack;
   const hasTitle = !!title;
   const hasRightActions = !!rightActions;
-  
+
   // Build options menu items
   const menuItems: HeaderOption[] = [
     ...options, // Screen-specific options first
-    ...(onNavigateToNotifications ? [{
-      label: 'Notifications',
-      icon: 'notifications',
-      onPress: () => {
-        setShowOptionsMenu(false);
-        onNavigateToNotifications();
-      },
-    }] : []),
-    ...(onNavigateToMessages ? [{
-      label: 'Messages',
-      icon: 'message',
-      onPress: () => {
-        setShowOptionsMenu(false);
-        onNavigateToMessages();
-      },
-    }] : []),
-    ...(onNavigateToSettings ? [{
-      label: 'Settings',
-      icon: 'settings',
-      onPress: () => {
-        setShowOptionsMenu(false);
-        onNavigateToSettings();
-      },
-    }] : []),
+    ...(onNavigateToNotifications
+      ? [
+          {
+            label: "Notifications",
+            icon: "notifications",
+            onPress: () => {
+              setShowOptionsMenu(false);
+              onNavigateToNotifications();
+            },
+          },
+        ]
+      : []),
+    ...(onNavigateToMessages
+      ? [
+          {
+            label: "Messages",
+            icon: "message",
+            onPress: () => {
+              setShowOptionsMenu(false);
+              onNavigateToMessages();
+            },
+          },
+        ]
+      : []),
+    ...(onNavigateToSettings
+      ? [
+          {
+            label: "Settings",
+            icon: "settings",
+            onPress: () => {
+              setShowOptionsMenu(false);
+              onNavigateToSettings();
+            },
+          },
+        ]
+      : []),
   ];
 
   // Calculate total header height (safe area + header content)
   const totalHeaderHeight = headerHeight + insets.top;
 
   return (
-    <View 
-      style={styles.header}
+    <View
+      style={[styles.header, { paddingTop: insets.top + theme.spacing.xs }]}
       onLayout={(e) => {
         const { height } = e.nativeEvent.layout;
         setHeaderHeight(height);
@@ -209,7 +253,11 @@ function Header({
             accessibilityLabel="Back"
             accessibilityHint="Goes back to previous screen"
           >
-            <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
+            <MaterialIcons
+              name="arrow-back"
+              size={24}
+              color={theme.colors.white}
+            />
           </TouchableOpacity>
         ) : showProfile && onNavigateToProfile ? (
           <TouchableOpacity
@@ -221,15 +269,17 @@ function Header({
             accessibilityHint="Opens your profile screen"
           >
             {avatarUrl ? (
-              <Image 
-                source={{ uri: avatarUrl }} 
+              <Image
+                source={{ uri: avatarUrl }}
                 style={styles.profileAvatar}
                 resizeMode="cover"
               />
             ) : (
               <View style={styles.profileAvatarPlaceholder}>
                 <Text style={styles.profileAvatarText}>
-                  {profile?.displayName?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
+                  {profile?.displayName?.[0]?.toUpperCase() ||
+                    user?.email?.[0]?.toUpperCase() ||
+                    "U"}
                 </Text>
               </View>
             )}
@@ -260,10 +310,16 @@ function Header({
               accessibilityLabel="Options"
               accessibilityHint="Opens options menu"
             >
-              <MaterialIcons name="more-vert" size={24} color="#FFFFFF" />
+              <MaterialIcons
+                name="more-vert"
+                size={24}
+                color={theme.colors.textInverse}
+              />
               {unreadCount > 0 && onNavigateToNotifications && (
                 <View style={styles.headerBadge}>
-                  <Text style={styles.headerBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+                  <Text style={styles.headerBadgeText}>
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -279,7 +335,12 @@ function Header({
                   activeOpacity={1}
                   onPress={() => setShowOptionsMenu(false)}
                 >
-                  <View style={[styles.optionsMenuPosition, { top: totalHeaderHeight }]}>
+                  <View
+                    style={[
+                      styles.optionsMenuPosition,
+                      { top: totalHeaderHeight },
+                    ]}
+                  >
                     <View style={styles.optionsMenu}>
                       {menuItems.map((item, index) => (
                         <TouchableOpacity
@@ -295,16 +356,22 @@ function Header({
                           activeOpacity={0.7}
                         >
                           {item.icon && (
-                            <MaterialIcons 
-                              name={item.icon as any} 
-                              size={20} 
-                              color={item.danger ? '#EF4444' : '#374151'} 
+                            <MaterialIcons
+                              name={item.icon as any}
+                              size={20}
+                              color={
+                                item.danger
+                                  ? theme.colors.error
+                                  : theme.colors.gray700
+                              }
                             />
                           )}
-                          <Text style={[
-                            styles.optionsMenuItemText,
-                            item.danger && styles.optionsMenuItemTextDanger,
-                          ]}>
+                          <Text
+                            style={[
+                              styles.optionsMenuItemText,
+                              item.danger && styles.optionsMenuItemTextDanger,
+                            ]}
+                          >
                             {item.label}
                           </Text>
                         </TouchableOpacity>
@@ -318,9 +385,7 @@ function Header({
         ) : (
           <>
             {hasRightActions && (
-              <View style={styles.customActions}>
-                {rightActions}
-              </View>
+              <View style={styles.customActions}>{rightActions}</View>
             )}
             {showNotifications && onNavigateToNotifications && (
               <TouchableOpacity
@@ -328,13 +393,23 @@ function Header({
                 onPress={onNavigateToNotifications}
                 activeOpacity={0.7}
                 accessibilityRole="button"
-                accessibilityLabel={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+                accessibilityLabel={
+                  unreadCount > 0
+                    ? `Notifications, ${unreadCount} unread`
+                    : "Notifications"
+                }
                 accessibilityHint="Opens notifications screen"
               >
-                <Icon name="notifications" size={28} color="#FFFFFF" />
+                <Icon
+                  name="notifications"
+                  size={24}
+                  color={theme.colors.white}
+                />
                 {unreadCount > 0 && (
                   <View style={styles.headerBadge}>
-                    <Text style={styles.headerBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+                    <Text style={styles.headerBadgeText}>
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </Text>
                   </View>
                 )}
               </TouchableOpacity>
@@ -348,7 +423,11 @@ function Header({
                 accessibilityLabel="Settings"
                 accessibilityHint="Opens settings screen"
               >
-                <Icon name="settings" size={28} color="#FFFFFF" />
+                <Icon
+                  name="settings"
+                  size={24}
+                  color={theme.colors.textInverse}
+                />
               </TouchableOpacity>
             )}
             {!hasRightActions && !showNotifications && !showSettings && (
@@ -369,241 +448,249 @@ function Header({
   );
 }
 
-const styles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#6366F1', // Indigo-500 - nice modern color
-    zIndex: 1000,
-    // 3D Effect with gradient-like appearance using shadows
-    ...Platform.select({
-      ios: {
-        shadowColor: '#4F46E5', // Darker indigo for shadow
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        borderBottomWidth: 0,
-      },
-      android: {
-        elevation: 8,
-        borderBottomWidth: 0,
-      },
-    }),
-    // Add a subtle border for depth
-    borderBottomWidth: 1,
-    borderBottomColor: '#4F46E5', // Darker indigo border
-  },
-  headerLeft: {
-    minWidth: 48,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-  },
-  backButton: {
-    padding: 8,
-    minWidth: 44,
-    minHeight: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#4F46E5',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  profileButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  placeholder: {
-    width: 48,
-  },
-  headerCenter: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    textAlign: 'center',
-  },
-  customActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  profileAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    // 3D effect for avatar
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  profileAvatarPlaceholder: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-    // 3D effect for placeholder
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  profileAvatarText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#6366F1',
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  headerIconButton: {
-    position: 'relative',
-    padding: 8,
-    minWidth: 44,
-    minHeight: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)', // Semi-transparent white for glass effect
-    overflow: 'visible', // Ensure badge is visible
-    // 3D effect for buttons
-    ...Platform.select({
-      ios: {
-        shadowColor: '#4F46E5',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  headerBadge: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    backgroundColor: '#EF4444',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-    borderWidth: 2,
-    borderColor: '#6366F1',
-    zIndex: 10, // Ensure badge appears above other elements
-    // 3D effect for badge
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.3,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 5, // Higher elevation for Android
-      },
-    }),
-  },
-  headerBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  optionsMenuContainer: {
-    position: 'relative',
-  },
-  optionsMenuBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
-  },
-  optionsMenuPosition: {
-    position: 'absolute',
-    right: 20,
-  },
-  optionsMenu: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    minWidth: 200,
-    paddingVertical: 8,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.15,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 10,
-      },
-    }),
-  },
-  optionsMenuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    minHeight: 44,
-  },
-  optionsMenuItemDanger: {
-    // Keep same structure but different text color
-  },
-  optionsMenuItemText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#374151',
-    flex: 1,
-  },
-  optionsMenuItemTextDanger: {
-    color: '#EF4444',
-  },
-});
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    header: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: theme.spacing.base,
+      paddingBottom: theme.spacing.sm,
+      backgroundColor: theme.colors.primary,
+      zIndex: 1000,
+      // 3D Effect with gradient-like appearance using shadows
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.primaryDark,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 8,
+          borderBottomWidth: 0,
+        },
+        android: {
+          elevation: 8,
+          borderBottomWidth: 0,
+        },
+      }),
+      // Add a subtle border for depth
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.primaryDark,
+    },
+    headerLeft: {
+      minWidth: 48,
+      alignItems: "flex-start",
+      justifyContent: "center",
+    },
+    backButton: {
+      padding: theme.spacing.xs,
+      minWidth: 40,
+      minHeight: 40,
+      justifyContent: "center",
+      alignItems: "center",
+      borderRadius: 20,
+      backgroundColor: theme.colors.surfaceOverlay,
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.primaryDark,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.2,
+          shadowRadius: 4,
+        },
+        android: {
+          elevation: 3,
+        },
+      }),
+    },
+    profileButton: {
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    placeholder: {
+      width: 48,
+    },
+    headerCenter: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 16,
+    },
+    headerTitle: {
+      fontSize: 18,
+      fontWeight: "600",
+      color: theme.colors.textInverse,
+      textAlign: "center",
+    },
+    customActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    profileAvatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      overflow: "hidden",
+      borderWidth: 2,
+      borderColor: theme.colors.white,
+      // 3D effect for avatar
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.black,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4,
+        },
+        android: {
+          elevation: 4,
+        },
+      }),
+    },
+    profileAvatarPlaceholder: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: theme.colors.background,
+      borderWidth: 2,
+      borderColor: theme.colors.white,
+      justifyContent: "center",
+      alignItems: "center",
+      overflow: "hidden",
+      // 3D effect for placeholder
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.black,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4,
+        },
+        android: {
+          elevation: 4,
+        },
+      }),
+    },
+    profileAvatarText: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.bold,
+      color: theme.colors.primary,
+    },
+    headerRight: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 16,
+    },
+    headerIconButton: {
+      position: "relative",
+      padding: theme.spacing.xs,
+      minWidth: 40,
+      minHeight: 40,
+      justifyContent: "center",
+      alignItems: "center",
+      borderRadius: 20,
+      backgroundColor: theme.colors.surfaceOverlay, // Semi-transparent white for glass effect
+      overflow: "visible", // Ensure badge is visible
+      // 3D effect for buttons
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.primaryDark,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.2,
+          shadowRadius: 4,
+        },
+        android: {
+          elevation: 3,
+        },
+      }),
+    },
+    headerBadge: {
+      position: "absolute",
+      top: 2,
+      right: 2,
+      backgroundColor: theme.colors.error,
+      borderRadius: 10,
+      minWidth: 20,
+      height: 20,
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 6,
+      borderWidth: 2,
+      borderColor: theme.colors.primary,
+      zIndex: 10, // Ensure badge appears above other elements
+      // 3D effect for badge
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.black,
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.3,
+          shadowRadius: 2,
+        },
+        android: {
+          elevation: 5, // Higher elevation for Android
+        },
+      }),
+    },
+    headerBadgeText: {
+      color: theme.colors.textInverse,
+      fontSize: 10,
+      fontWeight: "bold",
+    },
+    optionsMenuContainer: {
+      position: "relative",
+    },
+    optionsMenuBackdrop: {
+      flex: 1,
+      backgroundColor: theme.colors.overlayLight,
+    },
+    optionsMenuPosition: {
+      position: "absolute",
+      right: 20,
+    },
+    optionsMenu: {
+      backgroundColor: theme.colors.background,
+      borderRadius: 12,
+      minWidth: 200,
+      paddingVertical: 8,
+      ...Platform.select({
+        ios: {
+          shadowColor: theme.colors.black,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.15,
+          shadowRadius: 8,
+        },
+        android: {
+          elevation: 10,
+        },
+      }),
+    },
+    optionsMenuItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      minHeight: 44,
+    },
+    optionsMenuItemDanger: {
+      // Keep same structure but different text color
+    },
+    optionsMenuItemText: {
+      fontSize: 16,
+      fontWeight: "500",
+      color: theme.colors.textPrimary,
+      flex: 1,
+    },
+    optionsMenuItemTextDanger: {
+      color: theme.colors.error,
+    },
+    optionsMenuOverlay: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: "transparent",
+      zIndex: 999,
+    },
+  });
 
 export { Header };
-export type { HeaderOption };
 export default Header;
-

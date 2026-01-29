@@ -18,4 +18,3 @@ export class UpdateAccountDto {
   @IsString()
   accountType?: string;
 }
-

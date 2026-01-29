@@ -1,13 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
-interface ExchangeRate {
-  from: string;
-  to: string;
-  rate: number;
-  timestamp: Date;
-}
-
 interface ExchangeRateResponse {
   rates: Record<string, number>;
   base: string;
@@ -28,7 +21,10 @@ export class CurrencyService {
    * Get exchange rate from one currency to another
    * Uses caching to avoid excessive API calls
    */
-  async getExchangeRate(fromCurrency: string, toCurrency: string): Promise<number> {
+  async getExchangeRate(
+    fromCurrency: string,
+    toCurrency: string,
+  ): Promise<number> {
     if (fromCurrency === toCurrency) {
       return 1;
     }
@@ -37,7 +33,10 @@ export class CurrencyService {
     const cached = this.cache.get(cacheKey);
 
     // Check if cached rate is still valid (less than 1 hour old)
-    if (cached && Date.now() - cached.timestamp.getTime() < this.CACHE_DURATION_MS) {
+    if (
+      cached &&
+      Date.now() - cached.timestamp.getTime() < this.CACHE_DURATION_MS
+    ) {
       this.logger.debug(`Using cached rate for ${cacheKey}: ${cached.rate}`);
       return cached.rate;
     }
@@ -46,17 +45,19 @@ export class CurrencyService {
       // Fetch latest rates from API
       const response = await fetch(`${this.API_BASE_URL}/${fromCurrency}`);
       if (!response.ok) {
-        throw new Error(`Failed to fetch exchange rates: ${response.statusText}`);
+        throw new Error(
+          `Failed to fetch exchange rates: ${response.statusText}`,
+        );
       }
 
-      const data: ExchangeRateResponse = await response.json();
-      
+      const data = (await response.json()) as ExchangeRateResponse;
+
       if (!data.rates || !data.rates[toCurrency]) {
         throw new Error(`Exchange rate not found for ${toCurrency}`);
       }
 
       const rate = data.rates[toCurrency];
-      
+
       // Cache the rate
       this.cache.set(cacheKey, {
         rate,
@@ -72,11 +73,15 @@ export class CurrencyService {
       this.logger.debug(`Fetched new rate for ${cacheKey}: ${rate}`);
       return rate;
     } catch (error) {
-      this.logger.error(`Error fetching exchange rate: ${error.message}`);
-      
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error fetching exchange rate: ${errorMessage}`);
+
       // If we have a cached rate (even if expired), use it as fallback
       if (cached) {
-        this.logger.warn(`Using expired cached rate for ${cacheKey}: ${cached.rate}`);
+        this.logger.warn(
+          `Using expired cached rate for ${cacheKey}: ${cached.rate}`,
+        );
         return cached.rate;
       }
 
@@ -129,7 +134,9 @@ export class CurrencyService {
   ): Promise<number> {
     // For now, use current rate (can be enhanced with historical API later)
     // In production, you'd want to store historical rates in the database
-    this.logger.warn(`Historical rate requested for ${date.toISOString()}, using current rate`);
+    this.logger.warn(
+      `Historical rate requested for ${date.toISOString()}, using current rate`,
+    );
     return this.getExchangeRate(fromCurrency, toCurrency);
   }
 
@@ -181,4 +188,3 @@ export class CurrencyService {
     this.logger.debug('Currency cache cleared');
   }
 }
-

@@ -18,4 +18,3 @@ export class RecurringChoreScheduler {
     await this.recurringChoreService.processRecurringChores();
   }
 }
-

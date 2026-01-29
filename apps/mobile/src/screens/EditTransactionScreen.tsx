@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -8,9 +8,9 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth } from '../auth/authContext';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useAuth } from "../auth/authContext";
 import {
   updateTransaction,
   deleteTransaction,
@@ -20,13 +20,15 @@ import {
   Categories,
   UpdateTransactionDto,
   FinanceTransaction,
-} from '../api/financeApi';
-import { getProfile, Profile } from '../api/profileApi';
-import { MaterialIcons } from '@expo/vector-icons';
-import { DatePicker } from '../components/DatePicker';
-import { Icon } from '../components/Icon';
-import { normalizeCategoryName } from '../utils/categoryIcons';
-import { Header } from '../components/Header';
+} from "../api/financeApi";
+import { getProfile, Profile } from "../api/profileApi";
+import { MaterialIcons } from "@expo/vector-icons";
+import { DatePicker } from "../components/DatePicker";
+import { Icon } from "../components/Icon";
+import { normalizeCategoryName } from "../utils/categoryIcons";
+import { Header } from "../components/Header";
+import { useDataFetch } from "../hooks/useDataFetch";
+import { useTheme } from "../theme";
 
 interface EditTransactionScreenProps {
   transactionId: string;
@@ -46,120 +48,144 @@ export function EditTransactionScreen({
   onNavigateToSettings,
 }: EditTransactionScreenProps) {
   const { token } = useAuth();
-  const [transaction, setTransaction] = useState<FinanceTransaction | null>(null);
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [categories, setCategories] = useState<Categories | null>(null);
-  const [type, setType] = useState<'income' | 'expense'>('expense');
-  const [context, setContext] = useState<'local' | 'home'>('local');
-  const [amount, setAmount] = useState('');
-  const [source, setSource] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [description, setDescription] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [type, setType] = useState<"income" | "expense">("expense");
+  const [context, setContext] = useState<"local" | "home">("local");
+  const [amount, setAmount] = useState("");
+  const [source, setSource] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const [description, setDescription] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [isAutoDetected, setIsAutoDetected] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const categorySuggestTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const categorySuggestTimeoutRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const categoryScrollViewRef = useRef<ScrollView>(null);
   const categoryChipRefs = useRef<Record<string, any>>({});
 
   // Income sources (common options)
-  const incomeSources = ['Salary', 'Freelance', 'Investment', 'Gift', 'Other Income'];
+  const incomeSources = [
+    "Salary",
+    "Freelance",
+    "Investment",
+    "Gift",
+    "Other Income",
+  ];
+
+  const {
+    data: transaction,
+    loading,
+    error,
+    refresh,
+    refetch,
+  } = useDataFetch<FinanceTransaction>({
+    fetchFn: async () => {
+      if (!token) throw new Error("No authentication token");
+      return getTransactionById(token, transactionId);
+    },
+    immediate: true,
+    deps: [token, transactionId],
+    transform: (data) => {
+      setType(data.type);
+      setContext(data.context || "local");
+      setAmount(Math.abs(data.amount).toString()); // Use absolute value for display
+      setSource(data.source || "");
+      setSelectedCategory(data.category || "");
+      setDescription(data.description || "");
+      setDate(
+        data.date
+          ? new Date(data.date).toISOString().split("T")[0]
+          : new Date().toISOString().split("T")[0],
+      );
+      return data;
+    },
+  });
+
+  useEffect(() => {
+    if (error) {
+      Alert.alert("Error", error || "Failed to load transaction");
+      onBack();
+    }
+  }, [error]);
 
   // Get currency symbol based on context
   function getCurrencySymbol(): string {
-    if (!profile) return '$';
-    const currency = context === 'local'
-      ? (profile.primaryCurrency || 'USD')
-      : (profile.homeCountryCurrency || 'USD');
+    if (!profile) return "$";
+    const currency =
+      context === "local"
+        ? profile.primaryCurrency || "USD"
+        : profile.homeCountryCurrency || "USD";
 
     const currencySymbols: Record<string, string> = {
-      'USD': '$',
-      'EUR': '€',
-      'GBP': '£',
-      'INR': '₹',
-      'JPY': '¥',
-      'CNY': '¥',
-      'AUD': 'A$',
-      'CAD': 'C$',
-      'CHF': 'CHF',
-      'SGD': 'S$',
+      USD: "$",
+      EUR: "€",
+      GBP: "£",
+      INR: "₹",
+      JPY: "¥",
+      CNY: "¥",
+      AUD: "A$",
+      CAD: "C$",
+      CHF: "CHF",
+      SGD: "S$",
     };
 
     return currencySymbols[currency] || currency;
   }
 
   useEffect(() => {
-    loadTransaction();
+    async function loadCategories() {
+      if (!token) return;
+      try {
+        const categoriesData = await getCategories(token);
+        setCategories(categoriesData);
+      } catch (err) {
+        console.error("Failed to load categories:", err);
+      }
+    }
+    async function loadProfile() {
+      if (!token) return;
+      try {
+        const profileData = await getProfile(token);
+        setProfile(profileData || null);
+      } catch (err) {
+        console.error("Failed to load profile:", err);
+        setProfile(null);
+      }
+    }
     loadCategories();
     loadProfile();
-  }, [transactionId, token]);
-
-  async function loadProfile() {
-    if (!token) return;
-    try {
-      const profileData = await getProfile(token);
-      setProfile(profileData || null);
-    } catch (err) {
-      console.error('Failed to load profile:', err);
-      setProfile(null);
-    }
-  }
-
-  async function loadCategories() {
-    if (!token) return;
-
-    try {
-      const categoriesData = await getCategories(token);
-      setCategories(categoriesData);
-    } catch (err) {
-      console.error('Failed to load categories:', err);
-    }
-  }
-
-  async function loadTransaction() {
-    if (!token || !transactionId) return;
-
-    try {
-      setLoading(true);
-      const transactionData = await getTransactionById(token, transactionId);
-      setTransaction(transactionData);
-      setType(transactionData.type);
-      setContext(transactionData.context);
-      setAmount(transactionData.amount.toString());
-      setSource(transactionData.source || '');
-      setSelectedCategory(transactionData.category || '');
-      setDescription(transactionData.description || '');
-      if (transactionData.date) {
-        setDate(new Date(transactionData.date).toISOString().split('T')[0]);
-      }
-    } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to load transaction');
-      onBack();
-    } finally {
-      setLoading(false);
-    }
-  }
+  }, [token]);
 
   // Auto-suggest category for expenses when description changes
   useEffect(() => {
-    if (type === 'expense' && description.trim() && token && description !== transaction?.description) {
+    if (
+      type === "expense" &&
+      description.trim() &&
+      token &&
+      description !== transaction?.description
+    ) {
       if (categorySuggestTimeoutRef.current) {
         clearTimeout(categorySuggestTimeoutRef.current);
       }
       categorySuggestTimeoutRef.current = setTimeout(async () => {
         try {
-          const result = await suggestCategory(token, description, 'expense');
+          const result = await suggestCategory(token, description, "expense");
           if (result.category) {
             setSelectedCategory(result.category);
             setIsAutoDetected(true);
             setTimeout(() => {
-              scrollToCategory(result.category);
+              if (result.category) {
+                scrollToCategory(result.category);
+              }
             }, 100);
           }
         } catch (err) {
-          console.error('Failed to suggest category:', err);
+          console.error("Failed to suggest category:", err);
         }
       }, 500);
     }
@@ -199,12 +225,12 @@ export function EditTransactionScreen({
 
     const amountNum = parseFloat(amount);
     if (isNaN(amountNum) || amountNum <= 0) {
-      Alert.alert('Error', 'Please enter a valid amount');
+      Alert.alert("Error", "Please enter a valid amount");
       return;
     }
 
-    if (type === 'income' && !source.trim()) {
-      Alert.alert('Error', 'Please enter a source of income');
+    if (type === "income" && !source.trim()) {
+      Alert.alert("Error", "Please enter a source of income");
       return;
     }
 
@@ -218,7 +244,7 @@ export function EditTransactionScreen({
         date: date || undefined,
       };
 
-      if (type === 'income') {
+      if (type === "income") {
         updateData.source = source.trim();
       } else {
         if (selectedCategory) {
@@ -228,11 +254,14 @@ export function EditTransactionScreen({
 
       await updateTransaction(token, transactionId, updateData);
 
-      Alert.alert('Success', 'Transaction updated successfully!', [
-        { text: 'OK', onPress: onSuccess },
+      Alert.alert("Success", "Transaction updated successfully!", [
+        { text: "OK", onPress: onSuccess },
       ]);
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to update transaction');
+      Alert.alert(
+        "Error",
+        err instanceof Error ? err.message : "Failed to update transaction",
+      );
     } finally {
       setSaving(false);
     }
@@ -242,22 +271,27 @@ export function EditTransactionScreen({
     if (!token || !transaction) return;
 
     Alert.alert(
-      'Delete Transaction',
-      'Are you sure you want to delete this transaction? This action cannot be undone.',
+      "Delete Transaction",
+      "Are you sure you want to delete this transaction? This action cannot be undone.",
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Delete',
-          style: 'destructive',
+          text: "Delete",
+          style: "destructive",
           onPress: async () => {
             try {
               setDeleting(true);
               await deleteTransaction(token, transactionId);
-              Alert.alert('Success', 'Transaction deleted successfully!', [
-                { text: 'OK', onPress: onSuccess },
+              Alert.alert("Success", "Transaction deleted successfully!", [
+                { text: "OK", onPress: onSuccess },
               ]);
             } catch (err) {
-              Alert.alert('Error', err instanceof Error ? err.message : 'Failed to delete transaction');
+              Alert.alert(
+                "Error",
+                err instanceof Error
+                  ? err.message
+                  : "Failed to delete transaction",
+              );
             } finally {
               setDeleting(false);
             }
@@ -271,9 +305,9 @@ export function EditTransactionScreen({
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
+          <ActivityIndicator size="large" color={theme.colors.blue} />
           <Text style={styles.loadingText}>Loading transaction...</Text>
         </View>
       </SafeAreaView>
@@ -282,7 +316,7 @@ export function EditTransactionScreen({
 
   if (!transaction) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <Header
           title="Edit Transaction"
           onBack={onBack}
@@ -298,7 +332,7 @@ export function EditTransactionScreen({
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <Header
         title="Edit Transaction"
         onBack={onBack}
@@ -306,16 +340,18 @@ export function EditTransactionScreen({
         onNavigateToNotifications={onNavigateToNotifications}
         onNavigateToSettings={onNavigateToSettings}
       />
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+      >
         <View style={styles.content}>
-
           <View style={styles.form}>
             {/* Type Display (read-only for editing) */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Type</Text>
               <View style={styles.typeDisplay}>
                 <Text style={styles.typeDisplayText}>
-                  {type === 'income' ? 'Income' : 'Expense'}
+                  {type === "income" ? "Income" : "Expense"}
                 </Text>
               </View>
             </View>
@@ -327,19 +363,23 @@ export function EditTransactionScreen({
                 <TouchableOpacity
                   style={[
                     styles.contextButton,
-                    context === 'local' && styles.contextButtonActive,
+                    context === "local" && styles.contextButtonActive,
                   ]}
-                  onPress={() => setContext('local')}
+                  onPress={() => setContext("local")}
                 >
                   <MaterialIcons
                     name="location-on"
                     size={20}
-                    color={context === 'local' ? '#fff' : '#6B7280'}
+                    color={
+                      context === "local"
+                        ? theme.colors.textInverse
+                        : theme.colors.textSecondary
+                    }
                   />
                   <Text
                     style={[
                       styles.contextButtonText,
-                      context === 'local' && styles.contextButtonTextActive,
+                      context === "local" && styles.contextButtonTextActive,
                     ]}
                   >
                     Local
@@ -348,19 +388,23 @@ export function EditTransactionScreen({
                 <TouchableOpacity
                   style={[
                     styles.contextButton,
-                    context === 'home' && styles.contextButtonActive,
+                    context === "home" && styles.contextButtonActive,
                   ]}
-                  onPress={() => setContext('home')}
+                  onPress={() => setContext("home")}
                 >
                   <MaterialIcons
                     name="home"
                     size={20}
-                    color={context === 'home' ? '#fff' : '#6B7280'}
+                    color={
+                      context === "home"
+                        ? theme.colors.textInverse
+                        : theme.colors.textSecondary
+                    }
                   />
                   <Text
                     style={[
                       styles.contextButtonText,
-                      context === 'home' && styles.contextButtonTextActive,
+                      context === "home" && styles.contextButtonTextActive,
                     ]}
                   >
                     Home Country
@@ -385,7 +429,7 @@ export function EditTransactionScreen({
             </View>
 
             {/* Income: Source */}
-            {type === 'income' && (
+            {type === "income" && (
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Source of Income *</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -402,7 +446,8 @@ export function EditTransactionScreen({
                         <Text
                           style={[
                             styles.sourceButtonText,
-                            source === sourceOption && styles.sourceButtonTextActive,
+                            source === sourceOption &&
+                              styles.sourceButtonTextActive,
                           ]}
                         >
                           {sourceOption}
@@ -422,13 +467,17 @@ export function EditTransactionScreen({
             )}
 
             {/* Expense: Category */}
-            {type === 'expense' && (
+            {type === "expense" && (
               <View style={styles.inputGroup}>
                 <View style={styles.categoryLabelRow}>
                   <Text style={styles.label}>Category</Text>
                   {isAutoDetected && selectedCategory && (
                     <View style={styles.autoDetectedBadge}>
-                      <MaterialIcons name="auto-awesome" size={14} color="#10B981" />
+                      <MaterialIcons
+                        name="auto-awesome"
+                        size={14}
+                        color={theme.colors.success}
+                      />
                       <Text style={styles.autoDetectedText}>Auto-detected</Text>
                     </View>
                   )}
@@ -449,27 +498,40 @@ export function EditTransactionScreen({
                           }}
                           style={[
                             styles.categoryButton,
-                            selectedCategory === category && styles.categoryButtonActive,
-                            isAutoDetected && selectedCategory === category && styles.categoryButtonAutoDetected,
+                            selectedCategory === category &&
+                              styles.categoryButtonActive,
+                            isAutoDetected &&
+                              selectedCategory === category &&
+                              styles.categoryButtonAutoDetected,
                           ]}
                           onPress={() => handleCategorySelect(category)}
                         >
                           <Icon
                             name={normalizeCategoryName(category)}
                             size="sm"
-                            color={selectedCategory === category ? '#fff' : '#6B7280'}
+                            color={
+                              selectedCategory === category
+                                ? theme.colors.white
+                                : theme.colors.textSecondary
+                            }
                             style={styles.categoryIcon}
                           />
                           <Text
                             style={[
                               styles.categoryButtonText,
-                              selectedCategory === category && styles.categoryButtonTextActive,
+                              selectedCategory === category &&
+                                styles.categoryButtonTextActive,
                             ]}
                           >
                             {category}
                           </Text>
                           {isAutoDetected && selectedCategory === category && (
-                            <MaterialIcons name="check-circle" size={16} color="#fff" style={styles.checkIcon} />
+                            <MaterialIcons
+                              name="check-circle"
+                              size={16}
+                              color={theme.colors.textInverse}
+                              style={styles.checkIcon}
+                            />
                           )}
                         </TouchableOpacity>
                       ))}
@@ -484,11 +546,15 @@ export function EditTransactionScreen({
             {/* Description */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>
-                Description{type === 'expense' ? ' (Auto-categorizes)' : ''}
+                Description{type === "expense" ? " (Auto-categorizes)" : ""}
               </Text>
               <TextInput
                 style={[styles.input, styles.textArea]}
-                placeholder={type === 'income' ? 'Add a note...' : 'e.g., Groceries at Walmart'}
+                placeholder={
+                  type === "income"
+                    ? "Add a note..."
+                    : "e.g., Groceries at Walmart"
+                }
                 value={description}
                 onChangeText={setDescription}
                 multiline
@@ -514,7 +580,7 @@ export function EditTransactionScreen({
               disabled={saving}
             >
               {saving ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={theme.colors.white} />
               ) : (
                 <Text style={styles.saveButtonText}>Save Changes</Text>
               )}
@@ -528,16 +594,25 @@ export function EditTransactionScreen({
             <View style={styles.dangerZone}>
               <Text style={styles.dangerZoneTitle}>Danger Zone</Text>
               <TouchableOpacity
-                style={[styles.deleteButton, deleting && styles.deleteButtonDisabled]}
+                style={[
+                  styles.deleteButton,
+                  deleting && styles.deleteButtonDisabled,
+                ]}
                 onPress={handleDelete}
                 disabled={deleting}
               >
                 {deleting ? (
-                  <ActivityIndicator color="#fff" />
+                  <ActivityIndicator color={theme.colors.white} />
                 ) : (
                   <>
-                    <MaterialIcons name="delete-outline" size={20} color="#fff" />
-                    <Text style={styles.deleteButtonText}>Delete Transaction</Text>
+                    <MaterialIcons
+                      name="delete-outline"
+                      size={20}
+                      color={theme.colors.textInverse}
+                    />
+                    <Text style={styles.deleteButtonText}>
+                      Delete Transaction
+                    </Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -549,287 +624,288 @@ export function EditTransactionScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollContent: {
-    paddingBottom: 24,
-  },
-  content: {
-    paddingHorizontal: 24,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#6B7280',
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#EF4444',
-    marginBottom: 16,
-  },
-  form: {
-    marginTop: 8,
-  },
-  inputGroup: {
-    marginBottom: 24,
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#374151',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  typeDisplay: {
-    padding: 12,
-    paddingHorizontal: 16,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-  },
-  typeDisplayText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  contextSelector: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  contextButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#fff',
-    gap: 8,
-  },
-  contextButtonActive: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  contextButtonText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  contextButtonTextActive: {
-    color: '#fff',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    padding: 12,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: '#111827',
-  },
-  textArea: {
-    minHeight: 100,
-    paddingTop: 12,
-  },
-  marginTop: {
-    marginTop: 8,
-  },
-  amountContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-  },
-  currencySymbol: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#374151',
-    marginRight: 8,
-  },
-  amountInput: {
-    flex: 1,
-    padding: 12,
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  sourceSelector: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
-  },
-  sourceButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#fff',
-  },
-  sourceButtonActive: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  sourceButtonText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  sourceButtonTextActive: {
-    color: '#fff',
-  },
-  categoryLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  autoDetectedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#D1FAE5',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  autoDetectedText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#10B981',
-  },
-  categoryScrollView: {
-    marginHorizontal: -24,
-    paddingHorizontal: 24,
-  },
-  categorySelector: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  categoryButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#F3F4F6',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  categoryButtonActive: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  categoryButtonAutoDetected: {
-    backgroundColor: '#10B981',
-    borderColor: '#10B981',
-    shadowColor: '#10B981',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  categoryIcon: {
-    marginRight: 0,
-  },
-  categoryButtonText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  categoryButtonTextActive: {
-    color: '#fff',
-  },
-  checkIcon: {
-    marginLeft: 2,
-  },
-  saveButton: {
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-    flexDirection: 'row',
-    gap: 8,
-  },
-  saveButtonDisabled: {
-    opacity: 0.5,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  cancelButton: {
-    backgroundColor: 'transparent',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#2563EB',
-    marginBottom: 24,
-  },
-  cancelButtonText: {
-    color: '#2563EB',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  dangerZone: {
-    marginTop: 24,
-    paddingTop: 24,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-  },
-  dangerZoneTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 12,
-  },
-  deleteButton: {
-    backgroundColor: '#EF4444',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
-  },
-  deleteButtonDisabled: {
-    opacity: 0.5,
-  },
-  deleteButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-});
-
+function createStyles(theme: ReturnType<typeof useTheme>["theme"]) {
+  return StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    scrollContent: {
+      paddingBottom: 24,
+    },
+    content: {
+      paddingHorizontal: 24,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 24,
+    },
+    loadingText: {
+      marginTop: theme.spacing.base,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textSecondary,
+    },
+    errorText: {
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.error,
+      marginBottom: theme.spacing.base,
+    },
+    form: {
+      marginTop: theme.spacing.sm,
+    },
+    inputGroup: {
+      marginBottom: theme.spacing.xl,
+    },
+    label: {
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.gray700,
+      marginBottom: theme.spacing.sm,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    typeDisplay: {
+      padding: theme.spacing.md,
+      paddingHorizontal: theme.spacing.base,
+      backgroundColor: theme.colors.backgroundTertiary,
+      borderRadius: theme.spacing.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.borderDark,
+    },
+    typeDisplayText: {
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.gray700,
+    },
+    contextSelector: {
+      flexDirection: "row",
+      gap: 12,
+    },
+    contextButton: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.base,
+      borderRadius: theme.spacing.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.borderDark,
+      backgroundColor: theme.colors.background,
+      gap: theme.spacing.sm,
+    },
+    contextButtonActive: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    contextButtonText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.gray700,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    contextButtonTextActive: {
+      color: theme.colors.white,
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: theme.colors.borderDark,
+      borderRadius: theme.spacing.sm,
+      padding: theme.spacing.md,
+      paddingHorizontal: theme.spacing.base,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textPrimary,
+    },
+    textArea: {
+      minHeight: 100,
+      paddingTop: theme.spacing.md,
+    },
+    marginTop: {
+      marginTop: theme.spacing.sm,
+    },
+    amountContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: theme.colors.borderDark,
+      borderRadius: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.base,
+    },
+    currencySymbol: {
+      fontSize: theme.typography.fontSize.xl,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.gray700,
+      marginRight: theme.spacing.sm,
+    },
+    amountInput: {
+      flex: 1,
+      padding: theme.spacing.md,
+      fontSize: theme.typography.fontSize.xl,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.textPrimary,
+    },
+    sourceSelector: {
+      flexDirection: "row",
+      gap: 8,
+      marginBottom: 8,
+    },
+    sourceButton: {
+      paddingVertical: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.base,
+      borderRadius: theme.spacing.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.borderDark,
+      backgroundColor: theme.colors.background,
+    },
+    sourceButtonActive: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    sourceButtonText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.gray700,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    sourceButtonTextActive: {
+      color: theme.colors.white,
+    },
+    categoryLabelRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: theme.spacing.sm,
+    },
+    autoDetectedBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: theme.colors.successBackground,
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: 4,
+      borderRadius: theme.spacing.md,
+    },
+    autoDetectedText: {
+      fontSize: theme.typography.fontSize.xs,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.success,
+    },
+    categoryScrollView: {
+      marginHorizontal: -24,
+      paddingHorizontal: 24,
+    },
+    categorySelector: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    categoryButton: {
+      paddingVertical: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.base,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: theme.colors.borderDark,
+      backgroundColor: theme.colors.backgroundTertiary,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    categoryButtonActive: {
+      backgroundColor: theme.colors.blue,
+      borderColor: theme.colors.blue,
+    },
+    categoryButtonAutoDetected: {
+      backgroundColor: theme.colors.success,
+      borderColor: theme.colors.success,
+      shadowColor: theme.colors.success,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    categoryIcon: {
+      marginRight: 0,
+    },
+    categoryButtonText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.gray700,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    categoryButtonTextActive: {
+      color: theme.colors.white,
+    },
+    checkIcon: {
+      marginLeft: 2,
+    },
+    saveButton: {
+      backgroundColor: theme.colors.blue,
+      borderRadius: theme.spacing.sm,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.xl,
+      minHeight: 44,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: theme.spacing.md,
+      flexDirection: "row",
+      gap: theme.spacing.sm,
+    },
+    saveButtonDisabled: {
+      opacity: 0.5,
+    },
+    saveButtonText: {
+      color: theme.colors.white,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    cancelButton: {
+      backgroundColor: "transparent",
+      borderRadius: theme.spacing.sm,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.xl,
+      minHeight: 44,
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: theme.colors.blue,
+      marginBottom: theme.spacing.xl,
+    },
+    cancelButtonText: {
+      color: theme.colors.blue,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.medium,
+    },
+    dangerZone: {
+      marginTop: 24,
+      paddingTop: 24,
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.border,
+    },
+    dangerZoneTitle: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: theme.colors.gray700,
+      marginBottom: 12,
+    },
+    deleteButton: {
+      backgroundColor: theme.colors.error,
+      borderRadius: 8,
+      paddingVertical: 12,
+      paddingHorizontal: 24,
+      minHeight: 44,
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "row",
+      gap: 8,
+    },
+    deleteButtonDisabled: {
+      opacity: 0.5,
+    },
+    deleteButtonText: {
+      color: theme.colors.white,
+      fontSize: 16,
+      fontWeight: "500",
+    },
+  });
+}

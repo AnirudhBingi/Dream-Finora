@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TrustScoreService } from '../trust-score/trust-score.service';
 import { NotificationService } from '../notification/notification.service';
@@ -162,7 +168,7 @@ export class MessagingService {
     });
 
     // Get user's lastReadAt for each chat to calculate unread count
-    const chatIds = chats.map(chat => chat.id);
+    const chatIds = chats.map((chat) => chat.id);
     const participantRecords = await this.prisma.chatParticipant.findMany({
       where: {
         chatId: { in: chatIds },
@@ -175,7 +181,7 @@ export class MessagingService {
     });
 
     const lastReadMap = new Map<string, Date | null>();
-    participantRecords.forEach(p => {
+    participantRecords.forEach((p) => {
       lastReadMap.set(p.chatId, p.lastReadAt);
     });
 
@@ -204,7 +210,7 @@ export class MessagingService {
           },
         });
         return { chatId, count };
-      })
+      }),
     );
 
     const unreadCountMap = new Map<string, number>();
@@ -215,7 +221,9 @@ export class MessagingService {
     // For each chat, get the other participant (for direct chats) or group info
     return chats.map((chat) => {
       const isGroupChat = chat.type === 'group' || chat.groupId !== null;
-      const otherParticipant = chat.ChatParticipant.find((p) => p.userId !== userId);
+      const otherParticipant = chat.ChatParticipant.find(
+        (p) => p.userId !== userId,
+      );
       const lastMessage = chat.Message[0] || null;
       const unreadCount = unreadCountMap.get(chat.id) || 0;
 
@@ -386,16 +394,22 @@ export class MessagingService {
     // Update trust scores for other participants asynchronously (they received a message)
     // This will update their response rate when they respond
     for (const participant of participants) {
-      await this.trustScoreService.updateCommunityScore(participant.userId).catch((err) => {
-        console.error(`Failed to update trust score for participant ${participant.userId} after receiving message:`, err);
-        // Don't throw - trust score update failure shouldn't break message sending
-      });
+      await this.trustScoreService
+        .updateCommunityScore(participant.userId)
+        .catch((err) => {
+          console.error(
+            `Failed to update trust score for participant ${participant.userId} after receiving message:`,
+            err,
+          );
+          // Don't throw - trust score update failure shouldn't break message sending
+        });
     }
 
     // Notify other participants about the new message
-    const senderName = message.User.UserProfile?.displayName || message.User.email || 'Someone';
+    const senderName =
+      message.User.UserProfile?.displayName || message.User.email || 'Someone';
     const messagePreview = content.trim();
-    
+
     // Get chat info to determine if it's a group chat
     const chatInfo = await this.prisma.chat.findUnique({
       where: { id: chatId },
@@ -410,21 +424,27 @@ export class MessagingService {
         },
       },
     });
-    
-    const isGroupChat = chatInfo?.type === 'group' || chatInfo?.groupId !== null;
-    
+
+    const isGroupChat =
+      chatInfo?.type === 'group' || chatInfo?.groupId !== null;
+
     for (const participant of participants) {
-      await this.notificationService.notifyMessageReceived(
-        participant.userId,
-        chatId,
-        message.id,
-        senderName,
-        messagePreview,
-        isGroupChat ? chatInfo?.Group?.name : undefined,
-        chatInfo?.groupId || undefined,
-      ).catch(err => {
-        console.error(`Failed to create notification for participant ${participant.userId}:`, err);
-      });
+      await this.notificationService
+        .notifyMessageReceived(
+          participant.userId,
+          chatId,
+          message.id,
+          senderName,
+          messagePreview,
+          isGroupChat ? chatInfo?.Group?.name : undefined,
+          chatInfo?.groupId || undefined,
+        )
+        .catch((err) => {
+          console.error(
+            `Failed to create notification for participant ${participant.userId}:`,
+            err,
+          );
+        });
     }
 
     return message;
@@ -495,7 +515,7 @@ export class MessagingService {
         groupId,
         updatedAt: new Date(),
         ChatParticipant: {
-          create: groupMembers.map(member => ({
+          create: groupMembers.map((member) => ({
             id: randomUUID(),
             userId: member.userId,
           })),
@@ -535,9 +555,15 @@ export class MessagingService {
   /**
    * Start a conversation with a user (from listing contact, etc.)
    */
-  async startConversation(userId: string, otherUserId: string, initialMessage?: string) {
+  async startConversation(
+    userId: string,
+    otherUserId: string,
+    initialMessage?: string,
+  ) {
     if (userId === otherUserId) {
-      throw new BadRequestException('Cannot start a conversation with yourself');
+      throw new BadRequestException(
+        'Cannot start a conversation with yourself',
+      );
     }
 
     // Verify other user exists
@@ -588,7 +614,12 @@ export class MessagingService {
   /**
    * Edit a message (within time limit, e.g., 5 minutes)
    */
-  async editMessage(userId: string, chatId: string, messageId: string, newContent: string) {
+  async editMessage(
+    userId: string,
+    chatId: string,
+    messageId: string,
+    newContent: string,
+  ) {
     // Verify user is a participant
     const chat = await this.prisma.chat.findFirst({
       where: {
@@ -641,7 +672,9 @@ export class MessagingService {
     const timeSinceSent = Date.now() - message.sentAt.getTime();
     const FIVE_MINUTES = 5 * 60 * 1000;
     if (timeSinceSent > FIVE_MINUTES) {
-      throw new BadRequestException('Message can only be edited within 5 minutes of sending');
+      throw new BadRequestException(
+        'Message can only be edited within 5 minutes of sending',
+      );
     }
 
     if (!newContent.trim()) {
@@ -824,4 +857,3 @@ export class MessagingService {
     return updated;
   }
 }
-

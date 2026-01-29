@@ -16,4 +16,3 @@ export class InviteMemberDto {
   @IsString()
   userId?: string;
 }
-

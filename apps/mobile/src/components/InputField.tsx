@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -8,10 +8,11 @@ import {
   ViewStyle,
   TextInputProps,
   Platform,
-} from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+} from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useTheme } from "../theme";
 
-interface InputFieldProps extends TextInputProps {
+export interface InputFieldProps extends TextInputProps {
   label?: string;
   error?: string;
   helperText?: string;
@@ -30,41 +31,52 @@ export function InputField({
   onRightIconPress,
   containerStyle,
   style,
-  placeholderTextColor = '#9CA3AF',
+  placeholderTextColor,
   ...textInputProps
 }: InputFieldProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [isFocused, setIsFocused] = useState(false);
 
+  const resolvedPlaceholderColor =
+    placeholderTextColor ?? theme.colors.textTertiary;
+
   const getInputStyle = () => {
-    const baseStyle: ViewStyle = {
-      backgroundColor: isFocused ? '#FFFFFF' : '#F9FAFB',
+    const baseStyle: ViewStyle & { fontSize?: number; color?: string } = {
+      backgroundColor: isFocused
+        ? theme.colors.background
+        : theme.colors.backgroundSecondary,
       borderWidth: 2,
-      borderColor: error ? '#EF4444' : isFocused ? '#6366F1' : '#E5E7EB',
-      borderRadius: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 14,
-      fontSize: 16,
-      color: '#111827',
-      minHeight: 52,
+      borderColor: error
+        ? theme.colors.error
+        : isFocused
+          ? theme.colors.primary
+          : theme.colors.border,
+      borderRadius: theme.radii.input, // Use token (8px)
+      paddingHorizontal: theme.spacing.base,
+      paddingVertical: theme.spacing.md, // Use token instead of hardcoded 14
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textPrimary,
+      minHeight: theme.sizes.input.md, // Use token (48px)
     };
 
     if (leftIcon) {
-      baseStyle.paddingLeft = 48;
+      baseStyle.paddingLeft = theme.spacing["3xl"]; // Use token instead of hardcoded 48
     }
 
     if (rightIcon) {
-      baseStyle.paddingRight = 48;
+      baseStyle.paddingRight = theme.spacing["3xl"]; // Use token instead of hardcoded 48
     }
 
-    if (isFocused && Platform.OS === 'ios') {
-      baseStyle.shadowColor = '#6366F1';
+    if (isFocused && Platform.OS === "ios") {
+      baseStyle.shadowColor = theme.colors.primary;
       baseStyle.shadowOffset = { width: 0, height: 0 };
       baseStyle.shadowOpacity = 0.1;
       baseStyle.shadowRadius = 4;
     }
 
     if (error) {
-      baseStyle.backgroundColor = '#FEF2F2';
+      baseStyle.backgroundColor = theme.colors.errorBackground;
     }
 
     return baseStyle;
@@ -75,20 +87,26 @@ export function InputField({
       {label && (
         <Text style={[styles.label, error && styles.labelError]}>{label}</Text>
       )}
-      
+
       <View style={styles.inputWrapper}>
         {leftIcon && (
           <MaterialIcons
             name={leftIcon}
             size={20}
-            color={error ? '#EF4444' : isFocused ? '#6366F1' : '#6B7280'}
+            color={
+              error
+                ? theme.colors.error
+                : isFocused
+                  ? theme.colors.primary
+                  : theme.colors.textSecondary
+            }
             style={styles.leftIcon}
           />
         )}
-        
+
         <TextInput
           style={[getInputStyle(), style]}
-          placeholderTextColor={placeholderTextColor}
+          placeholderTextColor={resolvedPlaceholderColor}
           onFocus={(e) => {
             setIsFocused(true);
             textInputProps.onFocus?.(e);
@@ -99,7 +117,7 @@ export function InputField({
           }}
           {...textInputProps}
         />
-        
+
         {rightIcon && (
           <TouchableOpacity
             onPress={onRightIconPress}
@@ -109,7 +127,13 @@ export function InputField({
             <MaterialIcons
               name={rightIcon}
               size={20}
-              color={error ? '#EF4444' : isFocused ? '#6366F1' : '#6B7280'}
+              color={
+                error
+                  ? theme.colors.error
+                  : isFocused
+                    ? theme.colors.primary
+                    : theme.colors.textSecondary
+              }
             />
           </TouchableOpacity>
         )}
@@ -124,42 +148,42 @@ export function InputField({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  labelError: {
-    color: '#EF4444',
-  },
-  inputWrapper: {
-    position: 'relative',
-  },
-  leftIcon: {
-    position: 'absolute',
-    left: 16,
-    top: 16,
-    zIndex: 1,
-  },
-  rightIcon: {
-    position: 'absolute',
-    right: 16,
-    top: 16,
-    zIndex: 1,
-    padding: 4,
-  },
-  helperText: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 4,
-  },
-  errorText: {
-    color: '#EF4444',
-  },
-});
-
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    container: {
+      marginBottom: theme.spacing.lg,
+    },
+    label: {
+      fontSize: theme.typography.fontSize.sm,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.textSecondary,
+      marginBottom: theme.spacing.sm,
+    },
+    labelError: {
+      color: theme.colors.error,
+    },
+    inputWrapper: {
+      position: "relative",
+    },
+    leftIcon: {
+      position: "absolute",
+      left: theme.spacing.base,
+      top: 16,
+      zIndex: 1,
+    },
+    rightIcon: {
+      position: "absolute",
+      right: theme.spacing.base,
+      top: 16,
+      zIndex: 1,
+      padding: theme.spacing.xs,
+    },
+    helperText: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.textSecondary,
+      marginTop: theme.spacing.xs,
+    },
+    errorText: {
+      color: theme.colors.error,
+    },
+  });

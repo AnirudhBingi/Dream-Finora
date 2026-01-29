@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -7,19 +7,24 @@ import {
   Platform,
   ScrollView,
   Alert,
-} from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
-import { Button } from '../components/Button';
-import { InputField } from '../components/InputField';
+} from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
+import { Button } from "../components/Button";
+import { InputField } from "../components/InputField";
+import { useTheme } from "../theme";
 
 interface ForgotPasswordScreenProps {
   onBackToLogin: () => void;
 }
 
-export function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordScreenProps) {
-  const [email, setEmail] = useState('');
+export function ForgotPasswordScreen({
+  onBackToLogin,
+}: ForgotPasswordScreenProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [emailError, setEmailError] = useState('');
+  const [emailError, setEmailError] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
 
   const validateEmail = (email: string): boolean => {
@@ -29,19 +34,19 @@ export function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordScreenProp
 
   const handleEmailChange = (text: string) => {
     setEmail(text);
-    setEmailError('');
+    setEmailError("");
   };
 
   async function handleSendResetLink() {
-    setEmailError('');
+    setEmailError("");
 
     if (!email.trim()) {
-      setEmailError('Please enter your email address');
+      setEmailError("Please enter your email address");
       return;
     }
 
     if (!validateEmail(email.trim())) {
-      setEmailError('Please enter a valid email address');
+      setEmailError("Please enter a valid email address");
       return;
     }
 
@@ -49,19 +54,22 @@ export function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordScreenProp
     try {
       // TODO: Implement forgot password API call
       // await forgotPassword(email.trim());
-      
+
       // Simulate API call for now
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
       setIsSubmitted(true);
       Alert.alert(
-        'Reset Link Sent',
-        'We\'ve sent a password reset link to your email. Please check your inbox.',
-        [{ text: 'OK', onPress: onBackToLogin }]
+        "Reset Link Sent",
+        "We've sent a password reset link to your email. Please check your inbox.",
+        [{ text: "OK", onPress: onBackToLogin }],
       );
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to send reset link. Please try again.';
-      Alert.alert('Error', errorMessage);
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to send reset link. Please try again.";
+      Alert.alert("Error", errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -71,7 +79,7 @@ export function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordScreenProp
     return (
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -79,15 +87,20 @@ export function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordScreenProp
         >
           <View style={styles.content}>
             <View style={styles.successIconContainer}>
-              <MaterialIcons name="check-circle" size={80} color="#10B981" />
+              <MaterialIcons
+                name="check-circle"
+                size={80}
+                color={theme.colors.success}
+              />
             </View>
             <Text style={styles.successTitle}>Reset Link Sent!</Text>
             <Text style={styles.successMessage}>
-              We've sent a password reset link to{'\n'}
+              We've sent a password reset link to{"\n"}
               <Text style={styles.emailText}>{email}</Text>
             </Text>
             <Text style={styles.successSubtext}>
-              Please check your email and follow the instructions to reset your password.
+              Please check your email and follow the instructions to reset your
+              password.
             </Text>
             <Button
               title="Back to Login"
@@ -103,7 +116,7 @@ export function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordScreenProp
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -123,7 +136,11 @@ export function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordScreenProp
           {/* Logo/Icon Placeholder */}
           <View style={styles.logoContainer}>
             <View style={styles.logoPlaceholder}>
-              <MaterialIcons name="lock-reset" size={40} color="#FFFFFF" />
+              <MaterialIcons
+                name="lock-reset"
+                size={40}
+                color={theme.colors.white}
+              />
             </View>
           </View>
 
@@ -158,7 +175,7 @@ export function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordScreenProp
 
             <View style={styles.switchContainer}>
               <Text style={styles.switchText}>
-                Remember your password?{' '}
+                Remember your password?{" "}
                 <Text style={styles.switchTextBold} onPress={onBackToLogin}>
                   Login
                 </Text>
@@ -171,101 +188,101 @@ export function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordScreenProp
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 48,
-    paddingBottom: 32,
-  },
-  backButtonTop: {
-    alignSelf: 'flex-start',
-    marginBottom: 16,
-  },
-  logoContainer: {
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  logoPlaceholder: {
-    width: 80,
-    height: 80,
-    borderRadius: 20,
-    backgroundColor: '#6366F1',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#6366F1',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 18,
-    fontWeight: '500',
-    color: '#374151',
-    textAlign: 'center',
-    marginBottom: 32,
-    lineHeight: 24,
-  },
-  form: {
-    width: '100%',
-  },
-  sendButton: {
-    marginTop: 8,
-  },
-  switchContainer: {
-    marginTop: 24,
-    alignItems: 'center',
-  },
-  switchText: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  switchTextBold: {
-    color: '#6366F1',
-    fontWeight: '600',
-  },
-  successIconContainer: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  successTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#111827',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  successMessage: {
-    fontSize: 16,
-    color: '#374151',
-    textAlign: 'center',
-    marginBottom: 8,
-    lineHeight: 24,
-  },
-  emailText: {
-    fontWeight: '600',
-    color: '#6366F1',
-  },
-  successSubtext: {
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 32,
-    lineHeight: 20,
-  },
-  backButton: {
-    marginTop: 8,
-  },
-});
-
+const createStyles = (theme: ReturnType<typeof useTheme>["theme"]) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.backgroundSecondary,
+    },
+    scrollContent: {
+      flexGrow: 1,
+    },
+    content: {
+      flex: 1,
+      justifyContent: "center",
+      paddingHorizontal: theme.spacing.xl,
+      paddingTop: theme.spacing["4xl"],
+      paddingBottom: theme.spacing["2xl"],
+    },
+    backButtonTop: {
+      alignSelf: "flex-start",
+      marginBottom: theme.spacing.base,
+    },
+    logoContainer: {
+      alignItems: "center",
+      marginBottom: theme.spacing.base,
+    },
+    logoPlaceholder: {
+      width: 80,
+      height: 80,
+      borderRadius: 20,
+      backgroundColor: theme.colors.primary,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    title: {
+      fontSize: theme.typography.fontSize["4xl"],
+      fontWeight: theme.typography.fontWeight.bold,
+      color: theme.colors.primary,
+      textAlign: "center",
+      marginBottom: theme.spacing.sm,
+    },
+    subtitle: {
+      fontSize: theme.typography.fontSize.lg,
+      fontWeight: theme.typography.fontWeight.medium,
+      color: theme.colors.gray700,
+      textAlign: "center",
+      marginBottom: theme.spacing["2xl"],
+      lineHeight: 24,
+    },
+    form: {
+      width: "100%",
+    },
+    sendButton: {
+      marginTop: theme.spacing.sm,
+    },
+    switchContainer: {
+      marginTop: theme.spacing.xl,
+      alignItems: "center",
+    },
+    switchText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+    },
+    switchTextBold: {
+      color: theme.colors.primary,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    successIconContainer: {
+      alignItems: "center",
+      marginBottom: theme.spacing.xl,
+    },
+    successTitle: {
+      fontSize: theme.typography.fontSize["3xl"],
+      fontWeight: theme.typography.fontWeight.bold,
+      color: theme.colors.textPrimary,
+      textAlign: "center",
+      marginBottom: theme.spacing.base,
+    },
+    successMessage: {
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.gray700,
+      textAlign: "center",
+      marginBottom: theme.spacing.sm,
+      lineHeight: 24,
+    },
+    emailText: {
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.primary,
+    },
+    successSubtext: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+      textAlign: "center",
+      marginBottom: theme.spacing["2xl"],
+      lineHeight: 20,
+    },
+    backButton: {
+      marginTop: 8,
+    },
+  });

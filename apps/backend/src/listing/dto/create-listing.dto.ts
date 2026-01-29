@@ -1,5 +1,12 @@
-import { IsString, IsNumber, IsOptional, IsArray, IsEnum, Min, IsObject, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import {
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsArray,
+  IsEnum,
+  Min,
+  IsObject,
+} from 'class-validator';
 
 export enum ListingType {
   ROOMMATE = 'roommate',
@@ -86,12 +93,20 @@ export class CreateListingDto {
   currency?: string;
 
   @IsOptional()
+  @IsString()
+  groupId?: string;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   images?: string[];
 
   @IsOptional()
   @IsObject()
-  metadata?: RoommateMetadata | AccommodationMetadata | ItemMetadata | EventMetadata | RideMetadata;
+  metadata?:
+    | RoommateMetadata
+    | AccommodationMetadata
+    | ItemMetadata
+    | EventMetadata
+    | RideMetadata;
 }
-

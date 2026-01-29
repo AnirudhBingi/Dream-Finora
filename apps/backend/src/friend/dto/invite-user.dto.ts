@@ -12,4 +12,3 @@ export class InviteUserDto {
   })
   mobileNumber?: string;
 }
-

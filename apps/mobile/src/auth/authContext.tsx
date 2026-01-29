@@ -1,9 +1,20 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { login as loginApi, register as registerApi, AuthResponse } from '../api/authApi';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode,
+} from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  login as loginApi,
+  register as registerApi,
+  AuthResponse,
+} from "../api/authApi";
+import { setUnauthorizedHandler } from "../api/client";
 
-const AUTH_TOKEN_KEY = '@dreamfinora:auth_token';
-const AUTH_USER_KEY = '@dreamfinora:auth_user';
+const AUTH_TOKEN_KEY = "@dreamfinora:auth_token";
+const AUTH_USER_KEY = "@dreamfinora:auth_user";
 
 interface User {
   id: string;
@@ -18,7 +29,11 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (identifier: string, password: string) => Promise<void>;
-  register: (email: string, password: string, mobileNumber?: string) => Promise<void>;
+  register: (
+    email: string,
+    password: string,
+    mobileNumber?: string,
+  ) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -34,6 +49,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loadAuthState();
   }, []);
 
+  useEffect(() => {
+    setUnauthorizedHandler(() => logout());
+    return () => setUnauthorizedHandler(null);
+  }, [logout]);
+
   async function loadAuthState() {
     try {
       const [storedToken, storedUser] = await Promise.all([
@@ -46,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(JSON.parse(storedUser));
       }
     } catch (error) {
-      console.error('Failed to load auth state:', error);
+      console.error("Failed to load auth state:", error);
     } finally {
       setIsLoading(false);
     }
@@ -57,8 +77,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await saveAuthState(response);
   }
 
-  async function register(email: string, password: string, mobileNumber?: string) {
-    const response: AuthResponse = await registerApi({ email, password, mobileNumber });
+  async function register(
+    email: string,
+    password: string,
+    mobileNumber?: string,
+  ) {
+    const response: AuthResponse = await registerApi({
+      email,
+      password,
+      mobileNumber,
+    });
     await saveAuthState(response);
   }
 
@@ -71,7 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(response.token);
       setUser(response.user);
     } catch (error) {
-      console.error('Failed to save auth state:', error);
+      console.error("Failed to save auth state:", error);
       throw error;
     }
   }
@@ -85,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(null);
       setUser(null);
     } catch (error) {
-      console.error('Failed to logout:', error);
+      console.error("Failed to logout:", error);
     }
   }
 
@@ -109,8 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 }
-

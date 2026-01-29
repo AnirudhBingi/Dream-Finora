@@ -74,7 +74,11 @@ export class GoalController {
     @Param('id') id: string,
     @Body() addContributionDto: AddContributionDto,
   ) {
-    return this.goalService.addContribution(user.userId, id, addContributionDto);
+    return this.goalService.addContribution(
+      user.userId,
+      id,
+      addContributionDto,
+    );
   }
 
   @Delete(':id/contributions/:contributionId')
@@ -87,4 +91,3 @@ export class GoalController {
     return this.goalService.deleteContribution(user.userId, id, contributionId);
   }
 }
-

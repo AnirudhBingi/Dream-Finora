@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -8,12 +8,19 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
-import { useAuth } from '../auth/authContext';
-import { getGroupInvitation, acceptGroupInvitation, declineGroupInvitation, GroupInvitation } from '../api/groupApi';
-import { Header } from '../components/Header';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useAuth } from "../auth/authContext";
+import {
+  getGroupInvitation,
+  acceptGroupInvitation,
+  declineGroupInvitation,
+  GroupInvitation,
+} from "../api/groupApi";
+import { Header } from "../components/Header";
+import { useDataFetch } from "../hooks/useDataFetch";
+import { useTheme } from "../theme";
 
 interface GroupInvitationScreenProps {
   invitationToken: string;
@@ -32,34 +39,25 @@ export function GroupInvitationScreen({
   onNavigateToNotifications,
   onNavigateToSettings,
 }: GroupInvitationScreenProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { token, user } = useAuth();
-  const [invitation, setInvitation] = useState<GroupInvitation | null>(null);
-  const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadInvitation();
-  }, [token, invitationToken]);
-
-  async function loadInvitation() {
-    if (!token) {
-      setError('Please log in to view this invitation');
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await getGroupInvitation(token);
-      setInvitation(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load invitation');
-    } finally {
-      setLoading(false);
-    }
-  }
+  const {
+    data: invitation,
+    loading,
+    error,
+    refresh,
+    refetch,
+  } = useDataFetch<GroupInvitation>({
+    fetchFn: async () => {
+      if (!token) throw new Error("Please log in to view this invitation");
+      return getGroupInvitation(token);
+    },
+    immediate: true,
+    deps: [token, invitationToken],
+  });
 
   async function handleAccept() {
     if (!token || !invitation) return;
@@ -67,14 +65,20 @@ export function GroupInvitationScreen({
     try {
       setProcessing(true);
       const result = await acceptGroupInvitation(token, invitationToken);
-      Alert.alert('Success', `You've joined "${result.groupName}"!`, [
-        { text: 'OK', onPress: () => {
-          onAccept?.(result.groupId);
-          onBack();
-        }},
+      Alert.alert("Success", `You've joined "${result.groupName}"!`, [
+        {
+          text: "OK",
+          onPress: () => {
+            onAccept?.(result.groupId);
+            onBack();
+          },
+        },
       ]);
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to accept invitation');
+      Alert.alert(
+        "Error",
+        err instanceof Error ? err.message : "Failed to accept invitation",
+      );
     } finally {
       setProcessing(false);
     }
@@ -84,28 +88,33 @@ export function GroupInvitationScreen({
     if (!token || !invitation) return;
 
     Alert.alert(
-      'Decline Invitation',
-      'Are you sure you want to decline this invitation?',
+      "Decline Invitation",
+      "Are you sure you want to decline this invitation?",
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Decline',
-          style: 'destructive',
+          text: "Decline",
+          style: "destructive",
           onPress: async () => {
             try {
               setProcessing(true);
               await declineGroupInvitation(token, invitationToken);
-              Alert.alert('Success', 'Invitation declined', [
-                { text: 'OK', onPress: onBack },
+              Alert.alert("Success", "Invitation declined", [
+                { text: "OK", onPress: onBack },
               ]);
             } catch (err) {
-              Alert.alert('Error', err instanceof Error ? err.message : 'Failed to decline invitation');
+              Alert.alert(
+                "Error",
+                err instanceof Error
+                  ? err.message
+                  : "Failed to decline invitation",
+              );
             } finally {
               setProcessing(false);
             }
           },
         },
-      ]
+      ],
     );
   }
 
@@ -115,8 +124,8 @@ export function GroupInvitationScreen({
     const diff = now.getTime() - date.getTime();
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
 
-    if (days === 0) return 'Today';
-    if (days === 1) return 'Yesterday';
+    if (days === 0) return "Today";
+    if (days === 1) return "Yesterday";
     if (days < 7) return `${days} days ago`;
     return date.toLocaleDateString();
   }
@@ -128,9 +137,9 @@ export function GroupInvitationScreen({
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
+          <ActivityIndicator size="large" color={theme.colors.blue} />
           <Text style={styles.loadingText}>Loading invitation...</Text>
         </View>
       </SafeAreaView>
@@ -139,7 +148,7 @@ export function GroupInvitationScreen({
 
   if (error || !invitation) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <Header
           title="Group Invitation"
           onBack={onBack}
@@ -148,9 +157,15 @@ export function GroupInvitationScreen({
           onNavigateToSettings={onNavigateToSettings}
         />
         <View style={styles.errorContainer}>
-          <MaterialIcons name="error-outline" size={48} color="#EF4444" />
-          <Text style={styles.errorText}>{error || 'Invitation not found'}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadInvitation}>
+          <MaterialIcons
+            name="error-outline"
+            size={48}
+            color={theme.colors.error}
+          />
+          <Text style={styles.errorText}>
+            {error || "Invitation not found"}
+          </Text>
+          <TouchableOpacity style={styles.retryButton} onPress={refetch}>
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -159,10 +174,10 @@ export function GroupInvitationScreen({
   }
 
   const expired = isExpired();
-  const alreadyProcessed = invitation.status !== 'pending';
+  const alreadyProcessed = invitation.status !== "pending";
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <Header
         title="Group Invitation"
         onBack={onBack}
@@ -171,7 +186,10 @@ export function GroupInvitationScreen({
         onNavigateToSettings={onNavigateToSettings}
       />
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+      >
         <View style={styles.content}>
           {/* Inviter Info */}
           <View style={styles.inviterCard}>
@@ -183,14 +201,19 @@ export function GroupInvitationScreen({
                 />
               ) : (
                 <Text style={styles.avatarText}>
-                  {(invitation.inviter.profile?.displayName || invitation.inviter.email || 'U')
+                  {(
+                    invitation.inviter.profile?.displayName ||
+                    invitation.inviter.email ||
+                    "U"
+                  )
                     .charAt(0)
                     .toUpperCase()}
                 </Text>
               )}
             </View>
             <Text style={styles.inviterName}>
-              {invitation.inviter.profile?.displayName || invitation.inviter.email}
+              {invitation.inviter.profile?.displayName ||
+                invitation.inviter.email}
             </Text>
             <Text style={styles.inviterLabel}>invited you to join</Text>
           </View>
@@ -198,11 +221,13 @@ export function GroupInvitationScreen({
           {/* Group Info */}
           <View style={styles.groupCard}>
             <View style={styles.groupIcon}>
-              <MaterialIcons name="group" size={32} color="#2563EB" />
+              <MaterialIcons name="group" size={32} color={theme.colors.blue} />
             </View>
             <Text style={styles.groupName}>{invitation.group.name}</Text>
             {invitation.group.description && (
-              <Text style={styles.groupDescription}>{invitation.group.description}</Text>
+              <Text style={styles.groupDescription}>
+                {invitation.group.description}
+              </Text>
             )}
             <Text style={styles.groupMeta}>
               Created {formatDate(invitation.group.createdAt)}
@@ -212,7 +237,11 @@ export function GroupInvitationScreen({
           {/* Status Messages */}
           {expired && (
             <View style={styles.statusCard}>
-              <MaterialIcons name="schedule" size={24} color="#EF4444" />
+              <MaterialIcons
+                name="schedule"
+                size={24}
+                color={theme.colors.error}
+              />
               <Text style={styles.statusText}>This invitation has expired</Text>
             </View>
           )}
@@ -220,9 +249,15 @@ export function GroupInvitationScreen({
           {alreadyProcessed && !expired && (
             <View style={styles.statusCard}>
               <MaterialIcons
-                name={invitation.status === 'accepted' ? 'check-circle' : 'cancel'}
+                name={
+                  invitation.status === "accepted" ? "check-circle" : "cancel"
+                }
                 size={24}
-                color={invitation.status === 'accepted' ? '#10B981' : '#EF4444'}
+                color={
+                  invitation.status === "accepted"
+                    ? theme.colors.success
+                    : theme.colors.error
+                }
               />
               <Text style={styles.statusText}>
                 This invitation has been {invitation.status}
@@ -234,26 +269,40 @@ export function GroupInvitationScreen({
           {!expired && !alreadyProcessed && (
             <View style={styles.actionsContainer}>
               <TouchableOpacity
-                style={[styles.acceptButton, processing && styles.buttonDisabled]}
+                style={[
+                  styles.acceptButton,
+                  processing && styles.buttonDisabled,
+                ]}
                 onPress={handleAccept}
                 disabled={processing}
               >
                 {processing ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <ActivityIndicator size="small" color={theme.colors.white} />
                 ) : (
                   <>
-                    <MaterialIcons name="check-circle" size={20} color="#FFFFFF" />
+                    <MaterialIcons
+                      name="check-circle"
+                      size={20}
+                      color={theme.colors.white}
+                    />
                     <Text style={styles.acceptButtonText}>Join Group</Text>
                   </>
                 )}
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.declineButton, processing && styles.buttonDisabled]}
+                style={[
+                  styles.declineButton,
+                  processing && styles.buttonDisabled,
+                ]}
                 onPress={handleDecline}
                 disabled={processing}
               >
-                <MaterialIcons name="cancel" size={20} color="#EF4444" />
+                <MaterialIcons
+                  name="cancel"
+                  size={20}
+                  color={theme.colors.error}
+                />
                 <Text style={styles.declineButtonText}>Decline</Text>
               </TouchableOpacity>
             </View>
@@ -264,177 +313,178 @@ export function GroupInvitationScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-  },
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 24,
-  },
-  content: {
-    padding: 24,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#6B7280',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  errorText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#EF4444',
-    textAlign: 'center',
-  },
-  retryButton: {
-    marginTop: 24,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  inviterCard: {
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 24,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  inviterAvatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#2563EB',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  avatarImage: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-  },
-  avatarText: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  inviterName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  inviterLabel: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  groupCard: {
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 24,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  groupIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#EFF6FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  groupName: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  groupDescription: {
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  groupMeta: {
-    fontSize: 12,
-    color: '#9CA3AF',
-  },
-  statusCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FEF2F2',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-  },
-  statusText: {
-    fontSize: 14,
-    color: '#EF4444',
-    marginLeft: 8,
-    flex: 1,
-  },
-  actionsContainer: {
-    gap: 12,
-  },
-  acceptButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    padding: 16,
-    gap: 8,
-  },
-  acceptButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  declineButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    gap: 8,
-  },
-  declineButtonText: {
-    color: '#EF4444',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-});
-
+function createStyles(theme: ReturnType<typeof useTheme>["theme"]) {
+  return StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.backgroundSecondary,
+    },
+    container: {
+      flex: 1,
+    },
+    scrollContent: {
+      paddingBottom: theme.spacing.xl,
+    },
+    content: {
+      padding: theme.spacing.xl,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: theme.spacing["2xl"],
+    },
+    loadingText: {
+      marginTop: theme.spacing.base,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.textSecondary,
+    },
+    errorContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: theme.spacing["2xl"],
+    },
+    errorText: {
+      marginTop: theme.spacing.base,
+      fontSize: theme.typography.fontSize.base,
+      color: theme.colors.error,
+      textAlign: "center",
+    },
+    retryButton: {
+      marginTop: theme.spacing.xl,
+      paddingHorizontal: theme.spacing.xl,
+      paddingVertical: theme.spacing.md,
+      backgroundColor: theme.colors.blue,
+      borderRadius: theme.spacing.sm,
+    },
+    retryButtonText: {
+      color: theme.colors.white,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    inviterCard: {
+      alignItems: "center",
+      backgroundColor: theme.colors.background,
+      borderRadius: 12,
+      padding: 24,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    inviterAvatar: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+      backgroundColor: theme.colors.blue,
+      justifyContent: "center",
+      alignItems: "center",
+      marginBottom: theme.spacing.md,
+    },
+    avatarImage: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+    },
+    avatarText: {
+      fontSize: theme.typography.fontSize["2xl"],
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.white,
+    },
+    inviterName: {
+      fontSize: theme.typography.fontSize.lg,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.gray800,
+      marginBottom: 4,
+    },
+    inviterLabel: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+    },
+    groupCard: {
+      alignItems: "center",
+      backgroundColor: theme.colors.background,
+      borderRadius: 12,
+      padding: 24,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    groupIcon: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+      backgroundColor: theme.colors.blueBackground,
+      justifyContent: "center",
+      alignItems: "center",
+      marginBottom: theme.spacing.md,
+    },
+    groupName: {
+      fontSize: theme.typography.fontSize.xl,
+      fontWeight: theme.typography.fontWeight.semibold,
+      color: theme.colors.gray800,
+      marginBottom: theme.spacing.sm,
+      textAlign: "center",
+    },
+    groupDescription: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.textSecondary,
+      textAlign: "center",
+      marginBottom: theme.spacing.sm,
+    },
+    groupMeta: {
+      fontSize: theme.typography.fontSize.xs,
+      color: theme.colors.textTertiary,
+    },
+    statusCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: theme.colors.errorBackground,
+      borderRadius: theme.spacing.sm,
+      padding: theme.spacing.base,
+      marginBottom: theme.spacing.base,
+    },
+    statusText: {
+      fontSize: theme.typography.fontSize.sm,
+      color: theme.colors.error,
+      marginLeft: theme.spacing.sm,
+      flex: 1,
+    },
+    actionsContainer: {
+      gap: 12,
+    },
+    acceptButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.colors.blue,
+      borderRadius: theme.spacing.sm,
+      padding: theme.spacing.base,
+      gap: theme.spacing.sm,
+    },
+    acceptButtonText: {
+      color: theme.colors.white,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    declineButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.colors.background,
+      borderRadius: theme.spacing.sm,
+      padding: theme.spacing.base,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      gap: theme.spacing.sm,
+    },
+    declineButtonText: {
+      color: theme.colors.error,
+      fontSize: theme.typography.fontSize.base,
+      fontWeight: theme.typography.fontWeight.semibold,
+    },
+    buttonDisabled: {
+      opacity: 0.6,
+    },
+  });
+}
